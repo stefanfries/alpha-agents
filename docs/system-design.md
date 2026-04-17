@@ -16,7 +16,7 @@ The primary investment instruments are **stocks** and **Call Warrants** (Options
                          ▼
             ┌────────────────────────┐
             │  UniverseSpec (input)  │
-            │  e.g. [DAX, MDAX]     │
+            │  e.g. [DAX, MDAX]      │
             └────────────┬───────────┘
                          │
                          ▼
@@ -68,7 +68,7 @@ Universe → [✓ review] → Research → [✓ review] → Stock Selection → 
 At each `[✓ review]` point:
 
 - The stage output is written to MongoDB Atlas collection `pipeline_runs` under the current `run_id` and `stage` name
-- The CLI presents a summary to the user
+- The **web UI** (FastAPI + Jinja2 + HTMX, see ADR-008) renders a stage-summary page with charts
 - The user responds: **continue** → advance to next stage; **restart** → return to a named stage (optionally with new config parameters)
 
 The pipeline is designed for **autonomous operation** in production (all checkpoints auto-approved), but MITL mode is the default during development.
@@ -76,15 +76,18 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 ## Technology choices
 
 | Concern | Choice | Reason |
-|---------|--------|--------|
+| ------- | ------ | ------ |
 | Language | Python 3.13 | Latest stable; matches project convention |
 | Validation | Pydantic V2 | Fast, type-safe data models for all inter-agent contracts |
 | Config | pydantic-settings | Loads secrets from `.env`; never hardcoded |
 | HTTP | httpx (async) | Used for FastAPI Instrument API calls |
 | Instrument master | MongoDB Atlas `instrument_master` | ISIN/WKN/notation-ID ↔ yfinance symbol bridge (see ADR-007) |
-| OHLCV data | yfinance | Symbol-based; only source used here |
-| Index membership | Wikipedia (`pandas.read_html`) → FastAPI `/indexes` | See ADR-004 |
-| Warrant data | FastAPI Instrument API | Azure Container App; extends `fastapi-azure-container-app` sibling project |
+| OHLCV data (stocks) | yfinance | Symbol-based via `symbol_yfinance` |
+| OHLCV data (warrants) | FastAPI Instrument API `/history` | yfinance does not carry warrant price history; venue selected via `id_notation` |
+| Index membership | FastAPI `/v1/indices/{index_name}` → Wikipedia fallback | See ADR-004 |
+| Instrument master / identifiers | FastAPI Instrument API `/v1/instruments/{identifier}` | WKN, ISIN, CUSIP, FIGI, `symbol_yfinance`, `name_openfigi`; OpenFIGI-enriched (see ADR-007) |
+| Warrant search | FastAPI Instrument API `/v1/warrants` | Finder by underlying WKN/ISIN with type and maturity filters |
+| Warrant detail | FastAPI Instrument API `/v1/warrants/{identifier}` | Full reference data, market data, and analytics (Greeks) |
 | Current holdings | MongoDB Atlas | Synced from Comdirect by `comdirect_api`; read directly from Atlas |
 | Persistence | MongoDB Atlas | Intermediate results + portfolio state (see ADR-005) |
 | Order placement | Manual (Comdirect web/app) | Comdirect requires 2FA — autonomous submission not supported |
@@ -92,9 +95,13 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 | Testing | pytest + pytest-asyncio | Async-first test runner |
 | Linting | ruff | Fast, zero-config linter + formatter |
 
+## User interface
+
+The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). This replaces the CLI-based MITL pattern (ADR-005). The user reviews each stage's output in a browser, then clicks to approve or restart. Financial charts (candlestick, trend indicators) are rendered server-side by Plotly and swapped into the page by HTMX without a full reload.
+
 ## Deployment
 
-Initially runs locally as a CLI script (`uv run main.py`). Future deployment target: Azure Container Apps (consistent with sibling projects in this repo).
+Deployed as a FastAPI web application to Azure Container Apps (consistent with sibling projects). Can also be hosted on AWS (App Runner, ECS) or GCP (Cloud Run) — all three support containerised Python services.
 
 ## Key constraints
 

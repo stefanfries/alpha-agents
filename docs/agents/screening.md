@@ -48,7 +48,7 @@ None — operates purely on the OHLCV data provided by `ResearchAgent`.
 ## Trend scoring weights (configurable)
 
 | Indicator | Default weight | Description |
-|-----------|---------------|-------------|
+| --------- | -------------- | ----------- |
 | MA alignment (SMA20 > 50 > 200) | 35% | Core trend structure |
 | ADX strength (> 25) | 25% | Trend momentum confirmation |
 | Price above SMA200 | 20% | Long-term trend direction |
@@ -57,7 +57,7 @@ None — operates purely on the OHLCV data provided by `ResearchAgent`.
 ## Configuration (via `config.py`)
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| --------- | ------- | ----------- |
 | `stock_selection_top_n` | `20` | Maximum stocks to pass to warrant stage |
 | `stock_selection_min_adx` | `20` | Minimum ADX to consider a trend meaningful |
 | `stock_selection_lookback_swing` | `20` | Bars to look back for swing high/low detection |

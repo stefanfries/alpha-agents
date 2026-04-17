@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -40,11 +40,13 @@ def get_dax_tickers() -> list[str]:
 ```
 
 Pros:
+
 - Free, zero authentication
 - Covers all major indices used in this project
 - `pandas.read_html` is already a common dep via analysis workflows
 
 Cons:
+
 - Table index within the page can change when Wikipedia is edited
 - German tickers sometimes lack `.DE` suffix — requires normalisation step
 - Constituency changes may lag by hours/days
@@ -52,19 +54,21 @@ Cons:
 
 **Verdict: Good enough for development and early production use for major indices.**
 
-#### Option C: FastAPI Instrument API `/indexes` endpoint (planned extension)
+#### Option C: FastAPI Instrument API `/v1/indices/{index_name}` endpoint
 
-A new endpoint to be added to the `fastapi-azure-container-app` sibling project, hosted at `https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io/`. This service already provides various instrument data endpoints and is the natural home for index membership data.
+Available at `https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io/`. This service provides instrument data, warrant search, warrant detail, and historical price endpoints alongside the indices endpoint.
 
 > **Note:** This Azure Container App is configured with Scale to Zero — allow ~30 seconds for cold start on first request.
 
 Pros:
-- Authoritative Xetra ticker symbols and ISINs (can scrape Comdirect's index pages server-side)
-- Same API as the planned warrant search endpoint — consistent data source
+
+- Authoritative Xetra ticker symbols and ISINs sourced from Comdirect
+- Consistent data source with the warrant and instrument endpoints already used by the pipeline
 - Real-time constituency
 - No scraping fragility in the client (logic centralised in the API)
 
 Cons:
+
 - Requires development effort (add endpoint to `fastapi-azure-container-app`)
 - Cold-start latency on Scale-to-Zero container
 
@@ -80,13 +84,16 @@ Authoritative but require paid subscriptions. Out of scope for this project.
 
 ## Decision
 
-**Use Wikipedia as the primary source** for the initial implementation (covers all initially required indices: DAX, MDAX, SDAX, NASDAQ-100).
+**Use the FastAPI Instrument API `/indices` endpoint as the primary source.** The endpoint (`GET /v1/indices/{index_name}`) is implemented and available in the `fastapi-azure-container-app` sibling project. It returns authoritative Xetra ticker symbols with correct ISINs sourced from Comdirect.
 
-**Plan for FastAPI Instrument API `/indexes` endpoint** as the production-grade replacement. The `UniverseAgent` is designed with a pluggable `source_priority` configuration so the switch requires no code changes to the agent itself — only adding a new `InstrumentApiTool` implementation.
+**Wikipedia remains the fallback** for indices not yet covered by the FastAPI endpoint, and as a resilience backstop in case the container is unavailable (Scale to Zero cold-start exceeds timeout).
+
+The `UniverseAgent`'s `universe_source_priority` configuration defaults to `["fastapi", "wikipedia"]`.
 
 ## Consequences
 
-- `WikipediaIndexTool` must handle table index brittleness defensively (try multiple table indices, identify by column header)
-- A `symbol_normaliser` step is required for German indices to append `.DE` exchange suffixes
-- When the FastAPI `/indexes` endpoint is implemented, `universe_source_priority` configuration is changed from `["wikipedia"]` to `["fastapi", "wikipedia"]`
+- `universe_source_priority` is now `["fastapi", "wikipedia"]` by default
+- `WikipediaIndexTool` is retained as a fallback and must still handle table-index brittleness defensively
+- A `symbol_normaliser` step is still required when Wikipedia is the source (German indices need `.DE` suffix appended)
+- The FastAPI container uses Scale to Zero — allow up to 30 seconds for cold start on the first request of the day; the `InstrumentApiTool` must set an appropriate HTTP timeout
 - Results should be cached for the current trading day to avoid repeated HTTP requests within one session

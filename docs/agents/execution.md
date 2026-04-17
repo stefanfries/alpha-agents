@@ -42,4 +42,4 @@ None — order submission to Comdirect requires interactive 2FA authentication p
 - **Autonomous order submission is not supported**: Comdirect requires 2FA per session and cannot be called programmatically without manual authentication. The pipeline produces a complete, actionable order list but delegation to the user for placement is by design.
 - **Default is dry-run** (`execution_dry_run=True`) — no broker interaction occurs
 - All orders are logged and persisted to MongoDB Atlas
-- Future option: a semi-automated path via the `fastapi-azure-container-app` could present orders in a UI for one-click confirmation, removing the need to re-enter order details manually
+- The web UI (ADR-008) presents the `ExecutionPlan` for review before the user places orders; a future enhancement could add one-click order prefill into the Comdirect web interface

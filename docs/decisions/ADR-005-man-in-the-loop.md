@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Superseded by [ADR-008](ADR-008-web-ui.md)
 
 ## Context
 
@@ -44,7 +44,7 @@ After each agent produces its output, the orchestrator:
 ### Stage names (restart targets)
 
 | Stage name | Agent |
-|------------|-------|
+| ---------- | ----- |
 | `universe` | UniverseAgent |
 | `research` | ResearchAgent |
 | `stock_selection` | StockSelectionAgent |
@@ -60,7 +60,7 @@ A previous run can be resumed (from any stage) by passing its `run_id` to `Pipel
 ### Configuration
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| --------- | ------- | ----------- |
 | `mitl_mode` | `True` | Enable man-in-the-loop checkpoints |
 | `mongodb_uri` | required | MongoDB Atlas connection URI (from `.env`) |
 | `mongodb_db` | `"alpha_agents"` | Database name |

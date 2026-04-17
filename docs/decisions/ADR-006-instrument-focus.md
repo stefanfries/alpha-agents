@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -44,8 +44,8 @@ Not excluded by design — the `sizing_method` and `Position` model are instrume
 
 ## Consequences
 
-- A new `Warrant` domain model is required in `models/market.py`
-- A new `WarrantSelectionAgent` and corresponding `docs/agents/warrant_selection.md` spec are required
-- The `InstrumentApiTool` must support a warrant search endpoint (`/warrants?underlying_isin=...`) returning delta, leverage, bid/ask, strike, expiry, IV — to be implemented in the `fastapi-azure-container-app` sibling project
-- `PortfolioProposal` must carry `Warrant` objects (not just `Ticker`) to communicate to the execution stage
+- ✅ `Warrant` domain model implemented in `models/market.py`
+- ✅ `WarrantSelectionAgent` implemented; spec in `docs/agents/warrant_selection.md`
+- ✅ Warrant search (`GET /v1/warrants`) and detail (`GET /v1/warrants/{identifier}`) endpoints available in the `fastapi-azure-container-app` sibling project; full analytics (delta, leverage, bid/ask, strike, expiry, IV, Greeks) returned by the detail endpoint
+- ✅ `PortfolioProposal` carries `Warrant` objects (not just `Ticker`)
 - The `ExecutionAgent` produces orders for **manual placement** by the user; autonomous submission via Comdirect is not possible (2FA requirement)
