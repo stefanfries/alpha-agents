@@ -1,6 +1,13 @@
 from pydantic import BaseModel
 
-from models.market import OHLCV, Order, Position, Ticker
+from app.models.market import OHLCV, Order, Position, Ticker
+
+
+class UniverseResult(BaseModel):
+    tickers: list[Ticker]
+    source: dict[str, str]      # ISIN (or symbol) → originating index name
+    missing_isin: list[str]     # symbols for which no ISIN was resolved
+    unresolved_indices: list[str]
 
 
 class ResearchResult(BaseModel):

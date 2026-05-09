@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Research — {{ run.run_id }}{% endblock %}
+
+{% block content %}
+<h5 class="mb-1">Research</h5>
+<p class="text-muted small mb-4">Fetch OHLCV and fundamentals for the full universe.</p>
+
+{% if stage_status == "running" %}
+  <div class="d-flex align-items-center gap-2 text-primary mb-4">
+    <div class="spinner-border spinner-border-sm" role="status"></div>
+    <span>Fetching market data via yfinance…</span>
+  </div>
+  <script>setTimeout(() => location.reload(), 5000)</script>
+
+{% elif stage_status == "error" %}
+  <div class="alert alert-danger">
+    <strong>Stage failed.</strong>
+    <pre class="mt-2 mb-0 small" style="max-height:300px;overflow:auto">{{ stage_error }}</pre>
+  </div>
+
+{% elif stage_status == "awaiting_review" and stage_result %}
+  {% set r = stage_result %}
+  <div class="row g-3 mb-4">
+    <div class="col-auto">
+      <div class="card text-center px-4 py-3 shadow-sm">
+        <div class="fs-3 fw-bold">{{ r.tickers | length }}</div>
+        <div class="text-muted small">Tickers fetched</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card text-center px-4 py-3 shadow-sm">
+        <div class="fs-3 fw-bold">{{ r.bars | length }}</div>
+        <div class="text-muted small">OHLCV series</div>
+      </div>
+    </div>
+    <div class="col-auto">
+      <div class="card text-center px-4 py-3 shadow-sm">
+        <div class="fs-3 fw-bold">{{ r.fundamentals | length }}</div>
+        <div class="text-muted small">Fundamentals</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+  <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
+    <thead class="table-light">
+      <tr>
+        <th>Symbol</th>
+        <th>Name</th>
+        <th>Sector</th>
+        <th class="text-end">Mkt Cap</th>
+        <th class="text-end">Price</th>
+        <th class="text-end">52W Low</th>
+        <th class="text-end">52W High</th>
+        <th class="text-end">Target (n)</th>
+        <th class="text-center">Rating</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ticker in r.tickers %}
+      {% set fund = r.fundamentals.get(ticker.symbol, {}) %}
+      {% set mc = fund.get("marketCap") or 0 %}
+      {% set rec = fund.get("recommendationMean") %}
+      <tr>
+        <td><code>{{ ticker.symbol }}</code></td>
+        <td class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ fund.get("shortName") or "—" }}</td>
+        <td class="small text-muted">{{ fund.get("sector") or "—" }}</td>
+        <td class="text-end small">
+          {% if mc >= 1000000000000 %}{{ (mc / 1000000000000) | round(1) }}T
+          {% elif mc >= 1000000000 %}{{ (mc / 1000000000) | round(1) }}B
+          {% elif mc > 0 %}{{ (mc / 1000000) | round(0) | int }}M
+          {% else %}—{% endif %}
+        </td>
+        <td class="text-end small">
+          {% if fund.get("currentPrice") %}{{ fund.currentPrice | round(2) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end small text-muted">
+          {% if fund.get("fiftyTwoWeekLow") %}{{ fund.fiftyTwoWeekLow | round(2) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end small text-muted">
+          {% if fund.get("fiftyTwoWeekHigh") %}{{ fund.fiftyTwoWeekHigh | round(2) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-end small">
+          {% if fund.get("targetMeanPrice") %}
+            {{ fund.targetMeanPrice | round(2) }}
+            {% if fund.get("numberOfAnalystOpinions") %}
+              <span class="text-muted">({{ fund.numberOfAnalystOpinions }})</span>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="text-center">
+          {% if rec %}
+            {% if rec <= 2.0 %}<span class="badge bg-success">Buy</span>
+            {% elif rec <= 3.0 %}<span class="badge bg-warning text-dark">Hold</span>
+            {% else %}<span class="badge bg-danger">Sell</span>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% include "partials/action_bar.html" %}
+
+{% else %}
+  <div class="alert alert-secondary">Pending — waiting for Universe stage.</div>
+{% endif %}
+{% endblock %}

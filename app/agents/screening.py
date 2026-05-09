@@ -1,7 +1,7 @@
 import logging
 
-from agents.base import Agent
-from models.signals import ResearchResult, SelectionResult
+from app.agents.base import Agent
+from app.models.signals import ResearchResult, SelectionResult
 
 logger = logging.getLogger(__name__)
 

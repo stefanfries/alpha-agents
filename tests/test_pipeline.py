@@ -2,12 +2,12 @@ from decimal import Decimal
 
 import pytest
 
-from agents.execution import TradeExecutionAgent
-from agents.portfolio import PortfolioConstructionAgent
-from agents.risk import RiskAgent
-from agents.screening import SecuritySelectionAgent
-from models.market import Position, Ticker
-from models.signals import ResearchResult, SelectionResult
+from app.agents.execution import TradeExecutionAgent
+from app.agents.portfolio import PortfolioConstructionAgent
+from app.agents.risk import RiskAgent
+from app.agents.screening import SecuritySelectionAgent
+from app.models.market import Position, Ticker
+from app.models.signals import ResearchResult, SelectionResult
 
 
 @pytest.mark.asyncio
@@ -43,7 +43,7 @@ async def test_portfolio_equal_weights():
 
 @pytest.mark.asyncio
 async def test_risk_rejects_oversized_position():
-    from models.signals import PortfolioProposal
+    from app.models.signals import PortfolioProposal
 
     ticker = Ticker(symbol="BIG")
     agent = RiskAgent(max_position_weight=0.10, max_positions=30)
@@ -59,7 +59,7 @@ async def test_risk_rejects_oversized_position():
 
 @pytest.mark.asyncio
 async def test_execution_dry_run_does_not_raise():
-    from models.signals import RiskAssessment
+    from app.models.signals import RiskAssessment
 
     ticker = Ticker(symbol="AAPL")
     agent = TradeExecutionAgent(dry_run=True, min_trade_eur=100.0, order_type="limit")

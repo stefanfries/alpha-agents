@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Alpha Agents{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <style>
+    body { background: #f8f9fa; }
+    .sidebar { min-height: calc(100vh - 56px); background: #fff; border-right: 1px solid #dee2e6; }
+    .stage-link { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; text-decoration: none; color: #495057; font-size: .9rem; }
+    .stage-link:hover { background: #f0f0f0; color: #212529; }
+    .stage-link.active { background: #e7f1ff; color: #0d6efd; font-weight: 600; }
+    .stage-link .badge { font-size: .7rem; }
+    #chart-panel { min-height: 200px; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark px-3">
+  <a class="navbar-brand fw-bold" href="/runs">⚡ Alpha Agents</a>
+  {% if run_id is defined %}
+  <span class="text-secondary small">Run <code class="text-light">{{ run_id }}</code></span>
+  {% endif %}
+  <a href="/runs" class="btn btn-sm btn-outline-light">All Runs</a>
+</nav>
+
+<div class="container-fluid">
+  <div class="row">
+
+    {% if run is defined %}
+    <div class="col-2 sidebar py-3">
+      {% include "partials/stage_progress.html" %}
+    </div>
+    {% endif %}
+
+    <div class="col py-4 px-4">
+      {% block content %}{% endblock %}
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,9 +1,9 @@
 import logging
 from decimal import Decimal
 
-from agents.base import Agent
-from models.market import Position
-from models.signals import PortfolioProposal, SelectionResult
+from app.agents.base import Agent
+from app.models.market import Position
+from app.models.signals import PortfolioProposal, SelectionResult
 
 logger = logging.getLogger(__name__)
 

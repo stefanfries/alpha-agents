@@ -1,8 +1,8 @@
 import logging
 
-from agents.base import Agent
-from models.market import Position
-from models.signals import PortfolioProposal, RiskAssessment
+from app.agents.base import Agent
+from app.models.market import Position
+from app.models.signals import PortfolioProposal, RiskAssessment
 
 logger = logging.getLogger(__name__)
 

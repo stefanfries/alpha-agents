@@ -25,7 +25,7 @@ class UniverseResult(AgentOutput):
 
 ## Tools used
 
-- `InstrumentApiTool` — queries the `GET /v1/indices/{index_name}` endpoint of the FastAPI Instrument API; primary source for all supported indices
+- `InstrumentApiTool` — queries the `GET /v1/indices/{index_name}` endpoint of the FinHub API; primary source for all supported indices
 - `WikipediaIndexTool` — scrapes index constituent tables via `pandas.read_html()`; fallback when the FastAPI endpoint is unavailable or the index is not yet covered
 
 ## Behaviour
@@ -52,7 +52,7 @@ class UniverseResult(AgentOutput):
 | S&P 500 | 500 US large-cap | `List_of_S%26P_500_companies` |
 | FTSE 100 | 100 UK large-cap | `FTSE_100_Index` |
 
-### Via FastAPI Instrument API `/indices` (primary)
+### Via FinHub API `/indices` (primary)
 
 `GET /v1/indices/{index_name}` on the `fastapi-azure-container-app` service (`https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io`). Returns authoritative Xetra ticker symbols with correct ISIN mapping sourced from Comdirect. This is the primary source for all supported indices.
 

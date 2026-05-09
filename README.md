@@ -55,7 +55,7 @@ Each agent has a single responsibility, consumes a typed Pydantic input contract
 | Config & secrets | pydantic-settings + `.env` |
 | HTTP | httpx (async) |
 | Market data | yfinance |
-| Warrant & instrument data | FastAPI Instrument API (Azure Container App) |
+| Warrant & instrument data | FinHub API (Azure Container App) |
 | Persistence | MongoDB Atlas (`pipeline_runs`, `instrument_master`) |
 | Current holdings | MongoDB Atlas (synced by `comdirect_api` sibling project) |
 | Package manager | uv |

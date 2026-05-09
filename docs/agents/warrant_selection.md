@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-For each stock selected by the `StockSelectionAgent`, find available Call Warrants (Optionsscheine) via the FastAPI Instrument API, score them using a systematic multi-criteria model, and return a ranked shortlist of warrants per underlying. This is the third pipeline stage.
+For each stock selected by the `StockSelectionAgent`, find available Call Warrants (Optionsscheine) via the FinHub API, score them using a systematic multi-criteria model, and return a ranked shortlist of warrants per underlying. This is the third pipeline stage.
 
 ## Input
 
@@ -25,7 +25,7 @@ class WarrantSelectionResult(AgentOutput):
 
 ## Tools used
 
-- `InstrumentApiTool` — two endpoints of the FastAPI Instrument API (`fastapi-azure-container-app`):
+- `InstrumentApiTool` — two endpoints of the FinHub API (`fastapi-azure-container-app`):
   - `GET /v1/warrants` — warrant search/finder; returns a list of warrants for a given underlying (specified by `wkn` or `isin`) filtered by type, maturity range, and other query parameters
   - `GET /v1/warrants/{identifier}` — warrant detail by WKN or ISIN; returns full reference data, live market data, and analytics (Greeks + derived metrics)
 
@@ -147,7 +147,7 @@ $$\text{score} = \frac{\sum_i w_i \cdot p_i}{\sum_i w_i} \in [0, 10]$$
 | `warrant_candidates_per_stock` | `20` | How many warrants to fetch per underlying from Comdirect |
 | `warrant_min_score` | `4.0` | Minimum score to include in output |
 
-## FastAPI Instrument API — warrant endpoints
+## FinHub API — warrant endpoints
 
 ### `GET /v1/warrants` (search)
 

@@ -1,0 +1,77 @@
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class DBSettings(BaseModel):
+    mongodb_uri: str = ""
+    db_name: str = "alpha_agents"
+
+
+class BrokerSettings(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+
+
+class FinHubSettings(BaseModel):
+    base_url: str = "https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io"
+    timeout_s: int = 65  # cold start on scale-to-zero can take 30-60 s
+
+
+class ResearchSettings(BaseModel):
+    lookback_days: int = 365
+
+
+class ScreeningSettings(BaseModel):
+    top_n: int = 20
+    min_market_cap_eur: int = 500_000_000
+
+
+class PortfolioSettings(BaseModel):
+    capital_eur: float = 100_000.0
+    sizing_method: str = "equal"       # "equal" | "score_weighted" | "trend_weighted"
+    max_position_weight: float = 0.10
+    max_positions: int = 20
+
+
+class RiskSettings(BaseModel):
+    max_position_weight: float = 0.10
+    max_sector_weight: float = 0.30
+    max_positions: int = 30
+
+
+class ExecutionSettings(BaseModel):
+    dry_run: bool = True
+    min_trade_eur: float = 1000.0
+    order_type: str = "limit"          # "market" | "limit"
+
+
+class UISettings(BaseModel):
+    dark_mode: bool = False
+
+
+class LogSettings(BaseModel):
+    level: str = "INFO"
+    format: str = "%(asctime)s %(levelname)s %(name)s — %(message)s"
+    file: str = "alpha_agents.log"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_nested_delimiter="__",
+    )
+
+    db: DBSettings = DBSettings()
+    broker: BrokerSettings = BrokerSettings()
+    finhub: FinHubSettings = FinHubSettings()
+    research: ResearchSettings = ResearchSettings()
+    screening: ScreeningSettings = ScreeningSettings()
+    portfolio: PortfolioSettings = PortfolioSettings()
+    risk: RiskSettings = RiskSettings()
+    execution: ExecutionSettings = ExecutionSettings()
+    ui: UISettings = UISettings()
+    log: LogSettings = LogSettings()
+
+
+settings = Settings()

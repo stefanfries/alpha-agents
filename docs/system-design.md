@@ -36,7 +36,7 @@ Universe Research  Stock   Warrant  Portfolio  Risk   Execution
                ▼                              ▼
             Tools                          Models
   (yfinance, Wikipedia,            (market.py, signals.py,
-   FastAPI Instrument API)          warrants.py)
+   FinHub API)          warrants.py)
                               │
                               ▼
                        MongoDB Atlas
@@ -50,7 +50,7 @@ Universe Research  Stock   Warrant  Portfolio  Risk   Execution
 2. **Universe Agent**: Resolves index names to a flat list of ticker symbols; stores the universe document in MongoDB Atlas
 3. **Research Agent**: Fetches OHLCV candles for every ticker in the universe; resolves yfinance symbols via the **instrument master** (see ADR-007)
 4. **Stock Selection Agent**: Detects established or newly confirmed uptrends; scores and ranks stocks
-5. **Warrant Selection Agent**: For each selected stock, fetches available Call Warrants from the **FastAPI Instrument API**; scores each warrant using the optionsschein scoring model (delta, leverage, intrinsic value, spread, premium p.a., remaining time, IV); returns a ranked shortlist
+5. **Warrant Selection Agent**: For each selected stock, fetches available Call Warrants from the **FinHub API**; scores each warrant using the optionsschein scoring model (delta, leverage, intrinsic value, spread, premium p.a., remaining time, IV); returns a ranked shortlist
 6. **Portfolio Construction Agent**: Allocates weights across the warrant shortlist (one warrant per underlying); compares proposed positions against **current holdings read from MongoDB Atlas** (synced there by the `comdirect_api` sibling project) to identify new trades
 7. **Risk Agent**: Validates the proposed portfolio against risk limits; may reject positions
 8. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
@@ -80,14 +80,14 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 | Language | Python 3.13 | Latest stable; matches project convention |
 | Validation | Pydantic V2 | Fast, type-safe data models for all inter-agent contracts |
 | Config | pydantic-settings | Loads secrets from `.env`; never hardcoded |
-| HTTP | httpx (async) | Used for FastAPI Instrument API calls |
+| HTTP | httpx (async) | Used for FinHub API calls |
 | Instrument master | MongoDB Atlas `instrument_master` | ISIN/WKN/notation-ID ↔ yfinance symbol bridge (see ADR-007) |
 | OHLCV data (stocks) | yfinance | Symbol-based via `symbol_yfinance` |
-| OHLCV data (warrants) | FastAPI Instrument API `/history` | yfinance does not carry warrant price history; venue selected via `id_notation` |
+| OHLCV data (warrants) | FinHub API `/history` | yfinance does not carry warrant price history; venue selected via `id_notation` |
 | Index membership | FastAPI `/v1/indices/{index_name}` → Wikipedia fallback | See ADR-004 |
-| Instrument master / identifiers | FastAPI Instrument API `/v1/instruments/{identifier}` | WKN, ISIN, CUSIP, FIGI, `symbol_yfinance`, `name_openfigi`; OpenFIGI-enriched (see ADR-007) |
-| Warrant search | FastAPI Instrument API `/v1/warrants` | Finder by underlying WKN/ISIN with type and maturity filters |
-| Warrant detail | FastAPI Instrument API `/v1/warrants/{identifier}` | Full reference data, market data, and analytics (Greeks) |
+| Instrument master / identifiers | FinHub API `/v1/instruments/{identifier}` | WKN, ISIN, CUSIP, FIGI, `symbol_yfinance`, `name_openfigi`; OpenFIGI-enriched (see ADR-007) |
+| Warrant search | FinHub API `/v1/warrants` | Finder by underlying WKN/ISIN with type and maturity filters |
+| Warrant detail | FinHub API `/v1/warrants/{identifier}` | Full reference data, market data, and analytics (Greeks) |
 | Current holdings | MongoDB Atlas | Synced from Comdirect by `comdirect_api`; read directly from Atlas |
 | Persistence | MongoDB Atlas | Intermediate results + portfolio state (see ADR-005) |
 | Order placement | Manual (Comdirect web/app) | Comdirect requires 2FA — autonomous submission not supported |

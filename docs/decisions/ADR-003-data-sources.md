@@ -15,7 +15,7 @@ The system needs two categories of external data:
 ## Decision
 
 - **Stock OHLCV data**: [yfinance](https://github.com/ranaroussi/yfinance) — a Python wrapper around Yahoo Finance, used via `symbol_yfinance` from the instrument master
-- **Warrant and instrument data**: FastAPI Instrument API (`fastapi-azure-container-app` sibling project) — instrument master, warrant search, warrant detail, and historical OHLCV for all instrument types including warrants
+- **Warrant and instrument data**: FinHub API (`fastapi-azure-container-app` sibling project) — instrument master, warrant search, warrant detail, and historical OHLCV for all instrument types including warrants
 - **Broker**: Comdirect REST API, via the `comdirect_api` sibling project in this repository
 
 All external integrations are wrapped in `Tool` subclasses under `tools/` and injected into agents at construction time.
@@ -27,9 +27,9 @@ All external integrations are wrapped in `Tool` subclasses under `tools/` and in
 - Free, no API key required for basic OHLCV + fundamentals
 - Supports a large global universe (US, EU, APAC exchanges)
 - Well-maintained Python library with a simple interface
-- **Limitation**: does not carry warrant or certificate price history — the FastAPI Instrument API `/history` endpoint fills this gap
+- **Limitation**: does not carry warrant or certificate price history — the FinHub API `/history` endpoint fills this gap
 
-### FastAPI Instrument API
+### FinHub API
 
 - Provides instrument master data with OpenFIGI-enriched global identifiers (`symbol_yfinance`, FIGI, CUSIP, `name_openfigi`)
 - Warrant search (`GET /v1/warrants`) and warrant detail (`GET /v1/warrants/{identifier}`) with full analytics
@@ -46,7 +46,7 @@ All external integrations are wrapped in `Tool` subclasses under `tools/` and in
 ## Consequences
 
 - Stock OHLCV quality depends on Yahoo Finance; gaps or inaccuracies in yfinance data will affect research quality
-- Warrant historical data depends on the FastAPI Instrument API and its Comdirect data feed
+- Warrant historical data depends on the FinHub API and its Comdirect data feed
 - The `Tool` abstraction means any data source can be swapped by implementing a new `Tool` subclass — agents are not coupled to yfinance or Comdirect directly
 - Credentials for Comdirect are loaded from `.env` via `config.py` and never hardcoded
-- The `OPENFIGI_API_KEY` environment variable is required by the FastAPI Instrument API for identifier enrichment
+- The `OPENFIGI_API_KEY` environment variable is required by the FinHub API for identifier enrichment

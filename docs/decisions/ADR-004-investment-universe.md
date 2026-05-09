@@ -54,7 +54,7 @@ Cons:
 
 **Verdict: Good enough for development and early production use for major indices.**
 
-#### Option C: FastAPI Instrument API `/v1/indices/{index_name}` endpoint
+#### Option C: FinHub API `/v1/indices/{index_name}` endpoint
 
 Available at `https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io/`. This service provides instrument data, warrant search, warrant detail, and historical price endpoints alongside the indices endpoint.
 
@@ -84,7 +84,7 @@ Authoritative but require paid subscriptions. Out of scope for this project.
 
 ## Decision
 
-**Use the FastAPI Instrument API `/indices` endpoint as the primary source.** The endpoint (`GET /v1/indices/{index_name}`) is implemented and available in the `fastapi-azure-container-app` sibling project. It returns authoritative Xetra ticker symbols with correct ISINs sourced from Comdirect.
+**Use the FinHub API `/indices` endpoint as the primary source.** The endpoint (`GET /v1/indices/{index_name}`) is implemented and available in the `fastapi-azure-container-app` sibling project. It returns authoritative Xetra ticker symbols with correct ISINs sourced from Comdirect.
 
 **Wikipedia remains the fallback** for indices not yet covered by the FastAPI endpoint, and as a resilience backstop in case the container is unavailable (Scale to Zero cold-start exceeds timeout).
 

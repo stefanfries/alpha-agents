@@ -53,7 +53,7 @@ A trade instruction produced by the Execution Agent.
 
 ### `Warrant`
 
-A Call Warrant (Optionsschein) with its derivative characteristics. Fields are populated from the FastAPI Instrument API `GET /v1/warrants/{identifier}` response (`WarrantDetailResponse`). All analytics fields are `Optional` — the scoring model must handle `None` gracefully.
+A Call Warrant (Optionsschein) with its derivative characteristics. Fields are populated from the FinHub API `GET /v1/warrants/{identifier}` response (`WarrantDetailResponse`). All analytics fields are `Optional` — the scoring model must handle `None` gracefully.
 
 #### Identifiers & reference data
 
@@ -131,7 +131,7 @@ class VenueInfo(BaseModel):
     currency: str | None        # ISO 4217 (e.g. "EUR", "USD"); None if venue not in lookup table
 ```
 
-**Currency sourcing**: Comdirect does not return currency per venue. The FastAPI Instrument API maintains a static `venue_name → currency` lookup (e.g. Xetra/Tradegate/Frankfurt → EUR, Nasdaq/NYSE → USD, SIX Swiss CHF → CHF). Unknown venues default to `null`.
+**Currency sourcing**: Comdirect does not return currency per venue. The FinHub API maintains a static `venue_name → currency` lookup (e.g. Xetra/Tradegate/Frankfurt → EUR, Nasdaq/NYSE → USD, SIX Swiss CHF → CHF). Unknown venues default to `null`.
 
 ### `GlobalIdentifiers`
 
@@ -150,7 +150,7 @@ class GlobalIdentifiers(BaseModel):
 
 > **`symbol_comdirect` ≠ `symbol_yfinance`**: Comdirect uses its own short names that frequently differ from exchange ticker symbols. Always use `symbol_yfinance` for yfinance calls; `symbol_comdirect` is informational only. `symbol_yfinance` is `None` for asset classes not supported by Yahoo Finance (Warrant, Certificate).
 
-**OpenFIGI enrichment**: `symbol_yfinance`, `figi`, and `name_openfigi` are populated by a background job in the FastAPI Instrument API that batches ISINs to the OpenFIGI v3 API (`idType: "ID_ISIN"`). The job derives `symbol_yfinance` from `ticker + exchCode` using a suffix map (e.g. `"GR"` → `".DE"`, `"US"` → `""`). All fields remain `null` until the job has run.
+**OpenFIGI enrichment**: `symbol_yfinance`, `figi`, and `name_openfigi` are populated by a background job in the FinHub API that batches ISINs to the OpenFIGI v3 API (`idType: "ID_ISIN"`). The job derives `symbol_yfinance` from `ticker + exchCode` using a suffix map (e.g. `"GR"` → `".DE"`, `"US"` → `""`). All fields remain `null` until the job has run.
 
 ### `Instrument`
 
@@ -174,12 +174,12 @@ class Instrument(BaseModel):
 **Primary key**: WKN (required on all instruments). ISIN is present for most instruments but not all.
 **Indexes**: unique sparse on `global_identifiers.symbol_yfinance`; unique sparse on `isin`.
 
-### FastAPI Instrument API — instrument endpoints
+### FinHub API — instrument endpoints
 
 - `GET /v1/instruments/{identifier}` — fetch one instrument by WKN or ISIN; returns `Instrument`
 - `GET /v1/instruments?symbol_yfinance={symbol}` — reverse lookup by yfinance symbol
 
-### FastAPI Instrument API response example
+### FinHub API response example
 
 ```json
 {
@@ -209,7 +209,7 @@ class Instrument(BaseModel):
 }
 ```
 
-### FastAPI Instrument API — `/history` endpoint
+### FinHub API — `/history` endpoint
 
 `GET /v1/history/{identifier}` returns historical OHLCV data for any instrument type (stocks, warrants, ETFs, etc.) identified by WKN or ISIN.
 

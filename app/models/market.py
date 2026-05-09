@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 
 class Ticker(BaseModel):
     symbol: str
+    isin: str | None = None
     exchange: str | None = None
 
     @field_validator("symbol")
