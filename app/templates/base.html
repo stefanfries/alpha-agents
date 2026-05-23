@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,14 +7,31 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
   <style>
-    body { background: #f8f9fa; }
-    .sidebar { min-height: calc(100vh - 56px); background: #fff; border-right: 1px solid #dee2e6; }
-    .stage-link { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; text-decoration: none; color: #495057; font-size: .9rem; }
-    .stage-link:hover { background: #f0f0f0; color: #212529; }
-    .stage-link.active { background: #e7f1ff; color: #0d6efd; font-weight: 600; }
+    .sidebar { min-height: calc(100vh - 56px); border-right: 1px solid var(--bs-border-color); }
+    .stage-link { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--bs-secondary-color); font-size: .9rem; }
+    .stage-link:hover { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+    .stage-link.active { background: hsl(215, 100%, 6%); color: hsl(216, 87%, 65%); font-weight: 600; }
     .stage-link .badge { font-size: .7rem; }
     #chart-panel { min-height: 200px; }
+
+    [data-bs-theme="dark"] body { background: #000; }
+    [data-bs-theme="dark"] .sidebar { background: #0a0a0a; border-right-color: hsl(0, 0%, 20%); }
+    [data-bs-theme="dark"] .stage-link { color: hsl(0, 0%, 70%); }
+    [data-bs-theme="dark"] .stage-link:hover { background: hsl(0, 0%, 12%); color: hsl(0, 0%, 99%); }
+    [data-bs-theme="dark"] .stage-link.active { background: hsl(215, 100%, 6%); color: hsl(216, 87%, 65%); }
+
+    [data-bs-theme="light"] body { background: #f8f9fa; }
+    [data-bs-theme="light"] .sidebar { background: #fff; border-right-color: #dee2e6; }
+    [data-bs-theme="light"] .stage-link { color: #495057; }
+    [data-bs-theme="light"] .stage-link:hover { background: #f0f0f0; color: #212529; }
+    [data-bs-theme="light"] .stage-link.active { background: #e7f1ff; color: #0d6efd; }
   </style>
+  <script>
+    (function() {
+      var saved = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-bs-theme', saved);
+    })();
+  </script>
 </head>
 <body>
 
@@ -23,8 +40,24 @@
   {% if run_id is defined %}
   <span class="text-secondary small">Run <code class="text-light">{{ run_id }}</code></span>
   {% endif %}
-  <a href="/runs" class="btn btn-sm btn-outline-light">All Runs</a>
+  <div class="d-flex align-items-center gap-2">
+    <button id="theme-toggle" class="btn btn-sm btn-outline-secondary" title="Toggle light/dark mode" onclick="toggleTheme()">☀</button>
+    <a href="/runs" class="btn btn-sm btn-outline-light">All Runs</a>
+  </div>
 </nav>
+<script>
+  function toggleTheme() {
+    var html = document.documentElement;
+    var next = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-bs-theme', next);
+    localStorage.setItem('theme', next);
+    document.getElementById('theme-toggle').textContent = next === 'dark' ? '☀' : '🌙';
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    var theme = document.documentElement.getAttribute('data-bs-theme');
+    document.getElementById('theme-toggle').textContent = theme === 'dark' ? '☀' : '🌙';
+  });
+</script>
 
 <div class="container-fluid">
   <div class="row">

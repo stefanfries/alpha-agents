@@ -16,30 +16,35 @@ _INDEX_CONFIG: dict[str, dict[str, Any]] = {
     "DAX": {
         "article": "DAX",
         "symbol_cols": ["Ticker"],
+        "name_cols": ["Company"],
         "isin_col": None,
         "suffix": "",
     },
     "EuroStoxx50": {
         "article": "EURO_STOXX_50",
         "symbol_cols": ["Ticker"],
+        "name_cols": ["Company"],
         "isin_col": None,
         "suffix": "",
     },
     "NASDAQ100": {
         "article": "Nasdaq-100",
         "symbol_cols": ["Ticker", "Symbol"],
+        "name_cols": ["Company"],
         "isin_col": None,
         "suffix": "",
     },
     "SP500": {
         "article": "List_of_S%26P_500_companies",
         "symbol_cols": ["Symbol"],
+        "name_cols": ["Security"],
         "isin_col": None,
         "suffix": "",
     },
     "FTSE100": {
         "article": "FTSE_100_Index",
         "symbol_cols": ["Ticker"],
+        "name_cols": ["Company", "Security"],
         "isin_col": None,
         "suffix": ".L",
     },
@@ -111,6 +116,9 @@ class WikipediaIndexTool(Tool):
             logger.warning("Wikipedia: constituent table not found for %r", config["article"])
             return []
 
+        cols = set(best_df.columns.tolist())
+        name_col: str | None = next((c for c in config.get("name_cols", []) if c in cols), None)
+
         tickers: list[Ticker] = []
         for _, row in best_df.iterrows():
             raw_symbol = str(row[symbol_col]).strip()
@@ -122,7 +130,12 @@ class WikipediaIndexTool(Tool):
                 raw_isin = str(row[isin_col]).strip()
                 if raw_isin and raw_isin != "nan" and len(raw_isin) == 12:
                     isin = raw_isin
-            tickers.append(Ticker(symbol=symbol, isin=isin))
+            name: str | None = None
+            if name_col:
+                raw_name = str(row[name_col]).strip()
+                if raw_name and raw_name != "nan":
+                    name = raw_name
+            tickers.append(Ticker(symbol=symbol, isin=isin, name=name))
 
         logger.info("Wikipedia: %d tickers from %r", len(tickers), config["article"])
         return tickers

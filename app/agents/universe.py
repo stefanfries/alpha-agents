@@ -142,7 +142,7 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
             if not symbol:
                 logger.warning("No yfinance symbol for ISIN %s", isin)
                 return None
-            return Ticker(symbol=symbol, isin=isin)
+            return Ticker(symbol=symbol, isin=isin, name=member.get("name"))
 
         results = await asyncio.gather(*[fetch_ticker(m) for m in members], return_exceptions=True)
         tickers: list[Ticker] = []

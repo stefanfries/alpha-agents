@@ -9,6 +9,7 @@ class Ticker(BaseModel):
     symbol: str
     isin: str | None = None
     exchange: str | None = None
+    name: str | None = None
 
     @field_validator("symbol")
     @classmethod

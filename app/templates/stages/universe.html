@@ -21,7 +21,7 @@
 {% elif stage_status == "awaiting_review" and stage_result %}
   {% set r = stage_result %}
   <div class="d-flex gap-4 mb-3 text-muted small">
-    <span><strong class="text-dark">{{ r.tickers | length }}</strong> tickers</span>
+    <span><strong class="text-body">{{ r.tickers | length }}</strong> tickers</span>
     {% if r.missing_isin %}
     <span class="text-warning">⚠ {{ r.missing_isin | length }} missing ISIN</span>
     {% endif %}
@@ -30,10 +30,11 @@
     {% endif %}
   </div>
 
-  <table class="table table-sm table-hover bg-white rounded shadow-sm">
-    <thead class="table-light">
+  <table class="table table-sm table-hover rounded shadow-sm">
+    <thead>
       <tr>
         <th>Symbol</th>
+        <th>Company</th>
         <th>ISIN</th>
         <th>Index</th>
       </tr>
@@ -43,7 +44,8 @@
       {% set src_key = ticker.isin if ticker.isin else ticker.symbol %}
       <tr>
         <td><code>{{ ticker.symbol }}</code></td>
-        <td class="small">
+        <td>{{ ticker.name or "—" }}</td>
+        <td class="small text-muted">
           {% if ticker.isin %}{{ ticker.isin }}
           {% else %}<span class="text-warning">— missing</span>{% endif %}
         </td>
