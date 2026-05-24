@@ -121,14 +121,21 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 | Rationale | Human-readable reason string from `StockSelectionResult.rationale` |
 | Remove | Checkbox — user can deselect before approving |
 
-Clicking a ticker row triggers `hx-get="/runs/{run_id}/charts/screening/{ticker}"` and loads the stock chart into the chart panel.
+Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
 
-**Stock chart** (loaded on demand):
+**Stock chart** (loaded on demand, interactive — powered by Lightweight Charts v4):
 
-- Candlestick (last 200 bars)
-- SMA20 (blue), SMA50 (orange), SMA200 (red) overlaid on price
-- ADX subplot below price
-- Higher-high / higher-low swing points marked
+- Candlestick chart with up to 4 years of OHLCV data
+- **Time range selector**: 3M / 6M / 1Y (default) / 3Y
+- **Overlay indicators** (toggle buttons):
+  - EMA 20 (blue, visible by default)
+  - EMA 50 (orange)
+  - SMA 200 (purple)
+  - SuperTrend (green segments = bullish, red segments = bearish)
+- **ADX sub-pane** (visible by default, synchronized scroll/zoom with price pane):
+  - ADX line (gold), +DI (green), −DI (red)
+  - Dashed threshold line at ADX = 25
+- All indicators computed server-side with TA-Lib
 
 **User actions at approve:** the selection table checkboxes determine which tickers advance. Deselected tickers are excluded from the `WarrantSelectionAgent` input.
 
@@ -328,10 +335,10 @@ Config overrides are merged with the current run config and stored in MongoDB At
 | `GET` | `/runs/{run_id}/stages/{stage}` | Stage review page |
 | `POST` | `/runs/{run_id}/stages/{stage}/approve` | Approve stage; advance pipeline |
 | `POST` | `/runs/{run_id}/stages/{stage}/restart` | Restart from a named stage |
-| `GET` | `/runs/{run_id}/charts/screening/{ticker}` | Plotly candlestick fragment for a stock |
-| `GET` | `/runs/{run_id}/charts/warrant_selection/{isin}` | Plotly scoring chart fragment for a warrant |
-| `GET` | `/runs/{run_id}/charts/portfolio` | Plotly donut chart fragment for portfolio weights |
-| `GET` | `/runs/{run_id}/charts/risk` | Plotly weight bar chart fragment |
+| `GET` | `/runs/{run_id}/charts/screening/{ticker}` | Lightweight Charts candlestick + indicator fragment |
+| `GET` | `/runs/{run_id}/charts/warrant_selection/{isin}` | Warrant scoring chart fragment (stub) |
+| `GET` | `/runs/{run_id}/charts/portfolio` | Portfolio weight chart fragment (stub) |
+| `GET` | `/runs/{run_id}/charts/risk` | Risk weight chart fragment (stub) |
 
 All `/charts/` endpoints return a Plotly HTML fragment (`full_html=False`) for HTMX insertion. They read data from MongoDB Atlas using `run_id` and the stage name.
 
@@ -341,12 +348,12 @@ All `/charts/` endpoints return a Plotly HTML fragment (`full_html=False`) for H
 
 | Stage | Chart type | Library | Trigger |
 | ----- | ---------- | ------- | ------- |
-| Screening | Candlestick + SMA20/50/200 + ADX subplot | Plotly | Click ticker row |
-| Warrant selection | Horizontal bar (criterion scores) | Plotly | Click warrant row |
-| Portfolio | Donut (position weights) | Plotly | Page load |
-| Risk | Horizontal bar (position weights + limit line) | Plotly | Page load |
+| Screening | Interactive candlestick + EMA/SMA overlays + SuperTrend + ADX sub-pane | Lightweight Charts v4 | Click ticker row (vanilla `fetch()`) |
+| Warrant selection | Horizontal bar (criterion scores) | — (stub) | Click warrant row |
+| Portfolio | Donut (position weights) | — (stub) | Page load |
+| Risk | Horizontal bar (position weights + limit line) | — (stub) | Page load |
 
-All charts use `plotly.graph_objects.Figure.to_html(full_html=False)` and are inserted into a `<div id="chart-panel">` via `hx-swap="innerHTML"`.
+The screening chart is an HTML fragment returned by the `/charts/screening/{ticker}` endpoint. It embeds all indicator data as a `data-chart` JSON attribute and is initialised client-side by `initDataCharts()` in `base.html`. The Lightweight Charts library is loaded from CDN (`lightweight-charts@4.1.3`). All indicators (EMA, SMA, ADX, SuperTrend via ATR) are computed server-side using TA-Lib before the fragment is returned.
 
 ---
 

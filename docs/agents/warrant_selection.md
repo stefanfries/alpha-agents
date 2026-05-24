@@ -31,121 +31,47 @@ class WarrantSelectionResult(AgentOutput):
 
 ## Behaviour
 
-1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL` and the underlying's WKN or ISIN to retrieve a candidate list
-2. Pre-filter by hard constraints (see configuration)
-3. For each remaining candidate, call `GET /v1/warrants/{identifier}` to fetch full analytics (Greeks, spread, IV, premium p.a., intrinsic value)
+1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × (1 ± 0.02)` (ATM band ±2%)
+2. If the narrow band returns no candidates, retry with a wider band of `current_price × (1 ± 0.10)` (fallback ±10%)
+3. For each candidate, call `GET /v1/warrants/{isin}` to fetch full reference data, market data, and analytics. Both steps use a one-retry pattern (2 s sleep) to handle transient API errors
 4. Score each warrant using the scoring model below
 5. Select the highest-scoring warrant per underlying
-6. Persist the `WarrantSelectionResult` to MongoDB Atlas for the current `run_id`
+6. Underlyings with no passing warrant (neither band) are recorded in `skipped` and excluded from portfolio construction
+7. Persist the `WarrantSelectionResult` to MongoDB Atlas for the current `run_id`
+
+Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail fetches share a pool of 10 concurrent connections (`asyncio.Semaphore(10)`).
 
 ## Scoring model
 
-The scoring model is adapted from `optionsschein_scoring.md` in the `portfolio-trend-analyzer` project. All weights are configurable.
+Each warrant receives a continuous score in `[0, 1]` from four criteria using Gaussian or linear penalty functions (no discrete point brackets).
 
-### Criteria
+| # | Criterion | Weight | Function |
+| - | --------- | ------ | -------- |
+| 1 | **Bid-ask spread** | 40% | Linear: 0 % → 1.0, 3 % → 0.0; clamped at 0 |
+| 2 | **Leverage** | 25% | Gaussian peak at 5×, σ = 3 (sweet spot 3–8×) |
+| 3 | **Days to expiry** | 20% | Gaussian peak at 315 days (midpoint of 9–12 month window), σ = 45 |
+| 4 | **Delta** | 15% | Linear: peak at δ = 0.5; penalty proportional to abs(δ − 0.5) |
 
-| # | Criterion | Default weight | Description |
-| - | --------- | -------------- | ----------- |
-| 1 | **Delta** | 30% | Optimal range 0.5–0.7 for trend-following |
-| 2 | **Leverage (Hebel)** | 20% | Target 4–10× (low leverage = less risk, still meaningful) |
-| 3 | **Intrinsic value** | 15% | Prefer in-the-money warrants (innerer Wert > 0) |
-| 4 | **Bid-ask spread** | 10% | Lower is better; < 2% = excellent |
-| 5 | **Premium p.a. (Aufgeld)** | 10% | Cost of time value; < 20% p.a. = excellent |
-| 6 | **Remaining time (Restlaufzeit)** | 10% | > 9 months preferred (avoid time decay pressure) |
-| 7 | **Implied volatility** | 5% | Lower IV → cheaper premium; < 40% = excellent |
-
-### Score tables
-
-**Delta**:
-
-| Range | Points |
-| ----- | ------ |
-| 0.5 – 0.7 | 10 |
-| 0.4–0.5 or 0.7–0.8 | 7 |
-| 0.3 – 0.4 | 4 |
-| < 0.3 | 0 |
-
-**Leverage**:
-
-| Range | Points |
-| ----- | ------ |
-| 4 – 10× | 10 |
-| 10 – 15× | 7 |
-| 15 – 25× | 4 |
-| > 25× | 0 |
-
-**Intrinsic value**:
-
-| State | Points |
-| ----- | ------ |
-| > 0 (in the money) | 10 |
-| = 0 (at/out of the money) | 0 |
-
-**Spread**:
-
-| Range | Points |
-| ----- | ------ |
-| < 2% | 10 |
-| 2 – 4% | 7 |
-| 4 – 6% | 4 |
-| > 6% | 0 |
-
-**Premium p.a.**
-
-| Range | Points |
-| ----- | ------ |
-| < 20% | 10 |
-| 20 – 30% | 7 |
-| 30 – 40% | 4 |
-| > 40% | 0 |
-
-**Remaining time**:
-
-| Range | Points |
-| ----- | ------ |
-| > 9 months | 10 |
-| 6 – 9 months | 7 |
-| 3 – 6 months | 4 |
-| < 3 months | 0 |
-
-**Implied volatility**:
-
-| Range | Points |
-| ----- | ------ |
-| < 40% | 10 |
-| 40 – 60% | 7 |
-| > 60% | 4 |
-
-### Final score
-
-$$\text{score} = \frac{\sum_i w_i \cdot p_i}{\sum_i w_i} \in [0, 10]$$
-
-**Interpretation:**
-
-| Score | Rating |
-| ----- | ------ |
-| 8 – 10 | Excellent (trend-following suitable) |
-| 6 – 8 | Good |
-| 4 – 6 | Mediocre |
-| < 4 | Unsuitable |
+The final score is the weighted sum (range `[0, 1]`). The warrant with the highest score per underlying is selected.
 
 ## Hard-filter constraints (pre-scoring)
 
 | Constraint | Default | Description |
 | ---------- | ------- | ----------- |
-| `warrant_min_remaining_days` | `90` | Exclude warrants expiring in < 3 months |
-| `warrant_max_leverage` | `30` | Exclude extreme leverage |
-| `warrant_max_spread_pct` | `8.0` | Exclude illiquid warrants |
-| `warrant_min_score` | `4.0` | Exclude warrants below minimum score |
 | `warrant_type` | `"call"` | Only Call Warrants (bullish trend-following strategy) |
+| `min_days_to_expiry` | `270` | Exclude warrants expiring in < 9 months |
+| `max_days_to_expiry` | `365` | Exclude warrants expiring in > 12 months |
+| `atm_band` | `0.02` | Strike filter: current_price × (1 ± 2%) — narrow ATM band |
+| `atm_band_fallback` | `0.10` | Widened band (± 10%) retried automatically when narrow band returns nothing |
 
 ## Configuration (via `config.py`)
 
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
-| `warrant_scoring_weights` | See table above | Dict of criterion → weight (must sum to 1.0) |
-| `warrant_candidates_per_stock` | `20` | How many warrants to fetch per underlying from Comdirect |
-| `warrant_min_score` | `4.0` | Minimum score to include in output |
+| `min_days_to_expiry` | `270` | Minimum remaining life (9 months) |
+| `max_days_to_expiry` | `365` | Maximum remaining life (12 months) |
+| `atm_band` | `0.02` | Primary strike filter half-width |
+| `atm_band_fallback` | `0.10` | Fallback strike filter half-width |
 
 ## FinHub API — warrant endpoints
 

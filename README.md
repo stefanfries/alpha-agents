@@ -58,6 +58,8 @@ Each agent has a single responsibility, consumes a typed Pydantic input contract
 | Warrant & instrument data | FinHub API (Azure Container App) |
 | Persistence | MongoDB Atlas (`pipeline_runs`, `instrument_master`) |
 | Current holdings | MongoDB Atlas (synced by `comdirect_api` sibling project) |
+| Technical indicators | TA-Lib (numpy-backed) |
+| Interactive charts | Lightweight Charts v4.1.3 (TradingView) |
 | Package manager | uv |
 | Testing | pytest + pytest-asyncio |
 | Linting | ruff |
@@ -71,8 +73,8 @@ uv sync
 # Copy and fill in secrets
 cp .env.example .env
 
-# Run the pipeline (MITL mode, dry-run by default)
-uv run main.py
+# Run the web UI (development)
+uv run uvicorn app.main:app --reload
 
 # Run tests
 uv run pytest tests/ -v

@@ -6,8 +6,7 @@
   <title>{% block title %}Alpha Agents{% endblock %}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     .sidebar { min-height: calc(100vh - 56px); border-right: 1px solid var(--bs-border-color); }
     .stage-link { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--bs-secondary-color); font-size: .9rem; }
@@ -37,41 +36,118 @@
   </script>
   <script>
     function initDataCharts(container) {
-      container.querySelectorAll('canvas[data-chart]').forEach(function(canvas) {
-        var d = JSON.parse(canvas.getAttribute('data-chart'));
-        var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-        var gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)';
-        var textColor = isDark ? '#aaa' : '#666';
-        new Chart(canvas, {
-          type: 'line',
-          data: {
-            labels: d.labels,
-            datasets: [
-              { label: d.ticker, data: d.closes, borderColor: 'hsl(216,87%,65%)',
-                borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false },
-              { label: '20d MA', data: d.ma20, borderColor: 'hsl(30,80%,60%)',
-                borderWidth: 1, pointRadius: 0, borderDash: [4,4], tension: 0.1, fill: false }
-            ]
-          },
-          options: {
-            responsive: true, animation: false,
-            plugins: {
-              legend: {
-                labels: {
-                  color: textColor, font: { size: 11 },
-                  usePointStyle: true, pointStyle: 'line', pointStyleWidth: 20
-                }
-              }
-            },
-            scales: {
-              x: {
-                type: 'time',
-                time: { unit: 'month', displayFormats: { month: 'MMM' } },
-                ticks: { color: textColor },
-                grid: { color: gridColor }
-              },
-              y: { ticks: { color: textColor }, grid: { color: gridColor } }
-            }
+      var el = container.querySelector('[data-chart]');
+      if (!el) return;
+      var d = JSON.parse(el.getAttribute('data-chart'));
+      var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+      var bg        = isDark ? '#111111' : '#ffffff';
+      var textColor = isDark ? '#9B9B9B' : '#555555';
+      var gridColor = isDark ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)';
+
+      var baseOpts = {
+        autoSize: true,
+        layout: { background: { type: 'solid', color: bg }, textColor: textColor },
+        grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: gridColor },
+        timeScale: { borderColor: gridColor, fixLeftEdge: true, fixRightEdge: true },
+      };
+
+      // Price chart
+      var priceEl = container.querySelector('.lw-price');
+      var chart = LightweightCharts.createChart(priceEl, baseOpts);
+
+      var candles = chart.addCandlestickSeries({
+        upColor: '#26a69a', downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+      });
+      candles.setData(d.ohlcv);
+
+      var overlays = {
+        ema20:  chart.addLineSeries({ color: '#2196F3', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }),
+        ema50:  chart.addLineSeries({ color: '#FF9800', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }),
+        sma200: chart.addLineSeries({ color: '#9C27B0', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }),
+      };
+      overlays.ema20.setData(d.ema20);
+      overlays.ema50.setData(d.ema50);   overlays.ema50.applyOptions({ visible: false });
+      overlays.sma200.setData(d.sma200); overlays.sma200.applyOptions({ visible: false });
+
+      // SuperTrend: one LineSeries per contiguous segment so lines never bridge across trend flips
+      var stGroup = [];
+      (function() {
+        if (!d.supertrend || !d.supertrend.length) return;
+        var segs = [];
+        d.supertrend.forEach(function(p) {
+          if (!segs.length || segs[segs.length - 1].bull !== p.bull)
+            segs.push({ bull: p.bull, data: [] });
+          segs[segs.length - 1].data.push({ time: p.time, value: p.value });
+        });
+        segs.forEach(function(seg) {
+          var s = chart.addLineSeries({
+            color: seg.bull ? '#26a69a' : '#ef5350',
+            lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
+          });
+          s.setData(seg.data);
+          s.applyOptions({ visible: false });
+          stGroup.push(s);
+        });
+      })();
+
+      // ADX chart (synchronized, hidden by default)
+      var adxEl = container.querySelector('.lw-adx');
+      var adxChart = LightweightCharts.createChart(adxEl, Object.assign({}, baseOpts, {
+        timeScale: Object.assign({}, baseOpts.timeScale, { visible: false }),
+      }));
+      // Anchor the ADX chart's bar-index mapping to the full OHLCV range so that
+      // setVisibleLogicalRange syncs to identical timestamps in both charts.
+      var _adxAnchor = adxChart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      _adxAnchor.setData(d.ohlcv.map(function(p) { return { time: p.time }; }));
+
+      var adxSeries = adxChart.addLineSeries({ color: '#FFD700', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      adxSeries.setData(d.adx);
+      adxSeries.createPriceLine({ price: 25, color: 'rgba(255,255,255,0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
+      adxChart.addLineSeries({ color: '#26a69a', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.plus_di);
+      adxChart.addLineSeries({ color: '#ef5350', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.minus_di);
+
+      // Sync time scales
+      var _syncing = false;
+      chart.timeScale().subscribeVisibleLogicalRangeChange(function(r) {
+        if (_syncing || !r) return; _syncing = true; adxChart.timeScale().setVisibleLogicalRange(r); _syncing = false;
+      });
+      adxChart.timeScale().subscribeVisibleLogicalRangeChange(function(r) {
+        if (_syncing || !r) return; _syncing = true; chart.timeScale().setVisibleLogicalRange(r); _syncing = false;
+      });
+
+      // Default range: 1 year
+      var now = Math.floor(Date.now() / 1000);
+      chart.timeScale().setVisibleRange({ from: now - 365 * 86400, to: now });
+
+      // Time range buttons
+      container.querySelectorAll('[data-range]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          container.querySelectorAll('[data-range]').forEach(function(b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          var days = { '3M': 90, '6M': 180, '1Y': 365, '3Y': 1095 }[btn.dataset.range] || 365;
+          chart.timeScale().setVisibleRange({ from: now - days * 86400, to: now });
+        });
+      });
+
+      // Indicator toggle buttons
+      container.querySelectorAll('[data-indicator]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          btn.classList.toggle('active');
+          var active = btn.classList.contains('active');
+          var ind = btn.dataset.indicator;
+          if (ind === 'adx') {
+            adxEl.style.display = active ? 'block' : 'none';
+            if (active) setTimeout(function() {
+              adxChart.timeScale().setVisibleLogicalRange(chart.timeScale().getVisibleLogicalRange());
+            }, 10);
+          } else if (ind === 'supertrend') {
+            stGroup.forEach(function(s) { s.applyOptions({ visible: active }); });
+          } else if (overlays[ind]) {
+            overlays[ind].applyOptions({ visible: active });
           }
         });
       });

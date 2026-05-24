@@ -2,7 +2,10 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any
+
+import numpy as np
+import talib
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -12,6 +15,76 @@ from app.db import runs_collection
 from app.models.market import Ticker
 from app.orchestrator import get_pipeline
 from app.tools.yfinance import YFinanceTool
+
+
+def _to_series(dates: list[str], arr: Any, decimals: int = 4) -> list[dict]:
+    return [{"time": dates[i], "value": round(float(arr[i]), decimals)}
+            for i in range(len(arr)) if not np.isnan(arr[i])]
+
+
+def _compute_sma(closes: list[float], dates: list[str], period: int) -> list[dict]:
+    return _to_series(dates, talib.SMA(np.array(closes, dtype=float), timeperiod=period))
+
+
+def _compute_ema(closes: list[float], dates: list[str], period: int) -> list[dict]:
+    return _to_series(dates, talib.EMA(np.array(closes, dtype=float), timeperiod=period))
+
+
+def _compute_adx(bars: list[Any], period: int = 14) -> tuple[list[dict], list[dict], list[dict]]:
+    highs  = np.array([float(b.high)  for b in bars])
+    lows   = np.array([float(b.low)   for b in bars])
+    closes = np.array([float(b.close) for b in bars])
+    dates  = [b.date.isoformat() for b in bars]
+    return (
+        _to_series(dates, talib.ADX(highs, lows, closes, timeperiod=period), 2),
+        _to_series(dates, talib.PLUS_DI(highs, lows, closes, timeperiod=period), 2),
+        _to_series(dates, talib.MINUS_DI(highs, lows, closes, timeperiod=period), 2),
+    )
+
+
+def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3.0) -> list[dict]:
+    highs  = np.array([float(b.high)  for b in bars])
+    lows   = np.array([float(b.low)   for b in bars])
+    closes = np.array([float(b.close) for b in bars])
+    dates  = [b.date.isoformat() for b in bars]
+    n = len(closes)
+
+    atr = talib.ATR(highs, lows, closes, timeperiod=period)
+    hl2 = (highs + lows) / 2.0
+    raw_upper = hl2 + multiplier * atr
+    raw_lower = hl2 - multiplier * atr
+
+    final_upper = np.full(n, np.nan)
+    final_lower = np.full(n, np.nan)
+    for i in range(n):
+        if np.isnan(atr[i]):
+            continue
+        if i == 0 or np.isnan(final_upper[i - 1]):
+            final_upper[i] = raw_upper[i]
+            final_lower[i] = raw_lower[i]
+        else:
+            final_upper[i] = (raw_upper[i]
+                              if raw_upper[i] < final_upper[i - 1] or closes[i - 1] > final_upper[i - 1]
+                              else final_upper[i - 1])
+            final_lower[i] = (raw_lower[i]
+                              if raw_lower[i] > final_lower[i - 1] or closes[i - 1] < final_lower[i - 1]
+                              else final_lower[i - 1])
+
+    result: list[dict] = []
+    trend = 1
+    started = False
+    for i in range(n):
+        if np.isnan(final_upper[i]):
+            continue
+        if not started:
+            started = True
+        elif trend == 1 and closes[i] < final_lower[i]:
+            trend = -1
+        elif trend == -1 and closes[i] > final_upper[i]:
+            trend = 1
+        val = round(float(final_lower[i] if trend == 1 else final_upper[i]), 4)
+        result.append({"time": dates[i], "value": val, "bull": trend == 1})
+    return result
 
 router = APIRouter(prefix="/runs")
 templates = Jinja2Templates(directory="app/templates")
@@ -182,25 +255,56 @@ async def chart_screening(run_id: str, ticker: str) -> HTMLResponse:
     try:
         t = Ticker(symbol=ticker)
         async with YFinanceTool() as yf:
-            bars_map = await yf.fetch_ohlcv_batch([t], lookback_days=90)
+            bars_map = await yf.fetch_ohlcv_batch([t], lookback_days=1460)
     except Exception as exc:
         return HTMLResponse(f"<p class='text-danger small mt-2'>Chart error: {exc}</p>")
+
     bars = bars_map.get(ticker, [])
     if not bars:
         return HTMLResponse(f"<p class='text-muted text-center small mt-4'>No data for {ticker}</p>")
 
-    dates = [b.date.isoformat() for b in bars]
-    closes = [float(b.close) for b in bars]
-    ma20 = [
-        round(sum(closes[max(0, i - 19): i + 1]) / min(i + 1, 20), 4)
-        if i >= 19 else None
-        for i in range(len(closes))
+    dates  = [b.date.isoformat() for b in bars]
+    closes = [float(b.close)     for b in bars]
+    ohlcv  = [
+        {"time": d, "open": float(b.open), "high": float(b.high),
+         "low": float(b.low), "close": float(b.close)}
+        for d, b in zip(dates, bars)
     ]
-    chart_data = json.dumps({"ticker": ticker, "labels": dates, "closes": closes, "ma20": ma20})
-    chart_id = f"chart-{ticker.replace('.', '-')}"
+    adx_data, plus_di, minus_di = _compute_adx(bars)
+    chart_data = json.dumps({
+        "ticker":     ticker,
+        "ohlcv":      ohlcv,
+        "ema20":      _compute_ema(closes, dates, 20),
+        "ema50":      _compute_ema(closes, dates, 50),
+        "sma200":     _compute_sma(closes, dates, 200),
+        "adx":        adx_data,
+        "plus_di":    plus_di,
+        "minus_di":   minus_di,
+        "supertrend": _compute_supertrend(bars),
+    })
     return HTMLResponse(
-        f"<p class='text-muted small mb-2 fw-semibold'>{ticker} — 90d</p>"
-        f"<canvas id='{chart_id}' height='180' data-chart='{chart_data}'></canvas>"
+        f"<div class='d-flex flex-column gap-1' data-chart='{chart_data}'>"
+        f"  <div class='d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1'>"
+        f"    <span class='small fw-semibold'>{ticker}</span>"
+        f"    <div class='d-flex gap-1 flex-wrap'>"
+        f"      <div class='btn-group btn-group-sm'>"
+        f"        <button class='btn btn-outline-secondary' data-range='3M'>3M</button>"
+        f"        <button class='btn btn-outline-secondary' data-range='6M'>6M</button>"
+        f"        <button class='btn btn-outline-secondary active' data-range='1Y'>1Y</button>"
+        f"        <button class='btn btn-outline-secondary' data-range='3Y'>3Y</button>"
+        f"      </div>"
+        f"      <div class='btn-group btn-group-sm'>"
+        f"        <button class='btn btn-outline-secondary active' data-indicator='ema20'>EMA 20</button>"
+        f"        <button class='btn btn-outline-secondary' data-indicator='ema50'>EMA 50</button>"
+        f"        <button class='btn btn-outline-secondary' data-indicator='sma200'>SMA 200</button>"
+        f"        <button class='btn btn-outline-secondary' data-indicator='supertrend'>SuperTrend</button>"
+        f"        <button class='btn btn-outline-secondary active' data-indicator='adx'>ADX</button>"
+        f"      </div>"
+        f"    </div>"
+        f"  </div>"
+        f"  <div class='lw-price' style='height:380px'></div>"
+        f"  <div class='lw-adx' style='height:120px'></div>"
+        f"</div>"
     )
 
 

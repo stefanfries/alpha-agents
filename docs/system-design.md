@@ -82,7 +82,8 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 | Config | pydantic-settings | Loads secrets from `.env`; never hardcoded |
 | HTTP | httpx (async) | Used for FinHub API calls |
 | Instrument master | MongoDB Atlas `instrument_master` | ISIN/WKN/notation-ID ↔ yfinance symbol bridge (see ADR-007) |
-| OHLCV data (stocks) | yfinance | Symbol-based via `symbol_yfinance` |
+| OHLCV data (stocks) | yfinance | Symbol-based via `symbol_yfinance`; up to 4 years for chart warmup |
+| Technical indicators | TA-Lib (numpy) | EMA, SMA, ADX, PLUS_DI, MINUS_DI, ATR; used for screening charts and SuperTrend |
 | OHLCV data (warrants) | FinHub API `/history` | yfinance does not carry warrant price history; venue selected via `id_notation` |
 | Index membership | FastAPI `/v1/indices/{index_name}` → Wikipedia fallback | See ADR-004 |
 | Instrument master / identifiers | FinHub API `/v1/instruments/{identifier}` | WKN, ISIN, CUSIP, FIGI, `symbol_yfinance`, `name_openfigi`; OpenFIGI-enriched (see ADR-007) |
@@ -97,7 +98,7 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 
 ## User interface
 
-The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). This replaces the CLI-based MITL pattern (ADR-005). The user reviews each stage's output in a browser, then clicks to approve or restart. Financial charts (candlestick, trend indicators) are rendered server-side by Plotly and swapped into the page by HTMX without a full reload.
+The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). The user reviews each stage's output in a browser, then clicks to approve or restart. The screening stage features interactive **Lightweight Charts v4** candlestick charts loaded on demand when the user clicks a ticker row. Charts include EMA 20/50, SMA 200, SuperTrend, and a synchronized ADX sub-pane; all indicators are computed server-side with TA-Lib.
 
 ## Deployment
 

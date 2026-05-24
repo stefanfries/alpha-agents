@@ -39,6 +39,8 @@ None — operates purely on the OHLCV data provided by `ResearchAgent`.
    - **Golden cross**: SMA50 recently crossed above SMA200 = starting uptrend signal
    - **ADX**: ADX > 25 confirms trend strength
    - **Higher highs / higher lows**: structural trend confirmation
+
+   > **Chart note**: the MITL review chart displays EMA 20 and EMA 50 (faster, more responsive to recent price action) rather than SMA 20/50. The SMA variants are used internally for scoring; EMA is preferred for visual trend assessment.
 2. Classify each ticker into `TrendStatus`
 3. Score each ticker (weighted combination of indicator signals)
 4. Filter: only `ESTABLISHED` and `STARTING` tickers pass through
