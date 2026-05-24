@@ -6,10 +6,27 @@
 <p class="text-muted small mb-4">Resolve index names to ticker symbols.</p>
 
 {% if stage_status == "running" %}
-  <div class="d-flex align-items-center gap-2 text-primary mb-4">
-    <div class="spinner-border spinner-border-sm" role="status"></div>
-    <span>Resolving universe (FinHub / Wikipedia)…</span>
-  </div>
+  {% if stage_progress and stage_progress.waking_up_since %}
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
+      <div class="spinner-border spinner-border-sm flex-shrink-0" role="status"></div>
+      <span>{{ stage_progress.message }}</span>
+      <span id="wake-counter" class="ms-2 text-muted small"></span>
+    </div>
+    <script>
+      const _wakeSince = new Date("{{ stage_progress.waking_up_since }}");
+      function _wakeTick() {
+        const s = Math.round((Date.now() - _wakeSince) / 1000);
+        document.getElementById("wake-counter").textContent = s + "s elapsed";
+      }
+      _wakeTick();
+      setInterval(_wakeTick, 1000);
+    </script>
+  {% else %}
+    <div class="d-flex align-items-center gap-2 text-primary mb-4">
+      <div class="spinner-border spinner-border-sm" role="status"></div>
+      <span>Resolving universe (FinHub / Wikipedia)…</span>
+    </div>
+  {% endif %}
   <script>setTimeout(() => location.reload(), 3000)</script>
 
 {% elif stage_status == "error" %}
@@ -20,42 +37,48 @@
 
 {% elif stage_status == "awaiting_review" and stage_result %}
   {% set r = stage_result %}
-  <div class="d-flex gap-4 mb-3 text-muted small">
-    <span><strong class="text-body">{{ r.tickers | length }}</strong> tickers</span>
-    {% if r.missing_isin %}
-    <span class="text-warning">⚠ {{ r.missing_isin | length }} missing ISIN</span>
-    {% endif %}
-    {% if r.unresolved_indices %}
-    <span class="text-danger">✗ unresolved: {{ r.unresolved_indices | join(", ") }}</span>
-    {% endif %}
+  <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+    <div class="flex-shrink-0 mb-2">
+      <div class="d-flex gap-4 text-muted small">
+        <span><strong class="text-body">{{ r.tickers | length }}</strong> tickers</span>
+        {% if r.missing_isin %}
+        <span class="text-warning">⚠ {{ r.missing_isin | length }} missing ISIN</span>
+        {% endif %}
+        {% if r.unresolved_indices %}
+        <span class="text-danger">✗ unresolved: {{ r.unresolved_indices | join(", ") }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex-grow-1 overflow-auto" style="min-height:0">
+      <table class="table table-sm table-hover rounded shadow-sm">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Company</th>
+            <th>ISIN</th>
+            <th>Index</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ticker in r.tickers | sort(attribute='symbol') %}
+          {% set src_key = ticker.isin if ticker.isin else ticker.symbol %}
+          <tr>
+            <td><code>{{ ticker.symbol }}</code></td>
+            <td>{{ ticker.name or "—" }}</td>
+            <td class="small text-muted">
+              {% if ticker.isin %}{{ ticker.isin }}
+              {% else %}<span class="text-warning">— missing</span>{% endif %}
+            </td>
+            <td class="text-muted small">{{ r.source.get(src_key, "—") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex-shrink-0">
+      {% include "partials/action_bar.html" %}
+    </div>
   </div>
-
-  <table class="table table-sm table-hover rounded shadow-sm">
-    <thead>
-      <tr>
-        <th>Symbol</th>
-        <th>Company</th>
-        <th>ISIN</th>
-        <th>Index</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for ticker in r.tickers | sort(attribute='symbol') %}
-      {% set src_key = ticker.isin if ticker.isin else ticker.symbol %}
-      <tr>
-        <td><code>{{ ticker.symbol }}</code></td>
-        <td>{{ ticker.name or "—" }}</td>
-        <td class="small text-muted">
-          {% if ticker.isin %}{{ ticker.isin }}
-          {% else %}<span class="text-warning">— missing</span>{% endif %}
-        </td>
-        <td class="text-muted small">{{ r.source.get(src_key, "—") }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {% include "partials/action_bar.html" %}
 
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for run to start.</div>

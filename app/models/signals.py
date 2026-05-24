@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel
 
 from app.models.market import OHLCV, Order, Position, Ticker
@@ -20,6 +22,26 @@ class SelectionResult(BaseModel):
     selected: list[Ticker]
     scores: dict[str, float]
     rationale: dict[str, str]
+
+
+class SelectedWarrant(BaseModel):
+    underlying: Ticker
+    warrant_isin: str
+    warrant_wkn: str
+    strike: float | None = None
+    maturity_date: date | None = None
+    spread_pct: float | None = None
+    leverage: float | None = None
+    delta: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    score: float
+    rationale: str
+
+
+class WarrantSelectionResult(BaseModel):
+    selected: list[SelectedWarrant]
+    skipped: list[str]
 
 
 class PortfolioProposal(BaseModel):

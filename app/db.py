@@ -63,6 +63,13 @@ def runs_collection() -> AsyncIOMotorCollection:
     return _client[settings.db.db_name]["pipeline_runs"]
 
 
+async def update_stage_progress(run_id: str, stage: str, progress: dict | None) -> None:
+    await runs_collection().update_one(
+        {"run_id": run_id},
+        {"$set": {f"stages.{stage}.progress": progress}},
+    )
+
+
 async def _ensure_indexes() -> None:
     coll = runs_collection()
     await coll.create_index("run_id", unique=True)

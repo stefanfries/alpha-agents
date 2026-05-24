@@ -24,28 +24,32 @@
 
 {% elif stage_status == "awaiting_review" and stage_result %}
   {% set r = stage_result %}
-  <p class="text-muted small mb-3">
-    <strong class="text-dark">{{ r.orders | length }}</strong> orders
-    {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} skipped (below min trade size)</span>{% endif %}.
-  </p>
-
-  <table class="table table-sm table-hover bg-white rounded shadow-sm">
-    <thead class="table-light">
-      <tr><th>Symbol</th><th>Side</th><th class="text-end">EUR</th><th>Type</th></tr>
-    </thead>
-    <tbody>
-      {% for order in r.orders %}
-      <tr>
-        <td><code>{{ order.ticker.symbol }}</code></td>
-        <td><span class="badge bg-success">{{ order.side }}</span></td>
-        <td class="text-end">{{ "%.2f" | format(order.quantity | float) }}</td>
-        <td class="text-muted small">{{ order.order_type }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {% include "partials/action_bar.html" %}
+  <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+    <p class="flex-shrink-0 text-muted small mb-2">
+      <strong class="text-body">{{ r.orders | length }}</strong> orders
+      {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} skipped (below min trade size)</span>{% endif %}.
+    </p>
+    <div class="flex-grow-1 overflow-auto" style="min-height:0">
+      <table class="table table-sm table-hover bg-white rounded shadow-sm">
+        <thead class="table-light">
+          <tr><th>Symbol</th><th>Side</th><th class="text-end">EUR</th><th>Type</th></tr>
+        </thead>
+        <tbody>
+          {% for order in r.orders %}
+          <tr>
+            <td><code>{{ order.ticker.symbol }}</code></td>
+            <td><span class="badge bg-success">{{ order.side }}</span></td>
+            <td class="text-end">{{ "%.2f" | format(order.quantity | float) }}</td>
+            <td class="text-muted small">{{ order.order_type }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex-shrink-0">
+      {% include "partials/action_bar.html" %}
+    </div>
+  </div>
 
 {% elif stage_status == "approved" %}
   <div class="alert alert-success">Run complete — orders marked as placed.</div>

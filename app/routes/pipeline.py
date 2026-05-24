@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated
@@ -8,7 +9,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import runs_collection
+from app.models.market import Ticker
 from app.orchestrator import get_pipeline
+from app.tools.yfinance import YFinanceTool
 
 router = APIRouter(prefix="/runs")
 templates = Jinja2Templates(directory="app/templates")
@@ -48,6 +51,7 @@ def _stage_ctx(run: dict, current_stage: str) -> dict:
         "stage_status": s_data.get("status", "pending"),
         "stage_result": s_data.get("result"),
         "stage_error": s_data.get("error"),
+        "stage_progress": s_data.get("progress"),
     }
 
 
@@ -175,7 +179,53 @@ async def restart_stage(
 
 @router.get("/{run_id}/charts/screening/{ticker}", response_class=HTMLResponse)
 async def chart_screening(run_id: str, ticker: str) -> HTMLResponse:
-    return HTMLResponse(f"<p class='text-muted'>Chart for {ticker} — not yet implemented</p>")
+    t = Ticker(symbol=ticker)
+    async with YFinanceTool() as yf:
+        bars_map = await yf.fetch_ohlcv_batch([t], lookback_days=90)
+    bars = bars_map.get(ticker, [])
+    if not bars:
+        return HTMLResponse(f"<p class='text-muted text-center small mt-4'>No data for {ticker}</p>")
+
+    dates = [b.date.isoformat() for b in bars]
+    closes = [float(b.close) for b in bars]
+    ma20 = [
+        round(sum(closes[max(0, i - 19): i + 1]) / min(i + 1, 20), 4)
+        if i >= 19 else None
+        for i in range(len(closes))
+    ]
+    payload = json.dumps({"labels": dates, "closes": closes, "ma20": ma20})
+    chart_id = f"chart-{ticker.replace('.', '-')}"
+    return HTMLResponse(f"""
+<p class='text-muted small mb-2 fw-semibold'>{ticker} — 90d</p>
+<canvas id='{chart_id}' height='180'></canvas>
+<script>
+(function(){{
+  const d = {payload};
+  const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+  const gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)';
+  const textColor = isDark ? '#aaa' : '#666';
+  new Chart(document.getElementById('{chart_id}'), {{
+    type: 'line',
+    data: {{
+      labels: d.labels,
+      datasets: [
+        {{ label: '{ticker}', data: d.closes, borderColor: 'hsl(216,87%,65%)',
+           borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false }},
+        {{ label: '20d MA', data: d.ma20, borderColor: 'hsl(30,80%,60%)',
+           borderWidth: 1, pointRadius: 0, borderDash: [4,4], tension: 0.1, fill: false }},
+      ]
+    }},
+    options: {{
+      responsive: true, animation: false,
+      plugins: {{ legend: {{ labels: {{ color: textColor, boxWidth: 12, font: {{ size: 11 }} }} }} }},
+      scales: {{
+        x: {{ ticks: {{ maxTicksLimit: 6, color: textColor }}, grid: {{ color: gridColor }} }},
+        y: {{ ticks: {{ color: textColor }}, grid: {{ color: gridColor }} }},
+      }}
+    }}
+  }});
+}})();
+</script>""")
 
 
 @router.get("/{run_id}/charts/warrant_selection/{isin}", response_class=HTMLResponse)

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel
 
@@ -19,21 +20,34 @@ class ResearchInput(BaseModel):
 class ResearchAgent(Agent[ResearchInput, ResearchResult]):
     name = "research"
 
-    def __init__(self, tool: YFinanceTool) -> None:
+    def __init__(
+        self,
+        tool: YFinanceTool,
+        on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
+    ) -> None:
         self._tool = tool
+        self._on_progress = on_progress
 
     async def run(self, input: ResearchInput) -> ResearchResult:
+        if self._on_progress:
+            await self._on_progress("ohlcv", 0, len(input.tickers))
+
         all_bars = await self._tool.fetch_ohlcv_batch(input.tickers, input.lookback_days)
 
         sem = asyncio.Semaphore(10)
+        done: list[int] = [0]
 
         async def fetch_fundamentals_safe(ticker: Ticker) -> tuple[str, dict]:
             async with sem:
                 try:
-                    return ticker.symbol, await self._tool.fetch_fundamentals(ticker)
+                    result = (ticker.symbol, await self._tool.fetch_fundamentals(ticker))
                 except Exception:
                     logger.warning("Failed to fetch fundamentals for %s", ticker.symbol, exc_info=True)
-                    return ticker.symbol, {}
+                    result = (ticker.symbol, {})
+            done[0] += 1
+            if self._on_progress:
+                await self._on_progress("fundamentals", done[0], len(input.tickers))
+            return result
 
         fund_results = await asyncio.gather(*[fetch_fundamentals_safe(t) for t in input.tickers])
         fundamentals: dict[str, dict] = dict(fund_results)

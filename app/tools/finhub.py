@@ -17,6 +17,7 @@ class FinHubTool(Tool):
         self._client = httpx.AsyncClient(
             base_url=settings.finhub.base_url,
             timeout=settings.finhub.timeout_s,
+            follow_redirects=True,
         )
 
     async def close(self) -> None:
@@ -49,12 +50,35 @@ class FinHubTool(Tool):
         r.raise_for_status()
         return r.json()
 
-    async def get_warrants(self, underlying_isin: str, preselection: str) -> list[dict[str, Any]]:
+    async def get_warrants(
+        self,
+        underlying: str,
+        preselection: str = "CALL",
+        maturity_from: str | None = None,
+        maturity_to: str | None = None,
+        strike_min: float | None = None,
+        strike_max: float | None = None,
+        delta_min: float | None = None,
+        delta_max: float | None = None,
+        spread_ask_pct_max: float | None = None,
+    ) -> list[dict[str, Any]]:
         """Returns list of Warrant dicts from WarrantFinderResponse.results."""
-        r = await self._http.get(
-            "/v1/warrants",
-            params={"underlying_isin": underlying_isin, "preselection": preselection},
-        )
+        params: dict[str, Any] = {"underlying": underlying, "preselection": preselection}
+        if maturity_from is not None:
+            params["maturity_from"] = maturity_from
+        if maturity_to is not None:
+            params["maturity_to"] = maturity_to
+        if strike_min is not None:
+            params["strike_min"] = strike_min
+        if strike_max is not None:
+            params["strike_max"] = strike_max
+        if delta_min is not None:
+            params["delta_min"] = delta_min
+        if delta_max is not None:
+            params["delta_max"] = delta_max
+        if spread_ask_pct_max is not None:
+            params["spread_ask_pct_max"] = spread_ask_pct_max
+        r = await self._http.get("/v1/warrants", params=params)
         r.raise_for_status()
         return r.json().get("results", [])
 

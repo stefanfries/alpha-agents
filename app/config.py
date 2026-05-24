@@ -26,6 +26,12 @@ class ScreeningSettings(BaseModel):
     min_market_cap_eur: int = 500_000_000
 
 
+class WarrantSelectionSettings(BaseModel):
+    min_days_to_expiry: int = 270   # 9 months
+    max_days_to_expiry: int = 365   # 12 months
+    atm_band: float = 0.02          # strike filter: current_price × (1 ± atm_band)
+
+
 class PortfolioSettings(BaseModel):
     capital_eur: float = 100_000.0
     sizing_method: str = "equal"       # "equal" | "score_weighted" | "trend_weighted"
@@ -67,6 +73,7 @@ class Settings(BaseSettings):
     finhub: FinHubSettings = FinHubSettings()
     research: ResearchSettings = ResearchSettings()
     screening: ScreeningSettings = ScreeningSettings()
+    warrant_selection: WarrantSelectionSettings = WarrantSelectionSettings()
     portfolio: PortfolioSettings = PortfolioSettings()
     risk: RiskSettings = RiskSettings()
     execution: ExecutionSettings = ExecutionSettings()

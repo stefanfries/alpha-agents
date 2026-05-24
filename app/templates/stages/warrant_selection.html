@@ -2,16 +2,59 @@
 {% block title %}Warrant Selection — {{ run.run_id }}{% endblock %}
 
 {% block content %}
-<h5 class="mb-1">Warrant Selection
-  <span class="badge bg-secondary ms-2 fw-normal" style="font-size:.7rem">stub</span>
-</h5>
+<h5 class="mb-1">Warrant Selection</h5>
 <p class="text-muted small mb-4">Best-scoring Call Warrant per selected underlying.</p>
 
 {% if stage_status == "running" %}
-  <div class="d-flex align-items-center gap-2 text-primary mb-4">
-    <div class="spinner-border spinner-border-sm" role="status"></div>
-    <span>Selecting warrants…</span>
-  </div>
+  {% if stage_progress and stage_progress.waking_up_since %}
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
+      <div class="spinner-border spinner-border-sm flex-shrink-0" role="status"></div>
+      <span>{{ stage_progress.message }}</span>
+      <span id="wake-counter" class="ms-2 text-muted small"></span>
+    </div>
+    <script>
+      const _wakeSince = new Date("{{ stage_progress.waking_up_since }}");
+      function _wakeTick() {
+        const s = Math.round((Date.now() - _wakeSince) / 1000);
+        document.getElementById("wake-counter").textContent = s + "s elapsed";
+      }
+      _wakeTick();
+      setInterval(_wakeTick, 1000);
+    </script>
+  {% elif stage_progress and stage_progress.total %}
+    {% set pct = ((stage_progress.done / stage_progress.total) * 100) | round | int %}
+    <div class="mb-1 text-muted small">
+      Looking up call warrants via FinHub…
+      <span class="ms-1">{{ stage_progress.done }} / {{ stage_progress.total }} underlyings</span>
+    </div>
+    <div class="progress mb-2" style="height:18px">
+      <div class="progress-bar progress-bar-striped progress-bar-animated"
+           role="progressbar"
+           style="width:{{ pct }}%"
+           aria-valuenow="{{ stage_progress.done }}"
+           aria-valuemin="0"
+           aria-valuemax="{{ stage_progress.total }}">
+        {{ pct }}%
+      </div>
+    </div>
+    {% if stage_progress.active %}
+    <div class="d-flex align-items-center gap-2 text-muted small mb-4">
+      <div class="spinner-border spinner-border-sm flex-shrink-0" role="status"></div>
+      <span>Analyzing:
+        {% for sym in stage_progress.active %}
+          <code>{{ sym }}</code>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </span>
+    </div>
+    {% else %}
+    <div class="mb-4"></div>
+    {% endif %}
+  {% else %}
+    <div class="d-flex align-items-center gap-2 text-primary mb-4">
+      <div class="spinner-border spinner-border-sm" role="status"></div>
+      <span>Looking up call warrants via FinHub…</span>
+    </div>
+  {% endif %}
   <script>setTimeout(() => location.reload(), 3000)</script>
 
 {% elif stage_status == "error" %}
@@ -22,31 +65,61 @@
 
 {% elif stage_status == "awaiting_review" and stage_result %}
   {% set r = stage_result %}
-  <div class="alert alert-info small mb-3">
-    Warrant lookup not yet implemented — passing screening results through unchanged.
-  </div>
-  <div class="row">
-    <div class="col-lg-8">
-      <p class="text-muted small mb-3"><strong class="text-dark">{{ r.selected | length }}</strong> underlyings.</p>
+  <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+    <div class="flex-shrink-0 mb-2">
+      <span class="text-muted small">
+        <strong class="text-body">{{ r.selected | length }}</strong> warrants selected
+        {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} underlyings skipped</span>{% endif %}.
+      </span>
+    </div>
+    <div class="flex-grow-1 overflow-auto" style="min-height:0">
       <table class="table table-sm table-hover bg-white rounded shadow-sm">
         <thead class="table-light">
-          <tr><th>Symbol</th><th>Score</th></tr>
+          <tr>
+            <th>Underlying</th>
+            <th>WKN</th>
+            <th>ISIN</th>
+            <th class="text-end">Strike</th>
+            <th>Maturity</th>
+            <th class="text-end">Spread</th>
+            <th class="text-end">Leverage</th>
+            <th class="text-end">Delta</th>
+            <th class="text-end">Bid</th>
+            <th class="text-end">Ask</th>
+            <th class="text-end">Score</th>
+          </tr>
         </thead>
         <tbody>
-          {% for ticker in r.selected %}
+          {% for w in r.selected | sort(attribute='score', reverse=True) %}
           <tr>
-            <td><code>{{ ticker.symbol }}</code></td>
-            <td>{{ "%.2f" | format(r.scores.get(ticker.symbol, 0)) }}</td>
+            <td>
+              <code>{{ w.underlying.symbol }}</code>
+              {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}
+            </td>
+            <td><code>{{ w.warrant_wkn or "—" }}</code></td>
+            <td class="small text-muted">{{ w.warrant_isin or "—" }}</td>
+            <td class="text-end small">{{ "%.2f" | format(w.strike) if w.strike is not none else "—" }}</td>
+            <td class="small">{{ w.maturity_date or "—" }}</td>
+            <td class="text-end small">{{ "%.1f%%" | format(w.spread_pct) if w.spread_pct is not none else "—" }}</td>
+            <td class="text-end small">{{ "%.1f×" | format(w.leverage) if w.leverage is not none else "—" }}</td>
+            <td class="text-end small">{{ "%.2f" | format(w.delta) if w.delta is not none else "—" }}</td>
+            <td class="text-end small">{{ "%.3f" | format(w.bid) if w.bid is not none else "—" }}</td>
+            <td class="text-end small">{{ "%.3f" | format(w.ask) if w.ask is not none else "—" }}</td>
+            <td class="text-end fw-semibold">{{ "%.2f" | format(w.score) }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+      {% if r.skipped %}
+      <div class="alert alert-warning small mt-2">
+        No suitable call warrant found for: {{ r.skipped | join(", ") }}
+      </div>
+      {% endif %}
     </div>
-    <div class="col-lg-4">
-      {% include "partials/chart_panel.html" %}
+    <div class="flex-shrink-0">
+      {% include "partials/action_bar.html" %}
     </div>
   </div>
-  {% include "partials/action_bar.html" %}
 
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for Screening stage.</div>

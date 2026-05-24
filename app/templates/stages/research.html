@@ -6,10 +6,31 @@
 <p class="text-muted small mb-4">Fetch OHLCV and fundamentals for the full universe.</p>
 
 {% if stage_status == "running" %}
-  <div class="d-flex align-items-center gap-2 text-primary mb-4">
-    <div class="spinner-border spinner-border-sm" role="status"></div>
-    <span>Fetching market data via yfinance…</span>
-  </div>
+  {% if stage_progress %}
+    {% if stage_progress.step == "ohlcv" %}
+      <div class="d-flex align-items-center gap-2 text-primary mb-4">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        <span>Downloading OHLCV data ({{ stage_progress.total }} tickers)…</span>
+      </div>
+    {% else %}
+      <div class="mb-4">
+        <div class="d-flex justify-content-between small text-muted mb-1">
+          <span>Fetching fundamentals…</span>
+          <span>{{ stage_progress.done }}/{{ stage_progress.total }}</span>
+        </div>
+        <div class="progress" style="height: 6px;">
+          <div class="progress-bar bg-primary" role="progressbar"
+               style="width: {{ (stage_progress.done / stage_progress.total * 100) | round | int }}%">
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="d-flex align-items-center gap-2 text-primary mb-4">
+      <div class="spinner-border spinner-border-sm" role="status"></div>
+      <span>Fetching market data via yfinance…</span>
+    </div>
+  {% endif %}
   <script>setTimeout(() => location.reload(), 5000)</script>
 
 {% elif stage_status == "error" %}
@@ -20,27 +41,30 @@
 
 {% elif stage_status == "awaiting_review" and stage_result %}
   {% set r = stage_result %}
-  <div class="row g-3 mb-4">
-    <div class="col-auto">
-      <div class="card text-center px-4 py-3 shadow-sm">
-        <div class="fs-3 fw-bold">{{ r.tickers | length }}</div>
-        <div class="text-muted small">Tickers fetched</div>
+  <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+    <div class="flex-shrink-0 mb-2">
+      <div class="row g-3">
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm">
+            <div class="fs-3 fw-bold">{{ r.tickers | length }}</div>
+            <div class="text-muted small">Tickers fetched</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm">
+            <div class="fs-3 fw-bold">{{ r.bars | length }}</div>
+            <div class="text-muted small">OHLCV series</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm">
+            <div class="fs-3 fw-bold">{{ r.fundamentals | length }}</div>
+            <div class="text-muted small">Fundamentals</div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="col-auto">
-      <div class="card text-center px-4 py-3 shadow-sm">
-        <div class="fs-3 fw-bold">{{ r.bars | length }}</div>
-        <div class="text-muted small">OHLCV series</div>
-      </div>
-    </div>
-    <div class="col-auto">
-      <div class="card text-center px-4 py-3 shadow-sm">
-        <div class="fs-3 fw-bold">{{ r.fundamentals | length }}</div>
-        <div class="text-muted small">Fundamentals</div>
-      </div>
-    </div>
-  </div>
-
+    <div class="flex-grow-1 overflow-auto" style="min-height:0">
   <div class="table-responsive">
   <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
     <thead class="table-light">
@@ -50,8 +74,7 @@
         <th>Sector</th>
         <th class="text-end">Mkt Cap</th>
         <th class="text-end">Price</th>
-        <th class="text-end">52W Low</th>
-        <th class="text-end">52W High</th>
+        <th>52W Range</th>
         <th class="text-end">Target (n)</th>
         <th class="text-center">Rating</th>
       </tr>
@@ -74,11 +97,21 @@
         <td class="text-end small">
           {% if fund.get("currentPrice") %}{{ fund.currentPrice | round(2) }}{% else %}—{% endif %}
         </td>
-        <td class="text-end small text-muted">
-          {% if fund.get("fiftyTwoWeekLow") %}{{ fund.fiftyTwoWeekLow | round(2) }}{% else %}—{% endif %}
-        </td>
-        <td class="text-end small text-muted">
-          {% if fund.get("fiftyTwoWeekHigh") %}{{ fund.fiftyTwoWeekHigh | round(2) }}{% else %}—{% endif %}
+        <td class="small">
+          {% set low = fund.get("fiftyTwoWeekLow") %}
+          {% set high = fund.get("fiftyTwoWeekHigh") %}
+          {% set price = fund.get("currentPrice") %}
+          {% if low and high and price and high > low %}
+            {% set pct = ((price - low) / (high - low) * 100) | round(1) %}
+            <div class="d-flex align-items-center gap-1" style="white-space:nowrap">
+              <span class="text-muted" style="min-width:38px;text-align:right;font-size:0.7rem">{{ low | round(2) }}</span>
+              <div style="position:relative;width:80px;height:4px;background:#dee2e6;border-radius:2px;flex-shrink:0">
+                <div style="position:absolute;left:0;width:{{ pct }}%;height:100%;background:#0d6efd;border-radius:2px;opacity:0.35"></div>
+                <div style="position:absolute;left:{{ pct }}%;top:50%;transform:translate(-50%,-50%);width:9px;height:9px;background:#0d6efd;border-radius:50%"></div>
+              </div>
+              <span class="text-muted" style="min-width:38px;font-size:0.7rem">{{ high | round(2) }}</span>
+            </div>
+          {% else %}—{% endif %}
         </td>
         <td class="text-end small">
           {% if fund.get("targetMeanPrice") %}
@@ -101,8 +134,11 @@
     </tbody>
   </table>
   </div>
-
-  {% include "partials/action_bar.html" %}
+    </div>
+    <div class="flex-shrink-0">
+      {% include "partials/action_bar.html" %}
+    </div>
+  </div>
 
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for Universe stage.</div>

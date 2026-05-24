@@ -20,31 +20,41 @@
 
 {% elif stage_status == "awaiting_review" and stage_result %}
   {% set r = stage_result %}
-  <div class="row">
-    <div class="col-lg-7">
-      <p class="text-muted small mb-3"><strong class="text-dark">{{ r.selected | length }}</strong> tickers selected.</p>
-      <table class="table table-sm table-hover bg-white rounded shadow-sm">
-        <thead class="table-light">
-          <tr><th>Symbol</th><th>Score</th><th>Rationale</th></tr>
-        </thead>
-        <tbody>
-          {% for ticker in r.selected %}
-          <tr style="cursor:pointer"
-              hx-get="/runs/{{ run.run_id }}/charts/screening/{{ ticker.symbol }}"
-              hx-target="#chart-panel">
-            <td><code>{{ ticker.symbol }}</code></td>
-            <td>{{ "%.2f" | format(r.scores.get(ticker.symbol, 0)) }}</td>
-            <td class="text-muted small">{{ r.rationale.get(ticker.symbol, "") }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+    <p class="flex-shrink-0 text-muted small mb-2"><strong class="text-body">{{ r.selected | length }}</strong> tickers selected.</p>
+    <div class="flex-grow-1 overflow-auto" style="min-height:0">
+      <div class="row">
+        <div class="col-lg-7">
+          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+            <thead class="table-light">
+              <tr><th>Symbol</th><th>Company</th><th>ISIN</th><th>Score</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              {% for sym, score in r.scores | dictsort(by='value', reverse=True) %}
+              {% for ticker in r.selected if ticker.symbol == sym %}
+              <tr style="cursor:pointer"
+                  hx-get="/runs/{{ run.run_id }}/charts/screening/{{ ticker.symbol }}"
+                  hx-target="#chart-panel">
+                <td><code>{{ ticker.symbol }}</code></td>
+                <td class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ticker.name or "—" }}</td>
+                <td class="small text-muted">{{ ticker.isin or "—" }}</td>
+                <td>{{ "%.2f" | format(score) }}</td>
+                <td class="text-muted small">{{ r.rationale.get(ticker.symbol, "") }}</td>
+              </tr>
+              {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="col-lg-5">
+          {% include "partials/chart_panel.html" %}
+        </div>
+      </div>
     </div>
-    <div class="col-lg-5">
-      {% include "partials/chart_panel.html" %}
+    <div class="flex-shrink-0">
+      {% include "partials/action_bar.html" %}
     </div>
   </div>
-  {% include "partials/action_bar.html" %}
 
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for Research stage.</div>
