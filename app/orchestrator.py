@@ -154,6 +154,7 @@ class Pipeline:
                 min_days_to_expiry=settings.warrant_selection.min_days_to_expiry,
                 max_days_to_expiry=settings.warrant_selection.max_days_to_expiry,
                 atm_band=settings.warrant_selection.atm_band,
+                atm_band_fallback=settings.warrant_selection.atm_band_fallback,
                 on_progress=on_progress,
             ).run(screening)
 

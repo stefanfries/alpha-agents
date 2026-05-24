@@ -33,7 +33,7 @@ class YFinanceTool(Tool):
             for yf_symbol, original_symbol in yf_to_original.items():
                 ticker = symbol_map[original_symbol]
                 try:
-                    sub = df[yf_symbol] if len(yf_symbols) > 1 else df
+                    sub = df[yf_symbol]
                 except KeyError:
                     continue
                 sub = sub.dropna(subset=["Open", "High", "Low", "Close"])

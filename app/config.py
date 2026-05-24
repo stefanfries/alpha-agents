@@ -30,6 +30,7 @@ class WarrantSelectionSettings(BaseModel):
     min_days_to_expiry: int = 270   # 9 months
     max_days_to_expiry: int = 365   # 12 months
     atm_band: float = 0.02          # strike filter: current_price × (1 ± atm_band)
+    atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
 
 
 class PortfolioSettings(BaseModel):

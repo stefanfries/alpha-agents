@@ -33,8 +33,7 @@
               {% for sym, score in r.scores | dictsort(by='value', reverse=True) %}
               {% for ticker in r.selected if ticker.symbol == sym %}
               <tr style="cursor:pointer"
-                  hx-get="/runs/{{ run.run_id }}/charts/screening/{{ ticker.symbol }}"
-                  hx-target="#chart-panel">
+                  onclick="loadScreeningChart('{{ run.run_id }}', '{{ ticker.symbol }}', this)">
                 <td><code>{{ ticker.symbol }}</code></td>
                 <td class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ticker.name or "—" }}</td>
                 <td class="small text-muted">{{ ticker.isin or "—" }}</td>

@@ -23,6 +23,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         min_days_to_expiry: int = 270,
         max_days_to_expiry: int = 365,
         atm_band: float = 0.02,
+        atm_band_fallback: float = 0.10,
         on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
     ) -> None:
         self._finhub = finhub
@@ -30,6 +31,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._min_days = min_days_to_expiry
         self._max_days = max_days_to_expiry
         self._atm_band = atm_band
+        self._atm_band_fallback = atm_band_fallback
         self._on_progress = on_progress
 
     async def run(self, input: SelectionResult) -> WarrantSelectionResult:
@@ -89,18 +91,51 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         strike_min = round(price * (1 - self._atm_band), 4) if price else None
         strike_max = round(price * (1 + self._atm_band), 4) if price else None
 
-        candidates = await self._finhub.get_warrants(
-            underlying=ticker.isin,
-            preselection="CALL",
-            maturity_from=maturity_from,
-            maturity_to=maturity_to,
-            strike_min=strike_min,
-            strike_max=strike_max,
-        )
+        async def fetch_warrants(s_min: float | None, s_max: float | None) -> list[dict[str, Any]] | None:
+            try:
+                return await self._finhub.get_warrants(
+                    underlying=ticker.isin,
+                    preselection="CALL",
+                    maturity_from=maturity_from,
+                    maturity_to=maturity_to,
+                    strike_min=s_min,
+                    strike_max=s_max,
+                )
+            except Exception:
+                await asyncio.sleep(2)
+                try:
+                    return await self._finhub.get_warrants(
+                        underlying=ticker.isin,
+                        preselection="CALL",
+                        maturity_from=maturity_from,
+                        maturity_to=maturity_to,
+                        strike_min=s_min,
+                        strike_max=s_max,
+                    )
+                except Exception:
+                    logger.warning("get_warrants failed for %s after retry", ticker.symbol)
+                    return None
+
+        candidates = await fetch_warrants(strike_min, strike_max)
+        if candidates is None:
+            return None
+
+        if not candidates and price:
+            wide_min = round(price * (1 - self._atm_band_fallback), 4)
+            wide_max = round(price * (1 + self._atm_band_fallback), 4)
+            logger.info(
+                "%s: no warrants at ±%.0f%% — widening to ±%.0f%% (%.2f–%.2f)",
+                ticker.symbol, self._atm_band * 100, self._atm_band_fallback * 100,
+                wide_min, wide_max,
+            )
+            candidates = await fetch_warrants(wide_min, wide_max)
+            if candidates is None:
+                return None
+
         if not candidates:
             logger.info(
-                "No warrants found for %s (%s) strike %.2f–%.2f",
-                ticker.symbol, ticker.isin, strike_min or 0, strike_max or 0,
+                "No warrants found for %s (%s) even after widening strike band",
+                ticker.symbol, ticker.isin,
             )
             return None
 
@@ -114,9 +149,13 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             async with detail_sem:
                 try:
                     return await self._finhub.get_warrant_detail(isin)
-                except Exception:
-                    logger.warning("Failed to fetch detail for warrant %s", isin)
-                    return None
+                except Exception as exc:
+                    await asyncio.sleep(2)
+                    try:
+                        return await self._finhub.get_warrant_detail(isin)
+                    except Exception:
+                        logger.warning("Failed to fetch detail for %s: %s", isin, exc)
+                        return None
 
         raw = await asyncio.gather(*[
             fetch_detail(c["isin"]) for c in candidates if c.get("isin")
@@ -124,6 +163,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         details = [d for d in raw if d]
 
         if not details:
+            logger.warning("%s: all %d detail fetches failed — skipping", ticker.symbol, len(candidates))
             return None
 
         best = max(details, key=lambda d: self._score(d, today))
