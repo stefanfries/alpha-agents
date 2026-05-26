@@ -18,8 +18,8 @@ class YFinanceTool(Tool):
     async def fetch_ohlcv_batch(self, tickers: list[Ticker], lookback_days: int) -> dict[str, list[OHLCV]]:
         if not tickers:
             return {}
-        end = date.today()
-        start = end - timedelta(days=lookback_days)
+        end = date.today() + timedelta(days=1)
+        start = end - timedelta(days=lookback_days) # yfinance's end date is exclusive, so we add one day to include today
         symbol_map = {t.symbol: t for t in tickers}
         symbols = list(symbol_map.keys())
 
