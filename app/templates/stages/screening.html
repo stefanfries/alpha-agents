@@ -20,6 +20,18 @@
 
 {% elif stage_status == "awaiting_review" and stage_result %}
   {% set r = stage_result %}
+  {% macro rank_cell(deltas, idx) %}
+    {% set delta = deltas[idx] if deltas | length > idx else none %}
+    {% if delta is none %}
+      <td class="text-secondary text-center">N</td>
+    {% elif delta > 0 %}
+      <td class="text-success text-center">▲ {{ delta }}</td>
+    {% elif delta < 0 %}
+      <td class="text-danger text-center">▼ {{ delta | abs }}</td>
+    {% else %}
+      <td class="text-secondary text-center" style="font-variant-emoji:text">▶&#xFE0E;</td>
+    {% endif %}
+  {% endmacro %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
     <p class="flex-shrink-0 text-muted small mb-2"><strong class="text-body">{{ r.selected | length }}</strong> tickers selected.</p>
     <div class="flex-grow-1 overflow-auto" style="min-height:0">
@@ -27,17 +39,35 @@
         <div class="col-lg-7">
           <table class="table table-sm table-hover bg-white rounded shadow-sm">
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Company</th><th>ISIN</th><th>Score</th><th>Rationale</th></tr>
+              <tr>
+                <th>#</th>
+                <th>Symbol</th>
+                <th>Company</th>
+                <th>ISIN</th>
+                <th>Score</th>
+                {% if r.history_labels %}
+                  {% for lbl in r.history_labels %}
+                    <th class="text-center">{{ lbl }}</th>
+                  {% endfor %}
+                {% endif %}
+                <th>Rationale</th>
+              </tr>
             </thead>
             <tbody>
               {% for sym, score in r.scores | dictsort(by='value', reverse=True) %}
+              {% set outer_rank = loop.index %}
+              {% set deltas = r.rank_changes.get(sym, []) %}
               {% for ticker in r.selected if ticker.symbol == sym %}
               <tr style="cursor:pointer"
                   onclick="loadScreeningChart('{{ run.run_id }}', '{{ ticker.symbol }}', this)">
+                <td class="text-muted small">{{ outer_rank }}</td>
                 <td><code>{{ ticker.symbol }}</code></td>
                 <td class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ticker.name or "—" }}</td>
                 <td class="small text-muted">{{ ticker.isin or "—" }}</td>
                 <td>{{ "%.2f" | format(score) }}</td>
+                {% for i in range(r.history_labels | length) %}
+                  {{ rank_cell(deltas, i) }}
+                {% endfor %}
                 <td class="text-muted small">{{ r.rationale.get(ticker.symbol, "") }}</td>
               </tr>
               {% endfor %}
