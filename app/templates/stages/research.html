@@ -39,9 +39,10 @@
     <pre class="mt-2 mb-0 small" style="max-height:300px;overflow:auto">{{ stage_error }}</pre>
   </div>
 
-{% elif stage_status == "awaiting_review" and stage_result %}
-  {% set r = stage_result %}
+{% elif stage_status == "awaiting_review" %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+    {% if stage_result %}
+      {% set r = stage_result %}
     <div class="flex-shrink-0 mb-2">
       <div class="row g-3">
         <div class="col-auto">
@@ -135,6 +136,9 @@
   </table>
   </div>
     </div>
+    {% else %}
+      <div class="alert alert-warning">Result data unavailable — use Restart to re-run this stage.</div>
+    {% endif %}
     <div class="flex-shrink-0">
       {% include "partials/action_bar.html" %}
     </div>

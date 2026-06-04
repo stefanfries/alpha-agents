@@ -18,48 +18,52 @@
     <pre class="mt-2 mb-0 small" style="max-height:300px;overflow:auto">{{ stage_error }}</pre>
   </div>
 
-{% elif stage_status == "awaiting_review" and stage_result %}
-  {% set r = stage_result %}
+{% elif stage_status == "awaiting_review" %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
-    <div class="flex-shrink-0 mb-2">
-      <div class="row g-3">
-        <div class="col-auto">
-          <div class="card text-center px-4 py-3 shadow-sm border-success">
-            <div class="fs-3 fw-bold text-success">{{ r.approved_positions | length }}</div>
-            <div class="text-muted small">Approved</div>
+    {% if stage_result %}
+      {% set r = stage_result %}
+      <div class="flex-shrink-0 mb-2">
+        <div class="row g-3">
+          <div class="col-auto">
+            <div class="card text-center px-4 py-3 shadow-sm border-success">
+              <div class="fs-3 fw-bold text-success">{{ r.approved_positions | length }}</div>
+              <div class="text-muted small">Approved</div>
+            </div>
           </div>
-        </div>
-        <div class="col-auto">
-          <div class="card text-center px-4 py-3 shadow-sm border-danger">
-            <div class="fs-3 fw-bold text-danger">{{ r.rejected_positions | length }}</div>
-            <div class="text-muted small">Rejected</div>
+          <div class="col-auto">
+            <div class="card text-center px-4 py-3 shadow-sm border-danger">
+              <div class="fs-3 fw-bold text-danger">{{ r.rejected_positions | length }}</div>
+              <div class="text-muted small">Rejected</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    <div class="flex-grow-1 overflow-auto" style="min-height:0">
-      <table class="table table-sm table-hover bg-white rounded shadow-sm">
-        <thead class="table-light">
-          <tr><th>Symbol</th><th>Status</th><th>Note</th></tr>
-        </thead>
-        <tbody>
-          {% for pos in r.approved_positions %}
-          <tr>
-            <td><code>{{ pos.ticker.symbol }}</code></td>
-            <td><span class="badge bg-success">approved</span></td>
-            <td class="text-muted small">{{ r.risk_notes.get(pos.ticker.symbol, "") }}</td>
-          </tr>
-          {% endfor %}
-          {% for pos in r.rejected_positions %}
-          <tr>
-            <td><code>{{ pos.ticker.symbol }}</code></td>
-            <td><span class="badge bg-danger">rejected</span></td>
-            <td class="text-muted small">{{ r.risk_notes.get(pos.ticker.symbol, "") }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+      <div class="flex-grow-1 overflow-auto" style="min-height:0">
+        <table class="table table-sm table-hover bg-white rounded shadow-sm">
+          <thead class="table-light">
+            <tr><th>Symbol</th><th>Status</th><th>Note</th></tr>
+          </thead>
+          <tbody>
+            {% for pos in r.approved_positions %}
+            <tr>
+              <td><code>{{ pos.ticker.symbol }}</code></td>
+              <td><span class="badge bg-success">approved</span></td>
+              <td class="text-muted small">{{ r.risk_notes.get(pos.ticker.symbol, "") }}</td>
+            </tr>
+            {% endfor %}
+            {% for pos in r.rejected_positions %}
+            <tr>
+              <td><code>{{ pos.ticker.symbol }}</code></td>
+              <td><span class="badge bg-danger">rejected</span></td>
+              <td class="text-muted small">{{ r.risk_notes.get(pos.ticker.symbol, "") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-warning flex-shrink-0">Result data unavailable — use Restart to re-run this stage.</div>
+    {% endif %}
     <div class="flex-shrink-0">
       {% include "partials/action_bar.html" %}
     </div>

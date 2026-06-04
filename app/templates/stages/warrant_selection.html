@@ -63,59 +63,63 @@
     <pre class="mt-2 mb-0 small" style="max-height:300px;overflow:auto">{{ stage_error }}</pre>
   </div>
 
-{% elif stage_status == "awaiting_review" and stage_result %}
-  {% set r = stage_result %}
+{% elif stage_status == "awaiting_review" %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
-    <div class="flex-shrink-0 mb-2">
-      <span class="text-muted small">
-        <strong class="text-body">{{ r.selected | length }}</strong> warrants selected
-        {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} underlyings skipped</span>{% endif %}.
-      </span>
-    </div>
-    <div class="flex-grow-1 overflow-auto" style="min-height:0">
-      <table class="table table-sm table-hover bg-white rounded shadow-sm">
-        <thead class="table-light">
-          <tr>
-            <th>Underlying</th>
-            <th>WKN</th>
-            <th>ISIN</th>
-            <th class="text-end">Strike</th>
-            <th>Maturity</th>
-            <th class="text-end">Spread</th>
-            <th class="text-end">Leverage</th>
-            <th class="text-end">Delta</th>
-            <th class="text-end">Bid</th>
-            <th class="text-end">Ask</th>
-            <th class="text-end">Score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for w in r.selected | sort(attribute='score', reverse=True) %}
-          <tr>
-            <td>
-              <code>{{ w.underlying.symbol }}</code>
-              {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}
-            </td>
-            <td><code>{{ w.warrant_wkn or "—" }}</code></td>
-            <td class="small text-muted">{{ w.warrant_isin or "—" }}</td>
-            <td class="text-end small">{{ "%.2f" | format(w.strike) if w.strike is not none else "—" }}</td>
-            <td class="small">{{ w.maturity_date or "—" }}</td>
-            <td class="text-end small">{{ "%.1f%%" | format(w.spread_pct) if w.spread_pct is not none else "—" }}</td>
-            <td class="text-end small">{{ "%.1f×" | format(w.leverage) if w.leverage is not none else "—" }}</td>
-            <td class="text-end small">{{ "%.2f" | format(w.delta) if w.delta is not none else "—" }}</td>
-            <td class="text-end small">{{ "%.3f" | format(w.bid) if w.bid is not none else "—" }}</td>
-            <td class="text-end small">{{ "%.3f" | format(w.ask) if w.ask is not none else "—" }}</td>
-            <td class="text-end fw-semibold">{{ "%.2f" | format(w.score) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% if r.skipped %}
-      <div class="alert alert-warning small mt-2">
-        No suitable call warrant found for: {{ r.skipped | join(", ") }}
+    {% if stage_result %}
+      {% set r = stage_result %}
+      <div class="flex-shrink-0 mb-2">
+        <span class="text-muted small">
+          <strong class="text-body">{{ r.selected | length }}</strong> warrants selected
+          {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} underlyings skipped</span>{% endif %}.
+        </span>
       </div>
-      {% endif %}
-    </div>
+      <div class="flex-grow-1 overflow-auto" style="min-height:0">
+        <table class="table table-sm table-hover bg-white rounded shadow-sm">
+          <thead class="table-light">
+            <tr>
+              <th>Underlying</th>
+              <th>WKN</th>
+              <th>ISIN</th>
+              <th class="text-end">Strike</th>
+              <th>Maturity</th>
+              <th class="text-end">Spread</th>
+              <th class="text-end">Leverage</th>
+              <th class="text-end">Delta</th>
+              <th class="text-end">Bid</th>
+              <th class="text-end">Ask</th>
+              <th class="text-end">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for w in r.selected | sort(attribute='score', reverse=True) %}
+            <tr>
+              <td>
+                <code>{{ w.underlying.symbol }}</code>
+                {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}
+              </td>
+              <td><code>{{ w.warrant_wkn or "—" }}</code></td>
+              <td class="small text-muted">{{ w.warrant_isin or "—" }}</td>
+              <td class="text-end small">{{ "%.2f" | format(w.strike) if w.strike is not none else "—" }}</td>
+              <td class="small">{{ w.maturity_date or "—" }}</td>
+              <td class="text-end small">{{ "%.1f%%" | format(w.spread_pct) if w.spread_pct is not none else "—" }}</td>
+              <td class="text-end small">{{ "%.1f×" | format(w.leverage) if w.leverage is not none else "—" }}</td>
+              <td class="text-end small">{{ "%.2f" | format(w.delta) if w.delta is not none else "—" }}</td>
+              <td class="text-end small">{{ "%.3f" | format(w.bid) if w.bid is not none else "—" }}</td>
+              <td class="text-end small">{{ "%.3f" | format(w.ask) if w.ask is not none else "—" }}</td>
+              <td class="text-end fw-semibold">{{ "%.2f" | format(w.score) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if r.skipped %}
+        <div class="alert alert-warning small mt-2">
+          No suitable call warrant found for: {{ r.skipped | join(", ") }}
+        </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="alert alert-warning flex-shrink-0">Result data unavailable — use Restart to re-run this stage.</div>
+    {% endif %}
     <div class="flex-shrink-0">
       {% include "partials/action_bar.html" %}
     </div>
