@@ -169,12 +169,14 @@ Left side (55% width) — **main warrant table**: one row per underlying, ordere
 Right side — two vertically stacked panels:
 
 **Top-3 detail panel** (top-right, ~42% height):
+
 - Shown when a row in the main table is clicked
 - Displays a header: `{N} warrants analyzed — top {M} shown`
 - Table with the top-3 warrants by score: WKN, ISIN, Strike, Maturity, Spread, Lev, Delta, Score
 - Clicking a row in this panel triggers the stock chart
 
 **Underlying stock chart** (bottom-right, remaining height):
+
 - Candlestick chart powered by Lightweight Charts v4
 - EMA 20/50, SuperTrend
 - **Orange dashed horizontal line** at the selected warrant's strike price (labelled "Strike")
@@ -289,7 +291,7 @@ A `DRY RUN` badge is shown prominently if `execution_dry_run=True`.
 
 ### Approve flow
 
-```
+```text
 User clicks "Approve" →
   POST /runs/{run_id}/stages/{stage_name}/approve
   → orchestrator advances pipeline to next stage
@@ -303,7 +305,7 @@ For the screening stage, the POST body includes the list of tickers to carry for
 
 The action bar includes a **"Restart from..."** dropdown listing all earlier stages. Selecting a stage and clicking Restart shows a config override panel (HTMX-swapped inline) where the user can adjust parameters before restarting.
 
-```
+```text
 User selects "Restart from: screening" →
   HTMX loads config override form fragment
   User optionally adjusts parameters (see table below)
