@@ -128,9 +128,10 @@ class Pipeline:
         research_with_bars = ResearchResult(
             tickers=research.tickers, bars=bars, fundamentals=research.fundamentals
         )
+        overrides = run.get("config_overrides", {}).get("screening", {})
+        screening_cfg = settings.screening.model_copy(update=overrides)
         return await SecuritySelectionAgent(
-            top_n=settings.screening.top_n,
-            min_market_cap_eur=settings.screening.min_market_cap_eur,
+            settings=screening_cfg,
         ).run(research_with_bars)
 
     async def _run_warrant_selection(self, run: dict) -> WarrantSelectionResult:

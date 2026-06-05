@@ -12,7 +12,8 @@ from app.models.signals import ResearchResult, SelectionResult
 
 @pytest.mark.asyncio
 async def test_screening_filters_low_market_cap():
-    agent = SecuritySelectionAgent(top_n=10, min_market_cap_eur=1_000_000_000)
+    from app.config import ScreeningSettings
+    agent = SecuritySelectionAgent(ScreeningSettings(top_n=10, min_market_cap_eur=1_000_000_000))
     ticker = Ticker(symbol="SMALL")
     result = await agent.run(
         ResearchResult(

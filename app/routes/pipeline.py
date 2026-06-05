@@ -6,12 +6,12 @@ from typing import Annotated, Any
 
 import numpy as np
 import talib
-
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import runs_collection
+from app.indicators import supertrend_bands
 from app.models.market import Ticker
 from app.orchestrator import get_pipeline
 from app.tools.yfinance import YFinanceTool
@@ -47,33 +47,13 @@ def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3
     lows   = np.array([float(b.low)   for b in bars])
     closes = np.array([float(b.close) for b in bars])
     dates  = [b.date.isoformat() for b in bars]
-    n = len(closes)
 
-    atr = talib.ATR(highs, lows, closes, timeperiod=period)
-    hl2 = (highs + lows) / 2.0
-    raw_upper = hl2 + multiplier * atr
-    raw_lower = hl2 - multiplier * atr
-
-    final_upper = np.full(n, np.nan)
-    final_lower = np.full(n, np.nan)
-    for i in range(n):
-        if np.isnan(atr[i]):
-            continue
-        if i == 0 or np.isnan(final_upper[i - 1]):
-            final_upper[i] = raw_upper[i]
-            final_lower[i] = raw_lower[i]
-        else:
-            final_upper[i] = (raw_upper[i]
-                              if raw_upper[i] < final_upper[i - 1] or closes[i - 1] > final_upper[i - 1]
-                              else final_upper[i - 1])
-            final_lower[i] = (raw_lower[i]
-                              if raw_lower[i] > final_lower[i - 1] or closes[i - 1] < final_lower[i - 1]
-                              else final_lower[i - 1])
+    final_upper, final_lower = supertrend_bands(highs, lows, closes, period, multiplier)
 
     result: list[dict] = []
     trend = 1
     started = False
-    for i in range(n):
+    for i in range(len(closes)):
         if np.isnan(final_upper[i]):
             continue
         if not started:
@@ -231,6 +211,11 @@ async def restart_stage(
     run_id: str,
     stage: str,
     from_stage: Annotated[str, Form()],
+    policies_submitted: Annotated[str | None, Form()] = None,
+    policy_supertrend: Annotated[str | None, Form()] = None,
+    policy_ema20_rising: Annotated[str | None, Form()] = None,
+    policy_adx: Annotated[str | None, Form()] = None,
+    policy_price_above_ema50: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(from_stage)
     updates: dict = {}
@@ -241,6 +226,16 @@ async def restart_stage(
     updates["current_stage"] = from_stage
     updates[f"stages.{from_stage}.status"] = "running"
     updates["status"] = "running"
+
+    # Persist policy overrides when submitted from the screening policy panel
+    if policies_submitted is not None:
+        updates["config_overrides.screening"] = {
+            "policy_supertrend": policy_supertrend is not None,
+            "policy_ema20_rising": policy_ema20_rising is not None,
+            "policy_adx": policy_adx is not None,
+            "policy_price_above_ema50": policy_price_above_ema50 is not None,
+        }
+
     await runs_collection().update_one({"run_id": run_id}, {"$set": updates})
     _fire(get_pipeline().run_stage(run_id, from_stage))
     return RedirectResponse(url=f"/runs/{run_id}/stages/{from_stage}", status_code=303)
@@ -308,9 +303,56 @@ async def chart_screening(run_id: str, ticker: str) -> HTMLResponse:
     )
 
 
-@router.get("/{run_id}/charts/warrant_selection/{isin}", response_class=HTMLResponse)
-async def chart_warrant(run_id: str, isin: str) -> HTMLResponse:
-    return HTMLResponse(f"<p class='text-muted'>Warrant scoring chart for {isin} — not yet implemented</p>")
+@router.get("/{run_id}/charts/warrant_selection/{ticker}", response_class=HTMLResponse)
+async def chart_warrant(run_id: str, ticker: str, strike: float | None = None, maturity: str | None = None) -> HTMLResponse:
+    try:
+        t = Ticker(symbol=ticker)
+        async with YFinanceTool() as yf:
+            bars_map = await yf.fetch_ohlcv_batch([t], lookback_days=1460)
+    except Exception as exc:
+        return HTMLResponse(f"<p class='text-danger small mt-2'>Chart error: {exc}</p>")
+
+    bars = bars_map.get(ticker, [])
+    if not bars:
+        return HTMLResponse(f"<p class='text-muted text-center small mt-4'>No data for {ticker}</p>")
+
+    dates  = [b.date.isoformat() for b in bars]
+    closes = [float(b.close)     for b in bars]
+    ohlcv  = [
+        {"time": d, "open": float(b.open), "high": float(b.high),
+         "low": float(b.low), "close": float(b.close)}
+        for d, b in zip(dates, bars)
+    ]
+    chart_data = json.dumps({
+        "ticker":     ticker,
+        "ohlcv":      ohlcv,
+        "ema20":      _compute_ema(closes, dates, 20),
+        "ema50":      _compute_ema(closes, dates, 50),
+        "sma200":     _compute_sma(closes, dates, 200),
+        "supertrend": _compute_supertrend(bars),
+        "adx":        [],
+        "plus_di":    [],
+        "minus_di":   [],
+        "strike":     strike,
+        "maturity":   maturity,
+    })
+    return HTMLResponse(
+        f"<div class='d-flex flex-column gap-1' data-chart='{chart_data}'>"
+        f"  <div class='d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1'>"
+        f"    <span class='small fw-semibold'>{ticker}"
+        + (f" — strike <strong>{strike:.2f}</strong>" if strike else "")
+        + (f" — expires <strong>{maturity}</strong>" if maturity else "")
+        + "</span>"
+        "    <div class='btn-group btn-group-sm'>"
+        "      <button class='btn btn-outline-secondary' data-range='3M'>3M</button>"
+        "      <button class='btn btn-outline-secondary' data-range='6M'>6M</button>"
+        "      <button class='btn btn-outline-secondary active' data-range='1Y'>1Y</button>"
+        "      <button class='btn btn-outline-secondary' data-range='3Y'>3Y</button>"
+        "    </div>"
+        "  </div>"
+        "  <div class='lw-price' style='height:340px'></div>"
+        "</div>"
+    )
 
 
 @router.get("/{run_id}/charts/portfolio", response_class=HTMLResponse)

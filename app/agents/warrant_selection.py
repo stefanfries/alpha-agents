@@ -45,7 +45,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         done_count = [0]
         active: set[str] = set()
 
-        async def select_one(ticker: Ticker) -> SelectedWarrant | None:
+        async def select_one(ticker: Ticker) -> tuple[SelectedWarrant | None, list[SelectedWarrant], int]:
             async with underlying_sem:
                 active.add(ticker.symbol)
                 if self._on_progress:
@@ -64,6 +64,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
         selected: list[SelectedWarrant] = []
         skipped: list[str] = []
+        top3: dict[str, list[SelectedWarrant]] = {}
+        analyzed_count: dict[str, int] = {}
         for ticker, result in zip(input.selected, results):
             if isinstance(result, BaseException):
                 logger.warning("Warrant lookup failed for %s: %s", ticker.symbol, result)
@@ -71,10 +73,13 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             elif result is None:
                 skipped.append(ticker.symbol)
             else:
-                selected.append(result)
+                best, candidates_top3, count = result
+                selected.append(best)
+                top3[ticker.symbol] = candidates_top3
+                analyzed_count[ticker.symbol] = count
 
         logger.info("Warrant selection: %d selected, %d skipped", len(selected), len(skipped))
-        return WarrantSelectionResult(selected=selected, skipped=skipped)
+        return WarrantSelectionResult(selected=selected, skipped=skipped, top3=top3, analyzed_count=analyzed_count)
 
     async def _pick_best(
         self,
@@ -82,7 +87,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         maturity_from: str,
         maturity_to: str,
         detail_sem: asyncio.Semaphore,
-    ) -> SelectedWarrant | None:
+    ) -> tuple[SelectedWarrant, list[SelectedWarrant], int] | None:
         if not ticker.isin:
             logger.warning("No ISIN for %s — skipping", ticker.symbol)
             return None
@@ -166,8 +171,13 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             logger.warning("%s: all %d detail fetches failed — skipping", ticker.symbol, len(candidates))
             return None
 
-        best = max(details, key=lambda d: self._score(d, today))
-        return self._build(ticker, best, today)
+        scored = sorted(details, key=lambda d: self._score(d, today), reverse=True)
+        best_detail = scored[0]
+        top3_details = scored[:3]
+
+        best = self._build(ticker, best_detail, today)
+        top3 = [self._build(ticker, d, today) for d in top3_details]
+        return best, top3, len(details)
 
     def _score(self, detail: dict, today: date) -> float:
         md = detail.get("market_data") or {}

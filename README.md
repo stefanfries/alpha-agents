@@ -40,8 +40,8 @@ Each agent has a single responsibility, consumes a typed Pydantic input contract
 | ----- | -------------- |
 | **Universe** | Resolves index names (DAX, MDAX, …) to a flat, deduplicated list of ticker symbols |
 | **Research** | Fetches OHLCV candle data for the full universe via yfinance |
-| **Stock Selection** | Identifies established and newly confirmed uptrends using MA alignment, ADX, and swing-point analysis |
-| **Warrant Selection** | Finds and scores Call Warrants per selected underlying using a seven-criteria scoring model (delta, leverage, IV, spread, premium p.a., remaining time, intrinsic value) |
+| **Stock Selection** | Scores every ticker with Trend Quality (TQ), TQ-20, and TSI; selects top-N that pass configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50) |
+| **Warrant Selection** | Finds Call Warrants per selected underlying via FinHub; scores by spread, leverage, days-to-expiry, and delta; returns best warrant + top-3 shortlist per underlying |
 | **Portfolio Construction** | Allocates capital across the warrant shortlist; diffs against current Comdirect holdings to identify new trades |
 | **Risk** | Validates proposed positions against configurable risk limits; rejects positions that violate them |
 | **Trade Execution** | Produces a list of `Order` objects for broker submission (dry-run by default) |
@@ -98,14 +98,15 @@ MITL_MODE=true
 | -------- | -------- |
 | [docs/system-design.md](docs/system-design.md) | Component overview, data flow, technology choices |
 | [docs/data-models.md](docs/data-models.md) | Full Pydantic model reference (market types, signals, persistence) |
+| [docs/web-ui.md](docs/web-ui.md) | MITL web UI spec: pages, tables, interactive charts |
 | [docs/agents/universe.md](docs/agents/universe.md) | Universe Agent spec |
 | [docs/agents/research.md](docs/agents/research.md) | Research Agent spec |
-| [docs/agents/screening.md](docs/agents/screening.md) | Stock Selection Agent spec |
-| [docs/agents/warrant_selection.md](docs/agents/warrant_selection.md) | Warrant Selection Agent spec |
+| [docs/agents/screening.md](docs/agents/screening.md) | Stock Selection Agent spec (ADR-009: TQ scoring + policy selection) |
+| [docs/agents/warrant_selection.md](docs/agents/warrant_selection.md) | Warrant Selection Agent spec (top-3 shortlist + stock chart) |
 | [docs/agents/portfolio.md](docs/agents/portfolio.md) | Portfolio Construction Agent spec |
 | [docs/agents/risk.md](docs/agents/risk.md) | Risk Agent spec |
 | [docs/agents/execution.md](docs/agents/execution.md) | Trade Execution Agent spec |
-| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-008) |
+| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-009) |
 
 ## Safety defaults
 

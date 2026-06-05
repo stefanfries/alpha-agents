@@ -99,22 +99,6 @@ A Call Warrant (Optionsschein) with its derivative characteristics. Fields are p
 | `vega` | `float \| None` | Vega — sensitivity to IV change |
 | `gamma` | `float \| None` | Gamma — rate of change of delta |
 
-### `WarrantScoreDetail`
-
-The full scoring breakdown for a single warrant.
-
-| Field | Type | Description |
-| ----- | ---- | ----------- |
-| `isin` | `str` | Warrant identifier |
-| `total_score` | `float` | Weighted total score in [0, 10] |
-| `delta_score` | `float` | Delta component score |
-| `leverage_score` | `float` | Leverage component score |
-| `intrinsic_score` | `float` | Intrinsic value component score |
-| `spread_score` | `float` | Bid-ask spread component score |
-| `premium_score` | `float` | Premium p.a. component score |
-| `time_score` | `float` | Remaining time component score |
-| `iv_score` | `float` | IV component score |
-
 ---
 
 ## Instrument master (`models/instrument.py`)
@@ -245,16 +229,21 @@ Output of `ResearchAgent`. Input of `StockSelectionAgent`.
 | `tickers` | `list[Ticker]` | Universe considered |
 | `bars` | `dict[str, list[OHLCV]]` | Historical OHLCV candles keyed by symbol |
 
-### `StockSelectionResult`
+### `SelectionResult`
 
-Output of `StockSelectionAgent`. Input of `WarrantSelectionAgent`.
+Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `selected` | `list[Ticker]` | Stocks with qualifying uptrends |
-| `trend_status` | `dict[str, TrendStatus]` | `"established"` or `"starting"` per ticker |
-| `scores` | `dict[str, float]` | Trend score per ticker (higher = stronger) |
-| `rationale` | `dict[str, str]` | Human-readable reason per ticker |
+| `selected` | `list[Ticker]` | Top-N tickers that passed all enabled policies, sorted by TQ descending |
+| `all_tickers` | `list[Ticker]` | Full scored universe including non-selected tickers (for MITL display) |
+| `scores` | `dict[str, float]` | Primary TQ score ($R^2_{60} \times Slope_{60}/ATR_{20}$) per ticker |
+| `rationale` | `dict[str, str]` | Human-readable summary per ticker |
+| `tq_short` | `dict[str, float]` | TQ-20 short-window score per ticker |
+| `tsi` | `dict[str, float]` | True Strength Index value per ticker |
+| `policy_results` | `dict[str, dict[str, bool]]` | Per-ticker pass/fail for each policy (`supertrend`, `ema20_rising`, `adx`, `price_above_ema50`) |
+| `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
+| `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
 
 ### `WarrantSelectionResult`
 
@@ -262,10 +251,10 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `selected_warrants` | `list[Warrant]` | Best warrant per underlying stock |
-| `scores` | `dict[str, WarrantScoreDetail]` | Full score breakdown keyed by ISIN |
-| `rationale` | `dict[str, str]` | Human-readable reason per ISIN |
-| `no_warrant_found` | `list[Ticker]` | Stocks excluded due to no suitable warrant |
+| `selected` | `list[SelectedWarrant]` | Single best-scoring warrant per underlying stock |
+| `skipped` | `list[str]` | Underlying symbols for which no warrant was found |
+| `top3` | `dict[str, list[SelectedWarrant]]` | Symbol → up to 3 best warrants by score (for MITL detail panel) |
+| `analyzed_count` | `dict[str, int]` | Symbol → total warrant details fetched and scored |
 
 ### `PortfolioProposal`
 

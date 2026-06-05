@@ -49,8 +49,8 @@ Universe Research  Stock   Warrant  Portfolio  Risk   Execution
 1. **Input**: An `UniverseSpec` — one or more index names (e.g. `["DAX", "MDAX", "SDAX"]`) — is passed to `Pipeline.run()`
 2. **Universe Agent**: Resolves index names to a flat list of ticker symbols; stores the universe document in MongoDB Atlas
 3. **Research Agent**: Fetches OHLCV candles for every ticker in the universe; resolves yfinance symbols via the **instrument master** (see ADR-007)
-4. **Stock Selection Agent**: Detects established or newly confirmed uptrends; scores and ranks stocks
-5. **Warrant Selection Agent**: For each selected stock, fetches available Call Warrants from the **FinHub API**; scores each warrant using the optionsschein scoring model (delta, leverage, intrinsic value, spread, premium p.a., remaining time, IV); returns a ranked shortlist
+4. **Stock Selection Agent**: Scores every pre-filtered ticker with three metrics (Trend Quality TQ, short-window TQ-20, and TSI), evaluates four configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50), and selects the top-N candidates by TQ
+5. **Warrant Selection Agent**: For each selected stock, fetches available Call Warrants from the **FinHub API**; scores each warrant using the optionsschein scoring model (spread 40%, leverage 25%, days-to-expiry 20%, delta 15%); returns the best warrant plus a top-3 shortlist per underlying
 6. **Portfolio Construction Agent**: Allocates weights across the warrant shortlist (one warrant per underlying); compares proposed positions against **current holdings read from MongoDB Atlas** (synced there by the `comdirect_api` sibling project) to identify new trades
 7. **Risk Agent**: Validates the proposed portfolio against risk limits; may reject positions
 8. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
@@ -98,7 +98,7 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 
 ## User interface
 
-The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). The user reviews each stage's output in a browser, then clicks to approve or restart. The screening stage features interactive **Lightweight Charts v4** candlestick charts loaded on demand when the user clicks a ticker row. Charts include EMA 20/50, SMA 200, SuperTrend, and a synchronized ADX sub-pane; all indicators are computed server-side with TA-Lib.
+The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). The user reviews each stage's output in a browser, then clicks to approve or restart. The screening stage features interactive **Lightweight Charts v4** candlestick charts loaded on demand when the user clicks a ticker row. Charts include EMA 20/50, SMA 200, SuperTrend, and a synchronized ADX sub-pane; all indicators are computed server-side with TA-Lib. The warrant selection stage shows a split-panel layout: a main table ordered by screening rank, a top-3 warrant detail panel (shown on row click), and an underlying stock chart with strike and maturity markers.
 
 ## Deployment
 

@@ -21,10 +21,11 @@
 {% elif stage_status == "awaiting_review" %}
   {% if stage_result %}
   {% set r = stage_result %}
+  {% set active_policies = run.get("config_overrides", {}).get("screening", {}) %}
   {% macro rank_cell(deltas, idx) %}
     {% set delta = deltas[idx] if deltas | length > idx else none %}
     {% if delta is none %}
-      <td class="text-secondary text-center">N</td>
+      <td class="text-secondary text-center">—</td>
     {% elif delta > 0 %}
       <td class="text-success text-center">▲ {{ delta }}</td>
     {% elif delta < 0 %}
@@ -33,56 +34,126 @@
       <td class="text-secondary text-center" style="font-variant-emoji:text">▶&#xFE0E;</td>
     {% endif %}
   {% endmacro %}
+  {% macro policy_badge(passed) %}
+    <span class="badge {% if passed %}bg-success{% else %}bg-danger{% endif %} bg-opacity-10
+                       {% if passed %}text-success{% else %}text-danger{% endif %}">
+      {% if passed %}✓{% else %}✗{% endif %}
+    </span>
+  {% endmacro %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
-    <p class="flex-shrink-0 text-muted small mb-2"><strong class="text-body">{{ r.selected | length }}</strong> tickers selected.</p>
+    <p class="flex-shrink-0 text-muted small mb-2">
+      <strong class="text-body">{{ r.selected | length }}</strong> selected of
+      <strong class="text-body">{{ r.scores | length }}</strong> scored.
+    </p>
     <div class="flex-grow-1 overflow-auto" style="min-height:0">
-      <div class="row">
-        <div class="col-lg-7">
-          <table class="table table-sm table-hover bg-white rounded shadow-sm">
-            <thead class="table-light">
+      <div class="row h-100">
+        <div class="col-lg-7 h-100 d-flex flex-column">
+          <div class="flex-grow-1 overflow-auto" style="min-height:0">
+          {# Build selected rank lookup: only selected symbols get a rank #}
+          {% set sel_syms = r.selected | map(attribute='symbol') | list %}
+          {% set sel_rank = namespace(n=0) %}
+          <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
+            <thead class="table-light sticky-top">
               <tr>
                 <th>#</th>
                 <th>Symbol</th>
                 <th>Company</th>
                 <th>ISIN</th>
-                <th>Score</th>
+                <th title="R² × slope / ATR (60-bar)">TQ</th>
+                <th title="R² × slope / ATR (20-bar)">TQ-20</th>
+                <th title="True Strength Index">TSI</th>
+                <th class="text-center" title="SuperTrend bullish">ST</th>
+                <th class="text-center" title="EMA20 rising">E20</th>
+                <th class="text-center" title="ADX &gt; threshold and rising">ADX</th>
+                <th class="text-center" title="Price above EMA50">E50</th>
                 {% if r.history_labels %}
                   {% for lbl in r.history_labels %}
                     <th class="text-center">{{ lbl }}</th>
                   {% endfor %}
                 {% endif %}
-                <th>Rationale</th>
               </tr>
             </thead>
             <tbody>
               {% for sym, score in r.scores | dictsort(by='value', reverse=True) %}
-              {% set outer_rank = loop.index %}
+              {% set selected = sym in sel_syms %}
+              {% if selected %}{% set sel_rank.n = sel_rank.n + 1 %}{% endif %}
               {% set deltas = r.rank_changes.get(sym, []) %}
-              {% for ticker in r.selected if ticker.symbol == sym %}
-              <tr style="cursor:pointer"
-                  onclick="loadScreeningChart('{{ run.run_id }}', '{{ ticker.symbol }}', this)">
-                <td class="text-muted small">{{ outer_rank }}</td>
-                <td><code>{{ ticker.symbol }}</code></td>
-                <td class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ticker.name or "—" }}</td>
-                <td class="small text-muted">{{ ticker.isin or "—" }}</td>
-                <td>{{ "%.2f" | format(score) }}</td>
+              {% set pol = r.policy_results.get(sym, {}) %}
+              {# Look up ticker metadata from all_tickers #}
+              {% set meta = namespace(name="—", isin="—") %}
+              {% for t in r.all_tickers if t.symbol == sym %}
+                {% set meta.name = t.name or "—" %}
+                {% set meta.isin = t.isin or "—" %}
+              {% endfor %}
+              <tr class="{% if selected %}table-success{% elif score <= 0 %}text-muted{% endif %}"
+                  style="cursor:pointer"
+                  onclick="loadScreeningChart('{{ run.run_id }}', '{{ sym }}', this)">
+                <td class="small">{% if selected %}{{ sel_rank.n }}{% else %}—{% endif %}</td>
+                <td><code>{{ sym }}</code></td>
+                <td class="small" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ meta.name }}</td>
+                <td class="small">{{ meta.isin }}</td>
+                <td>{{ "%.3f" | format(score) }}</td>
+                <td>{{ "%.3f" | format(r.tq_short.get(sym, 0)) }}</td>
+                <td>{{ "%.1f" | format(r.tsi.get(sym, 0)) }}</td>
+                <td class="text-center">{{ policy_badge(pol.get("supertrend", false)) }}</td>
+                <td class="text-center">{{ policy_badge(pol.get("ema20_rising", false)) }}</td>
+                <td class="text-center">{{ policy_badge(pol.get("adx", false)) }}</td>
+                <td class="text-center">{{ policy_badge(pol.get("price_above_ema50", false)) }}</td>
                 {% for i in range(r.history_labels | length) %}
                   {{ rank_cell(deltas, i) }}
                 {% endfor %}
-                <td class="text-muted small">{{ r.rationale.get(ticker.symbol, "") }}</td>
               </tr>
-              {% endfor %}
               {% endfor %}
             </tbody>
           </table>
+          </div>
         </div>
         <div class="col-lg-5">
           {% include "partials/chart_panel.html" %}
         </div>
       </div>
     </div>
-    <div class="flex-shrink-0">
-      {% include "partials/action_bar.html" %}
+
+    {# Policy settings + action bar #}
+    <div class="flex-shrink-0 mt-3 pt-3 border-top">
+      <div class="row align-items-end g-3">
+        {# Policy checkboxes — submits as a restart from screening #}
+        <div class="col-auto">
+          <form method="post" action="/runs/{{ run.run_id }}/stages/screening/restart"
+                class="d-flex align-items-center gap-3 flex-wrap">
+            <input type="hidden" name="from_stage" value="screening">
+            <input type="hidden" name="policies_submitted" value="1">
+            <span class="text-muted small fw-semibold">Policies:</span>
+            {% set pol_cfg = run.get("config_overrides", {}).get("screening", {}) %}
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" name="policy_supertrend" id="pol_st"
+                     {% if pol_cfg.get("policy_supertrend", true) %}checked{% endif %}>
+              <label class="form-check-label small" for="pol_st">SuperTrend</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" name="policy_ema20_rising" id="pol_ema20"
+                     {% if pol_cfg.get("policy_ema20_rising", true) %}checked{% endif %}>
+              <label class="form-check-label small" for="pol_ema20">EMA20 rising</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" name="policy_adx" id="pol_adx"
+                     {% if pol_cfg.get("policy_adx", true) %}checked{% endif %}>
+              <label class="form-check-label small" for="pol_adx">ADX</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" name="policy_price_above_ema50" id="pol_ema50"
+                     {% if pol_cfg.get("policy_price_above_ema50", true) %}checked{% endif %}>
+              <label class="form-check-label small" for="pol_ema50">Price &gt; EMA50</label>
+            </div>
+            <button type="submit" class="btn btn-sm btn-outline-primary">Apply &amp; Re-run</button>
+          </form>
+        </div>
+
+        {# Approve / generic restart #}
+        <div class="col">
+          {% include "partials/action_bar.html" %}
+        </div>
+      </div>
     </div>
   </div>
   {% else %}

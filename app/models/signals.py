@@ -1,8 +1,17 @@
 from datetime import date
+from enum import Enum
 
 from pydantic import BaseModel
 
 from app.models.market import OHLCV, Order, Position, Ticker
+
+
+class TrendStatus(str, Enum):
+    ESTABLISHED_UP   = "established_up"    # Gate 1 bullish + Gate 2 confirmed
+    STARTING_UP      = "starting_up"       # Gate 1 bullish, Gate 2 not yet confirmed
+    SIDEWAYS         = "sideways"          # No directional Gate 1 majority
+    STARTING_DOWN    = "starting_down"     # Gate 1 bearish, Gate 2 not yet confirmed
+    ESTABLISHED_DOWN = "established_down"  # Gate 1 bearish + Gate 2 confirmed
 
 
 class UniverseResult(BaseModel):
@@ -20,8 +29,12 @@ class ResearchResult(BaseModel):
 
 class SelectionResult(BaseModel):
     selected: list[Ticker]
+    all_tickers: list[Ticker] = []
     scores: dict[str, float]
     rationale: dict[str, str]
+    tq_short: dict[str, float] = {}
+    tsi: dict[str, float] = {}
+    policy_results: dict[str, dict[str, bool]] = {}
     rank_changes: dict[str, list[int | None]] = {}  # sym → [delta_1w, delta_2w]
     history_labels: list[str] = []
 
@@ -44,6 +57,8 @@ class SelectedWarrant(BaseModel):
 class WarrantSelectionResult(BaseModel):
     selected: list[SelectedWarrant]
     skipped: list[str]
+    top3: dict[str, list[SelectedWarrant]] = {}       # symbol → up to 3 warrants by score
+    analyzed_count: dict[str, int] = {}               # symbol → total candidates evaluated
 
 
 class PortfolioProposal(BaseModel):

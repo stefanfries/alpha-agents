@@ -24,6 +24,18 @@ class ResearchSettings(BaseModel):
 class ScreeningSettings(BaseModel):
     top_n: int = 20
     min_market_cap_eur: int = 500_000_000
+    min_adx: int = 20
+    lookback_regression: int = 60
+    lookback_regression_short: int = 20
+    supertrend_period: int = 10
+    supertrend_multiplier: float = 3.0
+    tsi_fast: int = 13
+    tsi_slow: int = 25
+    # Selection policies — all enabled ones must pass (AND logic)
+    policy_supertrend: bool = True
+    policy_ema20_rising: bool = True
+    policy_adx: bool = True
+    policy_price_above_ema50: bool = True
 
 
 class WarrantSelectionSettings(BaseModel):

@@ -73,6 +73,23 @@
       overlays.ema50.setData(d.ema50);   overlays.ema50.applyOptions({ visible: false });
       overlays.sma200.setData(d.sma200); overlays.sma200.applyOptions({ visible: false });
 
+      // Strike price line (warrant charts)
+      if (d.strike != null) {
+        candles.createPriceLine({
+          price: d.strike,
+          color: '#FF9800',
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: 'Strike',
+        });
+      }
+      // Maturity date marker (warrant charts)
+      if (d.maturity) {
+        var maturityMarkers = [{ time: d.maturity, position: 'aboveBar', color: '#FF9800', shape: 'arrowDown', text: 'Expiry' }];
+        candles.setMarkers(maturityMarkers);
+      }
+
       // SuperTrend: one LineSeries per contiguous segment so lines never bridge across trend flips
       var stGroup = [];
       (function() {
@@ -94,30 +111,33 @@
         });
       })();
 
-      // ADX chart (synchronized, hidden by default)
+      // ADX chart (synchronized, hidden by default) — only when .lw-adx element exists
       var adxEl = container.querySelector('.lw-adx');
-      var adxChart = LightweightCharts.createChart(adxEl, Object.assign({}, baseOpts, {
-        timeScale: Object.assign({}, baseOpts.timeScale, { visible: false }),
-      }));
-      // Anchor the ADX chart's bar-index mapping to the full OHLCV range so that
-      // setVisibleLogicalRange syncs to identical timestamps in both charts.
-      var _adxAnchor = adxChart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-      _adxAnchor.setData(d.ohlcv.map(function(p) { return { time: p.time }; }));
+      var adxChart = null;
+      if (adxEl) {
+        adxChart = LightweightCharts.createChart(adxEl, Object.assign({}, baseOpts, {
+          timeScale: Object.assign({}, baseOpts.timeScale, { visible: false }),
+        }));
+        // Anchor the ADX chart's bar-index mapping to the full OHLCV range so that
+        // setVisibleLogicalRange syncs to identical timestamps in both charts.
+        var _adxAnchor = adxChart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        _adxAnchor.setData(d.ohlcv.map(function(p) { return { time: p.time }; }));
 
-      var adxSeries = adxChart.addLineSeries({ color: '#FFD700', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-      adxSeries.setData(d.adx);
-      adxSeries.createPriceLine({ price: 25, color: 'rgba(255,255,255,0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
-      adxChart.addLineSeries({ color: '#26a69a', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.plus_di);
-      adxChart.addLineSeries({ color: '#ef5350', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.minus_di);
+        var adxSeries = adxChart.addLineSeries({ color: '#FFD700', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        adxSeries.setData(d.adx);
+        adxSeries.createPriceLine({ price: 25, color: 'rgba(255,255,255,0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
+        adxChart.addLineSeries({ color: '#26a69a', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.plus_di);
+        adxChart.addLineSeries({ color: '#ef5350', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.minus_di);
 
-      // Sync time scales
-      var _syncing = false;
-      chart.timeScale().subscribeVisibleLogicalRangeChange(function(r) {
-        if (_syncing || !r) return; _syncing = true; adxChart.timeScale().setVisibleLogicalRange(r); _syncing = false;
-      });
-      adxChart.timeScale().subscribeVisibleLogicalRangeChange(function(r) {
-        if (_syncing || !r) return; _syncing = true; chart.timeScale().setVisibleLogicalRange(r); _syncing = false;
-      });
+        // Sync time scales
+        var _syncing = false;
+        chart.timeScale().subscribeVisibleLogicalRangeChange(function(r) {
+          if (_syncing || !r) return; _syncing = true; adxChart.timeScale().setVisibleLogicalRange(r); _syncing = false;
+        });
+        adxChart.timeScale().subscribeVisibleLogicalRangeChange(function(r) {
+          if (_syncing || !r) return; _syncing = true; chart.timeScale().setVisibleLogicalRange(r); _syncing = false;
+        });
+      }
 
       // Default range: 1 year
       var now = Math.floor(Date.now() / 1000);
@@ -140,10 +160,12 @@
           var active = btn.classList.contains('active');
           var ind = btn.dataset.indicator;
           if (ind === 'adx') {
-            adxEl.style.display = active ? 'block' : 'none';
-            if (active) setTimeout(function() {
-              adxChart.timeScale().setVisibleLogicalRange(chart.timeScale().getVisibleLogicalRange());
-            }, 10);
+            if (adxEl) {
+              adxEl.style.display = active ? 'block' : 'none';
+              if (active) setTimeout(function() {
+                adxChart.timeScale().setVisibleLogicalRange(chart.timeScale().getVisibleLogicalRange());
+              }, 10);
+            }
           } else if (ind === 'supertrend') {
             stGroup.forEach(function(s) { s.applyOptions({ visible: active }); });
           } else if (overlays[ind]) {
@@ -166,6 +188,69 @@
         })
         .catch(function() {
           panel.innerHTML = '<p class="text-muted text-center small mt-4">Failed to load chart</p>';
+        });
+    }
+
+    function loadWarrantDetailPanel(runId, sym, row) {
+      row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
+      row.classList.add('table-active');
+      var panel = document.getElementById('warrant-detail-panel');
+      var chartPanel = document.getElementById('warrant-chart-panel');
+      if (chartPanel) chartPanel.innerHTML = '';
+      if (!panel) return;
+      var top3 = JSON.parse(row.getAttribute('data-top3') || '[]');
+      var count = parseInt(row.getAttribute('data-analyzed') || '0', 10);
+      if (!top3.length) {
+        panel.innerHTML = '<p class="text-muted small mt-2">No warrants found.</p>';
+        return;
+      }
+      var html = '<p class="small text-muted mb-2">' + count + ' warrant' + (count !== 1 ? 's' : '') + ' analyzed — top ' + top3.length + ' shown</p>';
+      html += '<table class="table table-sm table-hover mb-0"><thead class="table-light"><tr>';
+      html += '<th>WKN</th><th>ISIN</th><th class="text-end">Strike</th><th>Maturity</th>';
+      html += '<th class="text-end">Spread</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Score</th></tr></thead><tbody>';
+      top3.forEach(function(w, i) {
+        var strike = w.strike != null ? w.strike.toFixed(2) : '—';
+        var maturity = w.maturity_date || '—';
+        var spread = w.spread_pct != null ? w.spread_pct.toFixed(1) + '%' : '—';
+        var lev = w.leverage != null ? w.leverage.toFixed(1) + '×' : '—';
+        var delta = w.delta != null ? w.delta.toFixed(2) : '—';
+        var score = w.score != null ? w.score.toFixed(2) : '—';
+        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + runId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',this)">';
+        html += '<td><code>' + (w.warrant_wkn || '—') + '</code></td>';
+        html += '<td class="small text-muted">' + (w.warrant_isin || '—') + '</td>';
+        html += '<td class="text-end small">' + strike + '</td>';
+        html += '<td class="small">' + maturity + '</td>';
+        html += '<td class="text-end small">' + spread + '</td>';
+        html += '<td class="text-end small">' + lev + '</td>';
+        html += '<td class="text-end small">' + delta + '</td>';
+        html += '<td class="text-end fw-semibold">' + score + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      panel.innerHTML = html;
+    }
+
+    function loadWarrantChart(runId, ticker, strike, maturity, row) {
+      if (row) {
+        row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
+        row.classList.add('table-active');
+      }
+      var chartPanel = document.getElementById('warrant-chart-panel');
+      if (!chartPanel) return;
+      chartPanel.innerHTML = '<p class="text-muted text-center small mt-2">Loading…</p>';
+      var url = '/runs/' + runId + '/charts/warrant_selection/' + ticker;
+      var params = [];
+      if (strike != null) params.push('strike=' + strike);
+      if (maturity) params.push('maturity=' + maturity);
+      if (params.length) url += '?' + params.join('&');
+      fetch(url)
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+          chartPanel.innerHTML = html;
+          initDataCharts(chartPanel);
+        })
+        .catch(function() {
+          chartPanel.innerHTML = '<p class="text-muted text-center small mt-2">Failed to load chart</p>';
         });
     }
 

@@ -108,71 +108,81 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 
 #### 4.3 Stock Selection (Screening) — `/stages/screening`
 
-**Summary**: `{N} stocks selected from {universe_size} universe` — `{established}` established, `{starting}` starting uptrends.
+**Summary**: `{N} stocks selected from {universe_size} universe` with scoring details.
 
-**Selection table**: one row per selected stock, sorted by score descending.
+**All-stocks table**: every ticker that passed the pre-filter is shown, sorted by TQ descending. Selected tickers are highlighted. Columns:
 
 | Column | Description |
 | ------ | ----------- |
-| Ticker | Symbol |
+| `#` | Rank among selected tickers only (`—` for non-selected) |
+| Symbol | yfinance symbol |
 | Name | Company name |
-| Trend status | `ESTABLISHED` / `STARTING` badge |
-| Score | `0.0 – 1.0` |
-| Rationale | Human-readable reason string from `StockSelectionResult.rationale` |
-| Remove | Checkbox — user can deselect before approving |
+| ISIN | Identifier |
+| TQ | Primary Trend Quality score (60-bar R² × slope / ATR) |
+| TQ-20 | Short-window Trend Quality (20-bar) |
+| TSI | True Strength Index value |
+| ST / E20 / ADX / E50 | Per-policy pass/fail badges (green ✓ / red ✗) |
+| 1W / 2W / 4W | Rank delta vs prior runs (▲/▼/▶/—) |
 
 Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
 
-**Stock chart** (loaded on demand, interactive — powered by Lightweight Charts v4):
+**Stock chart** (loaded on demand, powered by Lightweight Charts v4):
 
 - Candlestick chart with up to 4 years of OHLCV data
 - **Time range selector**: 3M / 6M / 1Y (default) / 3Y
-- **Overlay indicators** (toggle buttons):
-  - EMA 20 (blue, visible by default)
-  - EMA 50 (orange)
-  - SMA 200 (purple)
-  - SuperTrend (green segments = bullish, red segments = bearish)
-- **ADX sub-pane** (visible by default, synchronized scroll/zoom with price pane):
-  - ADX line (gold), +DI (green), −DI (red)
-  - Dashed threshold line at ADX = 25
+- **Overlay indicators** (toggle buttons): EMA 20 (blue, default on), EMA 50 (orange), SMA 200 (purple), SuperTrend (green/red segments)
+- **ADX sub-pane** (toggle, synchronized scroll/zoom): ADX line (gold), +DI (green), −DI (red), threshold line at ADX = 25
 - All indicators computed server-side with TA-Lib
 
-**User actions at approve:** the selection table checkboxes determine which tickers advance. Deselected tickers are excluded from the `WarrantSelectionAgent` input.
+**Screening policies panel** (above action bar):
+
+- Four checkboxes: SuperTrend / EMA20 rising / ADX rising / Price > EMA50
+- **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run
+- Policy state is persisted to `config_overrides.screening` in the run document
+
+**User actions at approve:** the selection advances to warrant selection.
 
 ---
 
 #### 4.4 Warrant Selection — `/stages/warrant_selection`
 
-**Summary**: `{N} warrants selected for {M} underlyings. {K} underlyings had no suitable warrant.`
+**Summary**: `{N} warrants selected. {K} underlyings skipped.`
 
-**No-warrant list**: compact list of tickers where no warrant passed the hard filters, with the filter reason.
+**Split-panel layout:**
 
-**Warrant table**: one row per selected warrant, sorted by underlying ticker.
+Left side (55% width) — **main warrant table**: one row per underlying, ordered by screening TQ rank.
 
 | Column | Description |
 | ------ | ----------- |
-| Underlying | Ticker + company name |
-| Warrant | WKN — Issuer, Strike, Maturity |
-| Score | `0.0 – 10.0` |
-| Delta | Value + score bracket |
-| Leverage | Value + score bracket |
-| Spread % | Value + score bracket |
-| Premium p.a. % | Value + score bracket |
-| Remaining (months) | Value + score bracket |
-| Remove | Checkbox — user can reject this warrant |
+| `#` | Screening rank |
+| Underlying | Symbol + company name |
+| Analyzed | Number of warrant details fetched and scored |
+| WKN | Best warrant WKN |
+| ISIN | Best warrant ISIN |
+| Strike | Strike price |
+| Maturity | Maturity date |
+| Spread | Bid-ask spread % |
+| Lev | Leverage ratio |
+| Delta | Option delta |
+| Score | Composite score in [0, 1] |
 
-Score brackets use colour coding: green (10), yellow (7), orange (4), red (0).
+Right side — two vertically stacked panels:
 
-Clicking a warrant row triggers `hx-get="/runs/{run_id}/charts/warrant_selection/{isin}"` and loads the warrant scoring chart into the chart panel.
+**Top-3 detail panel** (top-right, ~42% height):
+- Shown when a row in the main table is clicked
+- Displays a header: `{N} warrants analyzed — top {M} shown`
+- Table with the top-3 warrants by score: WKN, ISIN, Strike, Maturity, Spread, Lev, Delta, Score
+- Clicking a row in this panel triggers the stock chart
 
-**Warrant scoring chart** (loaded on demand):
+**Underlying stock chart** (bottom-right, remaining height):
+- Candlestick chart powered by Lightweight Charts v4
+- EMA 20/50, SuperTrend
+- **Orange dashed horizontal line** at the selected warrant's strike price (labelled "Strike")
+- **Orange arrow marker** at the maturity date (labelled "Expiry")
+- Time range selector: 3M / 6M / 1Y (default) / 3Y
+- Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}`
 
-- Horizontal bar chart — one bar per scoring criterion
-- X-axis: points awarded (0–10)
-- Bar colour reflects score bracket (green/yellow/orange/red)
-- Weighted contribution shown as a secondary axis or annotation
-
-**User actions at approve:** checked warrants advance; unchecked warrants are excluded from portfolio construction. Their underlyings are implicitly removed too.
+**User actions at approve:** all selected warrants advance to portfolio construction.
 
 ---
 

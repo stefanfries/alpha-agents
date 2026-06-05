@@ -1,8 +1,8 @@
-# Agent Spec: Stock Selection Agent
+# Agent Spec: Stock Selection (Screening) Agent
 
 ## Responsibility
 
-Analyse OHLCV candle data for all stocks in the research universe and identify those with **established uptrends** or **newly confirmed (starting) uptrends**. This is the second pipeline stage.
+Score every ticker in the research universe using three quantitative metrics, then apply a set of configurable boolean policies to select the top-N candidates for warrant selection. This is the third pipeline stage.
 
 ## Input
 
@@ -11,20 +11,16 @@ Analyse OHLCV candle data for all stocks in the research universe and identify t
 ## Output
 
 ```python
-class StockSelectionResult(AgentOutput):
-    selected: list[Ticker]
-    trend_status: dict[str, TrendStatus]   # "established" | "starting" | "none"
-    scores: dict[str, float]               # Higher = stronger trend signal
-    rationale: dict[str, str]              # Human-readable reason per ticker
-```
-
-Where `TrendStatus` is:
-
-```python
-class TrendStatus(str, Enum):
-    ESTABLISHED = "established"   # Long-running confirmed uptrend
-    STARTING    = "starting"      # New uptrend recently confirmed
-    NONE        = "none"          # No qualifying trend
+class SelectionResult(BaseModel):
+    selected: list[Ticker]                         # Top-N tickers that passed all policies
+    all_tickers: list[Ticker]                      # Full scored universe (for MITL display)
+    scores: dict[str, float]                       # Primary TQ score per ticker
+    rationale: dict[str, str]                      # Human-readable summary per ticker
+    tq_short: dict[str, float]                     # TQ-20 (short window) per ticker
+    tsi: dict[str, float]                          # TSI (True Strength Index) per ticker
+    policy_results: dict[str, dict[str, bool]]     # policy_name -> pass/fail per ticker
+    rank_changes: dict[str, list[int | None]]      # sym -> [delta_1W, delta_2W, delta_4W]
+    history_labels: list[str]                      # ["1W", "2W", "4W"]
 ```
 
 ## Tools used
@@ -33,40 +29,89 @@ None — operates purely on the OHLCV data provided by `ResearchAgent`.
 
 ## Behaviour
 
-1. For each ticker, compute trend indicators from OHLCV bars:
-   - **Moving averages**: SMA20, SMA50, SMA200 (price above all three = positive signal)
-   - **MA alignment**: SMA20 > SMA50 > SMA200 = established uptrend
-   - **Golden cross**: SMA50 recently crossed above SMA200 = starting uptrend signal
-   - **ADX**: ADX > 25 confirms trend strength
-   - **Higher highs / higher lows**: structural trend confirmation
+See [ADR-009](../decisions/ADR-009-screening-redesign.md) for the full rationale.
 
-   > **Chart note**: the MITL review chart displays EMA 20 and EMA 50 (faster, more responsive to recent price action) rather than SMA 20/50. The SMA variants are used internally for scoring; EMA is preferred for visual trend assessment.
-2. Classify each ticker into `TrendStatus`
-3. Score each ticker (weighted combination of indicator signals)
-4. Filter: only `ESTABLISHED` and `STARTING` tickers pass through
-5. Rank by score and select top N
-6. Persist the `StockSelectionResult` to MongoDB Atlas for the current `run_id`
+Processing is split into two independent phases after a hard pre-filter:
 
-## Trend scoring weights (configurable)
+### Pre-filter (hard gates)
 
-| Indicator | Default weight | Description |
-| --------- | -------------- | ----------- |
-| MA alignment (SMA20 > 50 > 200) | 35% | Core trend structure |
-| ADX strength (> 25) | 25% | Trend momentum confirmation |
-| Price above SMA200 | 20% | Long-term trend direction |
-| Higher highs / lows (last 3 swings) | 20% | Structural confirmation |
+| Filter | Config key | Default |
+|--------|------------|---------|
+| Minimum market cap | `min_market_cap_eur` | 500 M EUR |
+| Minimum bar count | >= 60 OHLCV bars | n/a |
 
-## Configuration (via `config.py`)
+Tickers failing either filter are dropped silently; they do not appear in `scores` or `all_tickers`.
+
+---
+
+### Phase 1 — Score all tickers
+
+Every ticker that passes the pre-filter receives three computed values:
+
+#### TQ — Trend Quality (primary, 60-bar)
+
+TQ = R^2_60 * Slope_60 / ATR_20
+
+Where:
+- R^2_60 = coefficient of determination of a linear regression over the last 60 closing prices — rewards **smoothness** (0 = random walk, 1 = perfect line)
+- Slope_60 = regression slope in price units per bar — rewards **upward direction and steepness**
+- ATR_20 = 20-period Average True Range — **normalises** slope for per-ticker volatility
+
+TQ can be negative (bearish trends), zero (flat), or positive. It is the primary sort column for ranking.
+
+#### TQ-20 — Trend Quality (short window, 20-bar)
+
+Same formula as TQ but computed over the last 20 bars instead of 60. Detects early breakouts and short-term momentum that may not yet show up in the 60-bar window. Displayed for reference alongside TQ.
+
+#### TSI — True Strength Index
+
+TSI = 100 * EMA_slow(EMA_fast(dClose)) / EMA_slow(EMA_fast(|dClose|))
+
+With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillator in `[-100, 100]`. Displayed as a context signal; not used in selection.
+
+---
+
+### Phase 2 — Select by policies (AND logic)
+
+Four boolean policies are evaluated independently. A ticker is a **candidate** only if all *enabled* policies pass. The top-N candidates by TQ are then selected into `SelectionResult.selected`.
+
+| Policy key | Condition | Default |
+|------------|-----------|---------|
+| `policy_supertrend` | SuperTrend bullish on the last bar (SuperTrend period=10, multiplier=3) | on |
+| `policy_ema20_rising` | EMA20[-1] > EMA20[-6] (5-bar slope > 0) | on |
+| `policy_adx` | ADX[-1] > `min_adx` AND regression slope of ADX[-5:] > 0 (rising trend) | on |
+| `policy_price_above_ema50` | Close[-1] > EMA50[-1] | on |
+
+> **ADX rising**: uses `np.polyfit` over the last 5 ADX bars rather than a simple point-to-point comparison, so a single-day dip in an otherwise rising ADX does not fail the policy.
+
+If all policies pass for a ticker -> it is a candidate. Candidates are sorted by TQ descending; the top `top_n` (default 20) are selected.
+
+If zero candidates result (all tickers fail at least one policy), the user can uncheck a policy in the MITL UI and re-run screening without creating a new run.
+
+### Policy persistence
+
+Policy states are stored per-run in `config_overrides.screening` in the MongoDB run document. The orchestrator merges these into `ScreeningSettings` before constructing `SecuritySelectionAgent`. This ensures full reproducibility — each run records the exact policies used.
+
+### Rank change tracking
+
+The agent compares the current TQ ranking against prior rankings stored in the database (offsets: 5 bars = 1W, 10 bars = 2W, 20 bars = 4W). The result is stored in `rank_changes` as `[delta_1W, delta_2W, delta_4W]` per ticker.
+
+---
+
+## Configuration (`ScreeningSettings`)
 
 | Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| `stock_selection_top_n` | `20` | Maximum stocks to pass to warrant stage |
-| `stock_selection_min_adx` | `20` | Minimum ADX to consider a trend meaningful |
-| `stock_selection_lookback_swing` | `20` | Bars to look back for swing high/low detection |
-| `stock_selection_allow_starting_trends` | `True` | Include `STARTING` status alongside `ESTABLISHED` |
-
-## Notes
-
-- All filter and scoring decisions are recorded in `rationale` for auditability
-- Scoring weights are defined in configuration, not hardcoded
-- The downstream `WarrantSelectionAgent` works **only** on the `selected` list from this stage — it does not re-examine the full universe
+|-----------|---------|-------------|
+| `top_n` | `20` | Maximum tickers to select |
+| `min_market_cap_eur` | `500_000_000` | Hard cap filter |
+| `min_adx` | `20` | Minimum ADX threshold for policy |
+| `lookback_regression` | `60` | Bars for primary TQ computation |
+| `lookback_regression_short` | `20` | Bars for TQ-20 computation |
+| `supertrend_period` | `10` | SuperTrend ATR period |
+| `supertrend_multiplier` | `3.0` | SuperTrend multiplier |
+| `tsi_fast` | `13` | TSI fast EMA period |
+| `tsi_slow` | `25` | TSI slow EMA period |
+| `policy_supertrend` | `True` | Enable SuperTrend policy |
+| `policy_ema20_rising` | `True` | Enable EMA20 rising policy |
+| `policy_adx` | `True` | Enable ADX rising policy |
+| `policy_price_above_ema50` | `True` | Enable price-above-EMA50 policy |

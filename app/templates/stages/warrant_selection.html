@@ -71,51 +71,85 @@
         <span class="text-muted small">
           <strong class="text-body">{{ r.selected | length }}</strong> warrants selected
           {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} underlyings skipped</span>{% endif %}.
+          <span class="ms-2 text-muted">Click a row to see top-3 alternatives.</span>
         </span>
       </div>
-      <div class="flex-grow-1 overflow-auto" style="min-height:0">
-        <table class="table table-sm table-hover bg-white rounded shadow-sm">
-          <thead class="table-light">
-            <tr>
-              <th>Underlying</th>
-              <th>WKN</th>
-              <th>ISIN</th>
-              <th class="text-end">Strike</th>
-              <th>Maturity</th>
-              <th class="text-end">Spread</th>
-              <th class="text-end">Leverage</th>
-              <th class="text-end">Delta</th>
-              <th class="text-end">Bid</th>
-              <th class="text-end">Ask</th>
-              <th class="text-end">Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for w in r.selected | sort(attribute='score', reverse=True) %}
-            <tr>
-              <td>
-                <code>{{ w.underlying.symbol }}</code>
-                {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}
-              </td>
-              <td><code>{{ w.warrant_wkn or "—" }}</code></td>
-              <td class="small text-muted">{{ w.warrant_isin or "—" }}</td>
-              <td class="text-end small">{{ "%.2f" | format(w.strike) if w.strike is not none else "—" }}</td>
-              <td class="small">{{ w.maturity_date or "—" }}</td>
-              <td class="text-end small">{{ "%.1f%%" | format(w.spread_pct) if w.spread_pct is not none else "—" }}</td>
-              <td class="text-end small">{{ "%.1f×" | format(w.leverage) if w.leverage is not none else "—" }}</td>
-              <td class="text-end small">{{ "%.2f" | format(w.delta) if w.delta is not none else "—" }}</td>
-              <td class="text-end small">{{ "%.3f" | format(w.bid) if w.bid is not none else "—" }}</td>
-              <td class="text-end small">{{ "%.3f" | format(w.ask) if w.ask is not none else "—" }}</td>
-              <td class="text-end fw-semibold">{{ "%.2f" | format(w.score) }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% if r.skipped %}
-        <div class="alert alert-warning small mt-2">
-          No suitable call warrant found for: {{ r.skipped | join(", ") }}
+      {# Build screening rank order from the stored screening result #}
+      {% set scr = run.stages.screening.result if run.stages and run.stages.screening and run.stages.screening.result else none %}
+      {% set scr_sel_syms = scr.selected | map(attribute='symbol') | list if scr else [] %}
+      {% set scr_scores = scr.scores if scr else {} %}
+      {% set scr_ordered = scr_scores.items() | selectattr('0', 'in', scr_sel_syms) | sort(attribute='1', reverse=True) | map(attribute='0') | list %}
+
+      <div class="d-flex flex-grow-1 gap-3 overflow-hidden" style="min-height:0">
+        {# Left: main warrant table #}
+        <div class="overflow-auto flex-shrink-0" style="min-width:0;flex-basis:55%">
+          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>#</th>
+                <th>Underlying</th>
+                <th class="text-end">Analyzed</th>
+                <th>WKN</th>
+                <th>ISIN</th>
+                <th class="text-end">Strike</th>
+                <th>Maturity</th>
+                <th class="text-end">Spread</th>
+                <th class="text-end">Lev</th>
+                <th class="text-end">Delta</th>
+                <th class="text-end">Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set rank = namespace(n=0) %}
+              {% for sym in scr_ordered %}
+              {% for w in r.selected if w.underlying.symbol == sym %}
+              {% set rank.n = rank.n + 1 %}
+              {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
+              {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
+              <tr style="cursor:pointer"
+                  data-top3='{{ top3_list | tojson }}'
+                  data-analyzed="{{ analyzed }}"
+                  onclick="loadWarrantDetailPanel('{{ run.run_id }}', '{{ sym }}', this)">
+                <td class="text-muted small">{{ rank.n }}</td>
+                <td>
+                  <code>{{ w.underlying.symbol }}</code>
+                  {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}
+                </td>
+                <td class="text-end text-muted small">{{ analyzed }}</td>
+                <td><code>{{ w.warrant_wkn or "—" }}</code></td>
+                <td class="small text-muted">{{ w.warrant_isin or "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(w.strike) if w.strike is not none else "—" }}</td>
+                <td class="small">{{ w.maturity_date or "—" }}</td>
+                <td class="text-end small">{{ "%.1f%%" | format(w.spread_pct) if w.spread_pct is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.1f×" | format(w.leverage) if w.leverage is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(w.delta) if w.delta is not none else "—" }}</td>
+                <td class="text-end fw-semibold">{{ "%.2f" | format(w.score) }}</td>
+              </tr>
+              {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if r.skipped %}
+          <div class="alert alert-warning small mt-2">
+            No suitable call warrant found for: {{ r.skipped | join(", ") }}
+          </div>
+          {% endif %}
         </div>
-        {% endif %}
+
+        {# Right: detail + chart panels #}
+        <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-width:0">
+          {# Top-3 detail panel #}
+          <div id="warrant-detail-panel"
+               class="flex-shrink-0 overflow-auto rounded border p-2 mb-2"
+               style="min-height:120px;max-height:42%">
+            <p class="text-muted small text-center mt-2">Select an underlying to see top-3 warrants.</p>
+          </div>
+          {# Chart panel #}
+          <div id="warrant-chart-panel"
+               class="flex-grow-1 overflow-hidden rounded border p-2"
+               style="min-height:0;min-height:260px">
+          </div>
+        </div>
       </div>
     {% else %}
       <div class="alert alert-warning flex-shrink-0">Result data unavailable — use Restart to re-run this stage.</div>

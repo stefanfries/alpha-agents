@@ -40,7 +40,7 @@ class PortfolioProposal(AgentOutput):
 ## Sizing methods
 
 | Method | Description |
-|--------|-------------|
+| ------ | ----------- |
 | `equal` | Equal weight across all selected warrants |
 | `score_weighted` | Weight proportional to `WarrantScore` |
 | `trend_weighted` | Weight proportional to underlying stock trend score |
@@ -48,7 +48,7 @@ class PortfolioProposal(AgentOutput):
 ## Configuration (via `config.py`)
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| --------- | ------- | ----------- |
 | `portfolio_capital_eur` | required | Total capital to deploy |
 | `portfolio_sizing_method` | `"equal"` | `"equal"`, `"score_weighted"`, or `"trend_weighted"` |
 | `portfolio_max_position_weight` | `0.10` | Maximum single-position weight (10%) |
