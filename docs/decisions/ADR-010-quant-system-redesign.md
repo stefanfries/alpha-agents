@@ -172,13 +172,23 @@ finance_db_name: str = "finance"
 
 ## Implementation phases
 
-| Phase | Scope | Verify |
+| Phase | Scope | Status |
 | ----- | ----- | ------ |
-| 1 | **Rename** — `pipeline_runs` → `executions`, all `run_id`/`run`/`/runs` in Python + templates | App starts, existing docs still readable via new collection name |
-| 2 | **Data models + DB layer** — `app/models/quant_system.py`, `app/db.py` additions | `uv run pytest` passes |
-| 3 | **Quant System CRUD** — `app/routes/quant_systems.py`, creation wizard (name → depot picker → config), new templates | Can create/edit/delete a QS in browser |
-| 4 | **Wire executions to QuantSystem** — `app/routes/executions.py`, execution starts from QS config | Full pipeline run completes end-to-end under new URLs |
-| 5 | **Depot read integration** — Portfolio agent reads real/virtual depot positions at execution start; virtual depot updated on Execution approval | Portfolio agent uses depot positions correctly |
+| 1 | **Rename** — `pipeline_runs` → `executions`, all `run_id`/`run`/`/runs` in Python + templates | ✅ Complete |
+| 2 | **Data models + DB layer** — `app/models/quant_system.py`, `app/db.py` additions | ✅ Complete |
+| 3 | **Quant System CRUD** — `app/routes/quant_systems.py`, creation wizard (name → depot picker → config), new templates | ✅ Complete |
+| 4 | **Wire executions to QuantSystem** — `app/routes/executions.py`, execution starts from QS config | ✅ Complete |
+| 5 | **Depot read integration** — Portfolio agent reads real/virtual depot positions at execution start; virtual depot updated on Execution approval | ✅ Complete |
+
+### Enhancement: Depot capital auto-calculation (2026-06-07)
+
+Added `GET /quant-systems/depot-capital/{depot_id}` — a lightweight read-only endpoint that calculates the available capital for a real depot at form-load time:
+
+1. Fetches the latest `finance.depot_snapshots` document for the depot → sums all position `current_value` fields
+2. Joins to `finance.account_balances` via `account_name` (the shared key between the two collections) → reads latest `balance`
+3. Returns `{"capital_eur": positions_total + cash_balance}`
+
+The QS creation (`new.html`) and edit (`edit.html`) forms call this endpoint via `fetch()` whenever a real depot is selected and pre-fill the Capital field with the result. The value remains editable. A "(auto-calculated from depot)" hint is shown next to the field. Virtual depot selections clear the hint; the user enters capital manually.
 
 ---
 

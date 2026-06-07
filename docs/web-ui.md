@@ -2,7 +2,12 @@
 
 ## Purpose
 
-The web UI is the human-in-the-loop (HITL) interface for pipeline runs. It lets the user start a run, inspect each stage's output, and decide to approve (advance to the next stage) or restart from any earlier stage with optionally adjusted parameters. It is implemented as FastAPI + Jinja2 + HTMX (see ADR-008).
+The web UI is the human-in-the-loop (HITL) interface for the Alpha Agents investment pipeline. It covers two areas:
+
+1. **Quant System management** — create, configure, edit, and delete named investment strategies, each associated with a depot.
+2. **Execution management** — start a pipeline run for a Quant System, inspect each stage's output, and decide to approve (advance) or restart from any earlier stage.
+
+It is implemented as FastAPI + Jinja2 + HTMX + Bootstrap 5 (see ADR-008, ADR-010).
 
 ---
 
@@ -10,9 +15,40 @@ The web UI is the human-in-the-loop (HITL) interface for pipeline runs. It lets 
 
 Every page shares a base template with:
 
-- **Top navbar**: app name, link to run list, current run ID (if on a run page)
-- **Left sidebar**: pipeline progress indicator showing all 7 stages with status badges (pending / running / awaiting review / approved / error). Clicking a completed stage navigates to its review page.
-- **Main content area**: stage-specific review panel
+- **Top navbar**: app name, link to Quant Systems list, current execution ID (if on an execution page)
+- **Left sidebar** (execution pages): pipeline progress indicator showing all 7 stages with status badges (pending / running / awaiting review / approved / error). Clicking a completed stage navigates to its review page.
+- **Main content area**: page-specific content
+
+---
+
+## Quant System management
+
+### QS List — `GET /quant-systems`
+
+Lists all Quant Systems in reverse creation order with name, depot, indices, capital, and status badge.
+
+### New QS — `GET /quant-systems/new` / `POST /quant-systems`
+
+Wizard form with the following fields (in order):
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| Name | Text | User-defined strategy name |
+| Indices | Multi-checkbox | DAX, MDAX, SDAX, TecDAX, EuroStoxx50, NASDAQ100, SP500, FTSE100 |
+| Depot | Select | Real Comdirect depots (from `finance.depot_snapshots`) or virtual paper-trading depots |
+| Capital (EUR) | Number | `min=10000`, `step=1`; **auto-populated** when a real depot is selected (see below) |
+
+**Depot capital auto-calculation**: selecting a real depot triggers `GET /quant-systems/depot-capital/{depot_id}` via JavaScript `fetch()`. The endpoint returns `{"capital_eur": <total>}` where total = sum of position `current_value` fields from the latest `finance.depot_snapshots` + latest `balance` from `finance.account_balances` (joined via `account_name`). The result is populated into the capital input with a "(auto-calculated from depot)" hint; the value remains editable.
+
+A virtual depot can be created inline via HTMX without leaving the form.
+
+### Edit QS — `GET /quant-systems/{qs_id}/edit` / `POST /quant-systems/{qs_id}`
+
+Same fields as the New form plus a **Status** select (`draft`, `active`, `paused`, `archived`). The depot capital auto-fetch also applies here when changing the depot selection.
+
+### Delete QS — `POST /quant-systems/{qs_id}/delete`
+
+Confirmation dialog via `onsubmit`. Redirects to the list on success.
 
 ---
 

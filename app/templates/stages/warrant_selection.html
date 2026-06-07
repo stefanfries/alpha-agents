@@ -75,7 +75,7 @@
         </span>
       </div>
       {# Build screening rank order from the stored screening result #}
-      {% set scr = run.stages.screening.result if run.stages and run.stages.screening and run.stages.screening.result else none %}
+      {% set scr = execution.stages.screening.result if execution.stages and execution.stages.screening and execution.stages.screening.result else none %}
       {% set scr_sel_syms = scr.selected | map(attribute='symbol') | list if scr else [] %}
       {% set scr_scores = scr.scores if scr else {} %}
       {% set scr_ordered = scr_scores.items() | selectattr('0', 'in', scr_sel_syms) | sort(attribute='1', reverse=True) | map(attribute='0') | list %}

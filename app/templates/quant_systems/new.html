@@ -32,17 +32,10 @@
       </div>
     </div>
 
-    <!-- Capital -->
-    <div class="mb-3">
-      <label class="form-label fw-semibold">Capital (EUR)</label>
-      <input type="number" class="form-control" name="capital_eur" value="100000" step="1000" min="1000">
-    </div>
-
     <!-- Depot picker -->
     <div class="mb-3">
       <label class="form-label fw-semibold">Depot</label>
-      <select class="form-select" name="depot_id" id="depot-select" required
-              onchange="document.getElementById('depot_type').value = this.selectedOptions[0].dataset.type || ''">
+      <select class="form-select" name="depot_id" id="depot-select" required>
         <option value="" disabled selected>— choose a depot —</option>
         {% if real_depots %}
         <optgroup label="Real depots (Comdirect)">
@@ -62,6 +55,15 @@
         {% endif %}
       </select>
       <input type="hidden" name="depot_type" id="depot_type" value="">
+    </div>
+
+    <!-- Capital -->
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Capital (EUR)</label>
+      <div class="d-flex gap-2 align-items-center">
+        <input type="number" class="form-control" name="capital_eur" id="capital-input" value="100000" step="1" min="10000">
+        <span id="capital-hint" class="text-muted small" style="white-space:nowrap"></span>
+      </div>
     </div>
 
     <!-- Inline: create virtual depot -->
@@ -108,10 +110,32 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+  async function fetchDepotCapital(depotId) {
+    var hint = document.getElementById('capital-hint');
+    hint.textContent = 'Loading…';
+    try {
+      var resp = await fetch('/quant-systems/depot-capital/' + encodeURIComponent(depotId));
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      var data = await resp.json();
+      var val = Math.round(data.capital_eur);
+      document.getElementById('capital-input').value = val;
+      hint.textContent = '(auto-calculated from depot)';
+    } catch (e) {
+      hint.textContent = '(could not fetch)';
+    }
+  }
+
   // Sync depot_type hidden field when select changes
   document.getElementById('depot-select').addEventListener('change', function() {
     var opt = this.selectedOptions[0];
-    document.getElementById('depot_type').value = opt.dataset.type || '';
+    var type = opt.dataset.type || '';
+    document.getElementById('depot_type').value = type;
+    var hint = document.getElementById('capital-hint');
+    if (type === 'real') {
+      fetchDepotCapital(opt.value);
+    } else {
+      hint.textContent = '';
+    }
   });
   // After HTMX swaps in new virtual depot options, set depot_type
   document.body.addEventListener('htmx:afterSwap', function(evt) {
@@ -123,6 +147,7 @@
         var last = opts[opts.length - 1];
         last.selected = true;
         document.getElementById('depot_type').value = 'virtual';
+        document.getElementById('capital-hint').textContent = '';
       }
     }
   });

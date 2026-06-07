@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.db import (
@@ -88,6 +89,59 @@ async def create_quant_system(
         "updated_at": now,
     })
     return RedirectResponse(url=f"/quant-systems/{qs_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Depot capital helper — must be before /{qs_id} wildcard
+# ---------------------------------------------------------------------------
+
+@router.get("/depot-capital/{depot_id}", response_class=JSONResponse)
+async def depot_capital(depot_id: str) -> JSONResponse:
+    """Return estimated capital (EUR) for a real depot.
+
+    Capital = sum(position.current_value) + latest cash account balance.
+    depot_snapshots is keyed by depot_id; account_balances is keyed by account_name
+    (same account_name appears in both collections).
+    """
+    db = finance_db()
+
+    # Latest depot snapshot — gives us positions and the account_name for the cash lookup
+    snapshot = await db["depot_snapshots"].find_one(
+        {"depot_id": depot_id},
+        {"positions": 1, "account_name": 1, "_id": 0},
+        sort=[("recorded_at", -1)],
+    )
+
+    positions_value = Decimal("0")
+    account_name: str | None = None
+    if snapshot:
+        account_name = snapshot.get("account_name")
+        for pos in snapshot.get("positions", []):
+            cv = pos.get("current_value") or {}
+            raw = cv.get("value") if isinstance(cv, dict) else cv
+            try:
+                positions_value += Decimal(str(raw)) if raw else Decimal("0")
+            except InvalidOperation:
+                pass
+
+    # Latest cash balance — joined via account_name
+    cash_value = Decimal("0")
+    if account_name:
+        bal_doc = await db["account_balances"].find_one(
+            {"account_name": account_name},
+            {"balance": 1, "_id": 0},
+            sort=[("recorded_at", -1)],
+        )
+        if bal_doc:
+            bal = bal_doc.get("balance") or {}
+            raw = bal.get("value") if isinstance(bal, dict) else bal
+            try:
+                cash_value = Decimal(str(raw)) if raw else Decimal("0")
+            except InvalidOperation:
+                pass
+
+    total = float(positions_value + cash_value)
+    return JSONResponse({"capital_eur": total})
 
 
 # ---------------------------------------------------------------------------

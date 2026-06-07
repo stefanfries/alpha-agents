@@ -56,8 +56,8 @@ Each agent has a single responsibility, consumes a typed Pydantic input contract
 | HTTP | httpx (async) |
 | Market data | yfinance |
 | Warrant & instrument data | FinHub API (Azure Container App) |
-| Persistence | MongoDB Atlas (`pipeline_runs`, `instrument_master`) |
-| Current holdings | MongoDB Atlas (synced by `comdirect_api` sibling project) |
+| Persistence | MongoDB Atlas (`quant_systems`, `executions`, `virtual_depots`, `instrument_master`) |
+| Real depot data | MongoDB Atlas `finance` DB (read-only; synced by `comdirect_api` sibling project) |
 | Technical indicators | TA-Lib (numpy-backed) |
 | Interactive charts | Lightweight Charts v4.1.3 (TradingView) |
 | Package manager | uv |
@@ -86,11 +86,11 @@ uv run ruff check .
 Key `.env` settings:
 
 ```dotenv
-MONGODB_URI=mongodb+srv://...
-PORTFOLIO_CAPITAL_EUR=10000.0
-EXECUTION_DRY_RUN=true      # set to false only when ready to trade
-HITL_MODE=true
+DB__MONGODB_URI=mongodb+srv://...
+EXECUTION__DRY_RUN=true      # set to false only when ready to trade
 ```
+
+Capital is configured per Quant System (not globally). When a real Comdirect depot is selected, the creation/edit form auto-calculates the available capital (cash balance + current market value of all positions) from the live `finance` database.
 
 ## Documentation
 
@@ -106,7 +106,8 @@ HITL_MODE=true
 | [docs/agents/portfolio.md](docs/agents/portfolio.md) | Portfolio Construction Agent spec |
 | [docs/agents/risk.md](docs/agents/risk.md) | Risk Agent spec |
 | [docs/agents/execution.md](docs/agents/execution.md) | Trade Execution Agent spec |
-| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-009) |
+| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-010) |
+| [docs/decisions/ADR-010-quant-system-redesign.md](docs/decisions/ADR-010-quant-system-redesign.md) | Quant System + Execution model; depot capital auto-calculation |
 
 ## Safety defaults
 
