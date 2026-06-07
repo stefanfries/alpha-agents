@@ -1,8 +1,8 @@
 <p class="text-muted small px-2 mb-1 fw-semibold">PIPELINE</p>
 {% for s in stages %}
-  {% set s_status = run.stages.get(s, {}).get("status", "pending") %}
+  {% set s_status = execution.stages.get(s, {}).get("status", "pending") %}
   {% set is_current = (s == current_stage) %}
-  <a href="/runs/{{ run.run_id }}/stages/{{ s }}"
+  <a href="/executions/{{ execution.execution_id }}/stages/{{ s }}"
      class="stage-link {% if is_current %}active{% endif %}">
     {% if s_status == "approved" %}
       <span class="badge bg-success">✓</span>

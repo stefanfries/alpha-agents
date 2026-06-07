@@ -1,5 +1,5 @@
 <div class="d-flex align-items-center gap-3 mt-4 pt-3 border-top">
-  <form method="post" action="/runs/{{ run.run_id }}/stages/{{ current_stage }}/approve">
+  <form method="post" action="/executions/{{ execution.execution_id }}/stages/{{ current_stage }}/approve">
     {% block approve_extras %}{% endblock %}
     <button type="submit" class="btn btn-success">
       {% block approve_label %}Approve →{% endblock %}
@@ -8,10 +8,10 @@
 
   <div class="ms-auto d-flex align-items-center gap-2">
     <label class="text-muted small mb-0">Restart from:</label>
-    <form method="post" action="/runs/{{ run.run_id }}/stages/{{ current_stage }}/restart"
+    <form method="post" action="/executions/{{ execution.execution_id }}/stages/{{ current_stage }}/restart"
           id="restart-form">
       <select name="from_stage" class="form-select form-select-sm"
-              hx-get="/runs/{{ run.run_id }}/charts/config-override"
+              hx-get="/executions/{{ execution.execution_id }}/charts/config-override"
               hx-target="#config-override-panel"
               hx-trigger="change"
               style="width: auto;">

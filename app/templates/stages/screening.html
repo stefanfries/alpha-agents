@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Screening — {{ run.run_id }}{% endblock %}
+{% block title %}Screening — {{ execution.execution_id }}{% endblock %}
 
 {% block content %}
 <h5 class="mb-1">Screening</h5>
@@ -87,7 +87,7 @@
               {% endfor %}
               <tr class="{% if selected %}table-success{% elif score <= 0 %}text-muted{% endif %}"
                   style="cursor:pointer"
-                  onclick="loadScreeningChart('{{ run.run_id }}', '{{ sym }}', this)">
+                  onclick="loadScreeningChart('{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td class="small">{% if selected %}{{ sel_rank.n }}{% else %}—{% endif %}</td>
                 <td><code>{{ sym }}</code></td>
                 <td class="small" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ meta.name }}</td>
@@ -119,7 +119,7 @@
       <div class="row align-items-end g-3">
         {# Policy checkboxes — submits as a restart from screening #}
         <div class="col-auto">
-          <form method="post" action="/runs/{{ run.run_id }}/stages/screening/restart"
+          <form method="post" action="/executions/{{ execution.execution_id }}/stages/screening/restart"
                 class="d-flex align-items-center gap-3 flex-wrap">
             <input type="hidden" name="from_stage" value="screening">
             <input type="hidden" name="policies_submitted" value="1">

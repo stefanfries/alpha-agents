@@ -12,7 +12,7 @@ from app.agents.screening import SecuritySelectionAgent
 from app.agents.universe import UniverseAgent, UniverseInput
 from app.agents.warrant_selection import WarrantSelectionAgent
 from app.config import settings
-from app.db import runs_collection, update_stage_progress
+from app.db import executions_collection, update_stage_progress
 from app.models.market import Ticker
 from app.models.signals import (
     ExecutionPlan,
@@ -31,16 +31,16 @@ logger = logging.getLogger(__name__)
 
 
 class Pipeline:
-    async def run_stage(self, run_id: str, stage: str) -> None:
-        coll = runs_collection()
-        run = await coll.find_one({"run_id": run_id})
+    async def run_stage(self, execution_id: str, stage: str) -> None:
+        coll = executions_collection()
+        run = await coll.find_one({"execution_id": execution_id})
         if run is None:
-            logger.error("run_stage: run %r not found", run_id)
+            logger.error("run_stage: execution %r not found", execution_id)
             return
         try:
             result = await self._dispatch(stage, run)
             await coll.update_one(
-                {"run_id": run_id},
+                {"execution_id": execution_id},
                 {"$set": {
                     f"stages.{stage}.result": result.model_dump(mode="json"),
                     f"stages.{stage}.status": "awaiting_review",
@@ -49,9 +49,9 @@ class Pipeline:
             )
         except Exception:
             tb = traceback.format_exc()
-            logger.exception("Stage %r failed for run %s", stage, run_id)
+            logger.exception("Stage %r failed for execution %s", stage, execution_id)
             await coll.update_one(
-                {"run_id": run_id},
+                {"execution_id": execution_id},
                 {"$set": {
                     f"stages.{stage}.status": "error",
                     f"stages.{stage}.error": tb,
@@ -79,19 +79,19 @@ class Pipeline:
                 raise ValueError(f"Unknown stage: {stage!r}")
 
     async def _run_universe(self, run: dict) -> UniverseResult:
-        run_id = run["run_id"]
+        execution_id = run["execution_id"]
         async with FinHubTool() as finhub, WikipediaIndexTool() as wikipedia:
-            await self._wake_finhub(run_id, finhub, "universe")
+            await self._wake_finhub(execution_id, finhub, "universe")
             return await UniverseAgent(finhub=finhub, wikipedia=wikipedia).run(
                 UniverseInput(indices=run.get("indices", []))
             )
 
-    async def _wake_finhub(self, run_id: str, finhub: FinHubTool, stage: str) -> None:
+    async def _wake_finhub(self, execution_id: str, finhub: FinHubTool, stage: str) -> None:
         """Ping FinHub; if cold-start takes >3 s, surface a progress message."""
         ping_task = asyncio.create_task(finhub.ping())
         await asyncio.sleep(3)
         if not ping_task.done():
-            await update_stage_progress(run_id, stage, {
+            await update_stage_progress(execution_id, stage, {
                 "message": "Waking up FinHub API (may take 30–60 s)…",
                 "waking_up_since": datetime.now(timezone.utc).isoformat(),
             })
@@ -99,10 +99,10 @@ class Pipeline:
                 await ping_task
             except Exception:
                 pass
-            await update_stage_progress(run_id, stage, None)
+            await update_stage_progress(execution_id, stage, None)
 
     async def _run_research(self, run: dict) -> ResearchResult:
-        run_id = run["run_id"]
+        execution_id = run["execution_id"]
         universe = UniverseResult.model_validate(run["stages"]["universe"]["result"])
         total = len(universe.tickers)
         _last: list[int] = [0]
@@ -111,7 +111,7 @@ class Pipeline:
         async def on_progress(step: str, done: int, total: int) -> None:
             if step == "ohlcv" or done - _last[0] >= batch or done == total:
                 _last[0] = done
-                await update_stage_progress(run_id, "research", {"step": step, "done": done, "total": total})
+                await update_stage_progress(execution_id, "research", {"step": step, "done": done, "total": total})
 
         async with YFinanceTool() as yf:
             result = await ResearchAgent(tool=yf, on_progress=on_progress).run(
@@ -135,7 +135,7 @@ class Pipeline:
         ).run(research_with_bars)
 
     async def _run_warrant_selection(self, run: dict) -> WarrantSelectionResult:
-        run_id = run["run_id"]
+        execution_id = run["execution_id"]
         screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
         research = ResearchResult.model_validate(run["stages"]["research"]["result"])
         prices: dict[str, float] = {
@@ -145,10 +145,10 @@ class Pipeline:
         }
 
         async def on_progress(done: int, total: int, active: list[str]) -> None:
-            await update_stage_progress(run_id, "warrant_selection", {"done": done, "total": total, "active": active})
+            await update_stage_progress(execution_id, "warrant_selection", {"done": done, "total": total, "active": active})
 
         async with FinHubTool() as finhub:
-            await self._wake_finhub(run_id, finhub, "warrant_selection")
+            await self._wake_finhub(execution_id, finhub, "warrant_selection")
             return await WarrantSelectionAgent(
                 finhub=finhub,
                 prices=prices,

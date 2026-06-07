@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Runs — Alpha Agents{% endblock %}
+{% block title %}Executions — Alpha Agents{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h4 class="mb-0">Pipeline Runs</h4>
-  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#new-run-form">
-    + New Run
+  <h4 class="mb-0">Executions</h4>
+  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#new-execution-form">
+    + New Execution
   </button>
 </div>
 
-<div class="collapse mb-4" id="new-run-form">
+<div class="collapse mb-4" id="new-execution-form">
   <div class="card card-body">
-    <form method="post" action="/runs">
+    <form method="post" action="/executions">
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label fw-semibold">Indices</label>
@@ -44,35 +44,35 @@
   </div>
 </div>
 
-{% if runs %}
+{% if executions %}
 <table class="table table-hover rounded shadow-sm">
   <thead>
     <tr>
-      <th>Run ID</th>
+      <th>Execution ID</th>
       <th>Indices</th>
       <th>Status</th>
       <th>Current Stage</th>
     </tr>
   </thead>
   <tbody>
-    {% for run in runs %}
-    <tr style="cursor:pointer" onclick="location.href='/runs/{{ run.run_id }}'">
-      <td><code>{{ run.run_id }}</code></td>
-      <td>{{ run.indices | join(", ") }}</td>
+    {% for execution in executions %}
+    <tr style="cursor:pointer" onclick="location.href='/executions/{{ execution.execution_id }}'">
+      <td><code>{{ execution.execution_id }}</code></td>
+      <td>{{ execution.indices | join(", ") }}</td>
       <td>
-        {% if run.status == "complete" %}<span class="badge bg-success">complete</span>
-        {% elif run.status == "error" %}<span class="badge bg-danger">error</span>
-        {% elif run.status == "running" %}<span class="badge bg-primary">running</span>
+        {% if execution.status == "complete" %}<span class="badge bg-success">complete</span>
+        {% elif execution.status == "error" %}<span class="badge bg-danger">error</span>
+        {% elif execution.status == "running" %}<span class="badge bg-primary">running</span>
         {% else %}<span class="badge bg-warning text-dark">awaiting review</span>{% endif %}
       </td>
-      <td>{{ run.current_stage }}</td>
+      <td>{{ execution.current_stage }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% else %}
 <div class="text-center text-muted py-5">
-  <p>No runs yet. Start one above.</p>
+  <p>No executions yet. Start one above.</p>
 </div>
 {% endif %}
 

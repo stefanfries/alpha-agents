@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Warrant Selection — {{ run.run_id }}{% endblock %}
+{% block title %}Warrant Selection — {{ execution.execution_id }}{% endblock %}
 
 {% block content %}
 <h5 class="mb-1">Warrant Selection</h5>
@@ -109,7 +109,7 @@
               <tr style="cursor:pointer"
                   data-top3='{{ top3_list | tojson }}'
                   data-analyzed="{{ analyzed }}"
-                  onclick="loadWarrantDetailPanel('{{ run.run_id }}', '{{ sym }}', this)">
+                  onclick="loadWarrantDetailPanel('{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td class="text-muted small">{{ rank.n }}</td>
                 <td>
                   <code>{{ w.underlying.symbol }}</code>

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.db import runs_collection
+from app.db import executions_collection
 from app.indicators import supertrend_bands
 from app.models.market import Ticker
 from app.orchestrator import get_pipeline
@@ -66,7 +66,7 @@ def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3
         result.append({"time": dates[i], "value": val, "bull": trend == 1})
     return result
 
-router = APIRouter(prefix="/runs")
+router = APIRouter(prefix="/executions")
 templates = Jinja2Templates(directory="app/templates")
 
 STAGES = ["universe", "research", "screening", "warrant_selection", "portfolio", "risk", "execution"]
@@ -93,11 +93,11 @@ def _fire(coro) -> None:
     task.add_done_callback(_bg_tasks.discard)
 
 
-def _stage_ctx(run: dict, current_stage: str) -> dict:
-    s_data = run.get("stages", {}).get(current_stage, {})
+def _stage_ctx(execution: dict, current_stage: str) -> dict:
+    s_data = execution.get("stages", {}).get(current_stage, {})
     return {
-        "run": run,
-        "run_id": run["run_id"],
+        "execution": execution,
+        "execution_id": execution["execution_id"],
         "current_stage": current_stage,
         "stages": STAGES,
         "stage_labels": STAGE_LABELS,
@@ -113,9 +113,9 @@ def _stage_ctx(run: dict, current_stage: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.get("", response_class=HTMLResponse)
-async def list_runs(request: Request) -> HTMLResponse:
-    runs = await runs_collection().find({}, _NO_ID).sort("created_at", -1).to_list()
-    return templates.TemplateResponse(request, "runs/list.html", {"runs": runs})
+async def list_executions(request: Request) -> HTMLResponse:
+    executions = await executions_collection().find({}, _NO_ID).sort("created_at", -1).to_list()
+    return templates.TemplateResponse(request, "executions/list.html", {"executions": executions})
 
 
 # ---------------------------------------------------------------------------
@@ -123,14 +123,14 @@ async def list_runs(request: Request) -> HTMLResponse:
 # ---------------------------------------------------------------------------
 
 @router.post("", response_class=RedirectResponse)
-async def create_run(
+async def create_execution(
     indices: Annotated[list[str], Form()],
     capital_eur: Annotated[float, Form()],
     hitl_mode: Annotated[bool, Form()] = True,
 ) -> RedirectResponse:
-    run_id = uuid.uuid4().hex[:6]
-    run_doc = {
-        "run_id": run_id,
+    execution_id = uuid.uuid4().hex[:6]
+    execution_doc = {
+        "execution_id": execution_id,
         "created_at": datetime.now(timezone.utc),
         "indices": indices,
         "capital_eur": capital_eur,
@@ -140,33 +140,33 @@ async def create_run(
         "status": "running",
         "stages": {s: {"status": "pending"} for s in STAGES},
     }
-    run_doc["stages"][STAGES[0]]["status"] = "running"
-    await runs_collection().insert_one(run_doc)
-    _fire(get_pipeline().run_stage(run_id, STAGES[0]))
-    return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
+    execution_doc["stages"][STAGES[0]]["status"] = "running"
+    await executions_collection().insert_one(execution_doc)
+    _fire(get_pipeline().run_stage(execution_id, STAGES[0]))
+    return RedirectResponse(url=f"/executions/{execution_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
 # Run detail — redirect to current stage
 # ---------------------------------------------------------------------------
 
-@router.get("/{run_id}", response_class=RedirectResponse)
-async def run_detail(run_id: str) -> RedirectResponse:
-    run = await runs_collection().find_one({"run_id": run_id}, _NO_ID)
-    stage = run["current_stage"] if run else STAGES[0]
-    return RedirectResponse(url=f"/runs/{run_id}/stages/{stage}")
+@router.get("/{execution_id}", response_class=RedirectResponse)
+async def execution_detail(execution_id: str) -> RedirectResponse:
+    execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
+    stage = execution["current_stage"] if execution else STAGES[0]
+    return RedirectResponse(url=f"/executions/{execution_id}/stages/{stage}")
 
 
 # ---------------------------------------------------------------------------
 # Stage review pages
 # ---------------------------------------------------------------------------
 
-@router.get("/{run_id}/stages/{stage}", response_class=HTMLResponse)
-async def stage_review(request: Request, run_id: str, stage: str) -> HTMLResponse:
-    run = await runs_collection().find_one({"run_id": run_id}, _NO_ID)
-    if run is None:
-        run = {"run_id": run_id, "current_stage": stage, "stages": {}, "indices": []}
-    ctx = _stage_ctx(run, stage)
+@router.get("/{execution_id}/stages/{stage}", response_class=HTMLResponse)
+async def stage_review(request: Request, execution_id: str, stage: str) -> HTMLResponse:
+    execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
+    if execution is None:
+        execution = {"execution_id": execution_id, "current_stage": stage, "stages": {}, "indices": []}
+    ctx = _stage_ctx(execution, stage)
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 
 
@@ -174,17 +174,17 @@ async def stage_review(request: Request, run_id: str, stage: str) -> HTMLRespons
 # Approve — triggers the next stage
 # ---------------------------------------------------------------------------
 
-@router.post("/{run_id}/stages/{stage}/approve", response_class=RedirectResponse)
+@router.post("/{execution_id}/stages/{stage}/approve", response_class=RedirectResponse)
 async def approve_stage(
-    run_id: str,
+    execution_id: str,
     stage: str,
     kept: Annotated[list[str] | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(stage)
     if idx + 1 < len(STAGES):
         next_stage = STAGES[idx + 1]
-        await runs_collection().update_one(
-            {"run_id": run_id},
+        await executions_collection().update_one(
+            {"execution_id": execution_id},
             {"$set": {
                 f"stages.{stage}.status": "approved",
                 "current_stage": next_stage,
@@ -192,23 +192,23 @@ async def approve_stage(
                 "status": "running",
             }},
         )
-        _fire(get_pipeline().run_stage(run_id, next_stage))
-        return RedirectResponse(url=f"/runs/{run_id}/stages/{next_stage}", status_code=303)
+        _fire(get_pipeline().run_stage(execution_id, next_stage))
+        return RedirectResponse(url=f"/executions/{execution_id}/stages/{next_stage}", status_code=303)
 
-    await runs_collection().update_one(
-        {"run_id": run_id},
+    await executions_collection().update_one(
+        {"execution_id": execution_id},
         {"$set": {f"stages.{stage}.status": "approved", "status": "complete"}},
     )
-    return RedirectResponse(url=f"/runs/{run_id}/stages/{stage}", status_code=303)
+    return RedirectResponse(url=f"/executions/{execution_id}/stages/{stage}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
 # Restart — re-runs from the chosen stage
 # ---------------------------------------------------------------------------
 
-@router.post("/{run_id}/stages/{stage}/restart", response_class=RedirectResponse)
+@router.post("/{execution_id}/stages/{stage}/restart", response_class=RedirectResponse)
 async def restart_stage(
-    run_id: str,
+    execution_id: str,
     stage: str,
     from_stage: Annotated[str, Form()],
     policies_submitted: Annotated[str | None, Form()] = None,
@@ -236,17 +236,17 @@ async def restart_stage(
             "policy_price_above_ema50": policy_price_above_ema50 is not None,
         }
 
-    await runs_collection().update_one({"run_id": run_id}, {"$set": updates})
-    _fire(get_pipeline().run_stage(run_id, from_stage))
-    return RedirectResponse(url=f"/runs/{run_id}/stages/{from_stage}", status_code=303)
+    await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})
+    _fire(get_pipeline().run_stage(execution_id, from_stage))
+    return RedirectResponse(url=f"/executions/{execution_id}/stages/{from_stage}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
 # Chart fragments (stubs)
 # ---------------------------------------------------------------------------
 
-@router.get("/{run_id}/charts/screening/{ticker}", response_class=HTMLResponse)
-async def chart_screening(run_id: str, ticker: str) -> HTMLResponse:
+@router.get("/{execution_id}/charts/screening/{ticker}", response_class=HTMLResponse)
+async def chart_screening(execution_id: str, ticker: str) -> HTMLResponse:
     try:
         t = Ticker(symbol=ticker)
         async with YFinanceTool() as yf:
@@ -303,8 +303,8 @@ async def chart_screening(run_id: str, ticker: str) -> HTMLResponse:
     )
 
 
-@router.get("/{run_id}/charts/warrant_selection/{ticker}", response_class=HTMLResponse)
-async def chart_warrant(run_id: str, ticker: str, strike: float | None = None, maturity: str | None = None) -> HTMLResponse:
+@router.get("/{execution_id}/charts/warrant_selection/{ticker}", response_class=HTMLResponse)
+async def chart_warrant(execution_id: str, ticker: str, strike: float | None = None, maturity: str | None = None) -> HTMLResponse:
     try:
         t = Ticker(symbol=ticker)
         async with YFinanceTool() as yf:
@@ -355,11 +355,11 @@ async def chart_warrant(run_id: str, ticker: str, strike: float | None = None, m
     )
 
 
-@router.get("/{run_id}/charts/portfolio", response_class=HTMLResponse)
-async def chart_portfolio(run_id: str) -> HTMLResponse:
+@router.get("/{execution_id}/charts/portfolio", response_class=HTMLResponse)
+async def chart_portfolio(execution_id: str) -> HTMLResponse:
     return HTMLResponse("<p class='text-muted'>Portfolio weight chart — not yet implemented</p>")
 
 
-@router.get("/{run_id}/charts/risk", response_class=HTMLResponse)
-async def chart_risk(run_id: str) -> HTMLResponse:
+@router.get("/{execution_id}/charts/risk", response_class=HTMLResponse)
+async def chart_risk(execution_id: str) -> HTMLResponse:
     return HTMLResponse("<p class='text-muted'>Risk weight chart — not yet implemented</p>")

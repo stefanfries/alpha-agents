@@ -175,12 +175,12 @@
       });
     }
 
-    function loadScreeningChart(runId, ticker, row) {
+    function loadScreeningChart(executionId, ticker, row) {
       row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
       row.classList.add('table-active');
       var panel = document.getElementById('chart-panel');
       panel.innerHTML = '<p class="text-muted text-center small mt-4">Loading…</p>';
-      fetch('/runs/' + runId + '/charts/screening/' + ticker)
+      fetch('/executions/' + executionId + '/charts/screening/' + ticker)
         .then(function(r) { return r.text(); })
         .then(function(html) {
           panel.innerHTML = html;
@@ -191,7 +191,7 @@
         });
     }
 
-    function loadWarrantDetailPanel(runId, sym, row) {
+    function loadWarrantDetailPanel(executionId, sym, row) {
       row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
       row.classList.add('table-active');
       var panel = document.getElementById('warrant-detail-panel');
@@ -215,7 +215,7 @@
         var lev = w.leverage != null ? w.leverage.toFixed(1) + '×' : '—';
         var delta = w.delta != null ? w.delta.toFixed(2) : '—';
         var score = w.score != null ? w.score.toFixed(2) : '—';
-        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + runId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',this)">';
+        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + executionId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',this)">';
         html += '<td><code>' + (w.warrant_wkn || '—') + '</code></td>';
         html += '<td class="small text-muted">' + (w.warrant_isin || '—') + '</td>';
         html += '<td class="text-end small">' + strike + '</td>';
@@ -230,7 +230,7 @@
       panel.innerHTML = html;
     }
 
-    function loadWarrantChart(runId, ticker, strike, maturity, row) {
+    function loadWarrantChart(executionId, ticker, strike, maturity, row) {
       if (row) {
         row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
         row.classList.add('table-active');
@@ -238,7 +238,7 @@
       var chartPanel = document.getElementById('warrant-chart-panel');
       if (!chartPanel) return;
       chartPanel.innerHTML = '<p class="text-muted text-center small mt-2">Loading…</p>';
-      var url = '/runs/' + runId + '/charts/warrant_selection/' + ticker;
+      var url = '/executions/' + executionId + '/charts/warrant_selection/' + ticker;
       var params = [];
       if (strike != null) params.push('strike=' + strike);
       if (maturity) params.push('maturity=' + maturity);
@@ -262,13 +262,13 @@
 <body>
 
 <nav class="navbar navbar-dark bg-dark px-3">
-  <a class="navbar-brand fw-bold" href="/runs">⚡ Alpha Agents</a>
-  {% if run_id is defined %}
-  <span class="text-secondary small">Run <code class="text-light">{{ run_id }}</code></span>
+  <a class="navbar-brand fw-bold" href="/executions">⚡ Alpha Agents</a>
+  {% if execution_id is defined %}
+  <span class="text-secondary small">Execution <code class="text-light">{{ execution_id }}</code></span>
   {% endif %}
   <div class="d-flex align-items-center gap-2">
     <button id="theme-toggle" class="btn btn-sm btn-outline-secondary" title="Toggle light/dark mode" onclick="toggleTheme()">☀</button>
-    <a href="/runs" class="btn btn-sm btn-outline-light">All Runs</a>
+    <a href="/executions" class="btn btn-sm btn-outline-light">All Executions</a>
   </div>
 </nav>
 <script>

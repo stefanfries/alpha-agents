@@ -57,21 +57,21 @@ def _setup_logging() -> None:
     })
 
 
-def runs_collection() -> AsyncIOMotorCollection:
+def executions_collection() -> AsyncIOMotorCollection:
     if _client is None:
         raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
-    return _client[settings.db.db_name]["pipeline_runs"]
+    return _client[settings.db.db_name]["executions"]
 
 
-async def update_stage_progress(run_id: str, stage: str, progress: dict | None) -> None:
-    await runs_collection().update_one(
-        {"run_id": run_id},
+async def update_stage_progress(execution_id: str, stage: str, progress: dict | None) -> None:
+    await executions_collection().update_one(
+        {"execution_id": execution_id},
         {"$set": {f"stages.{stage}.progress": progress}},
     )
 
 
 async def _ensure_indexes() -> None:
-    coll = runs_collection()
-    await coll.create_index("run_id", unique=True)
+    coll = executions_collection()
+    await coll.create_index("execution_id", unique=True)
     await coll.create_index("created_at")
     await coll.create_index("status")
