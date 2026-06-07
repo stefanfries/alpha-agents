@@ -62,8 +62,11 @@ class WarrantSelectionResult(BaseModel):
 
 
 class PortfolioProposal(BaseModel):
-    positions: list[Position]
+    positions: list[Position]           # all target positions
     target_weights: dict[str, float]
+    new_positions: list[Position] = []       # not currently held → buy
+    existing_positions: list[Position] = []  # already held → no trade needed
+    close_positions: list[Position] = []     # held but not on shortlist → sell
 
 
 class RiskAssessment(BaseModel):

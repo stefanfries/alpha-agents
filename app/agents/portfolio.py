@@ -14,20 +14,28 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
     def __init__(
         self,
         capital_eur: float,
+        current_holdings: list[Position] | None = None,
         sizing_method: str = "equal",
         max_position_weight: float = 0.10,
     ) -> None:
         self._capital = capital_eur
+        self._holdings = {p.ticker.isin for p in (current_holdings or []) if p.ticker.isin}
+        self._holding_positions = {p.ticker.isin: p for p in (current_holdings or []) if p.ticker.isin}
         self._sizing_method = sizing_method
         self._max_weight = max_position_weight
 
     async def run(self, input: SelectionResult) -> PortfolioProposal:
         if not input.selected:
-            return PortfolioProposal(positions=[], target_weights={})
+            close = list(self._holding_positions.values())
+            return PortfolioProposal(positions=[], target_weights={}, close_positions=close)
 
         weights = self._compute_weights(input)
         positions: list[Position] = []
         target_weights: dict[str, float] = {}
+        new_positions: list[Position] = []
+        existing_positions: list[Position] = []
+
+        selected_isins = {t.isin for t in input.selected if t.isin}
 
         for ticker in input.selected:
             symbol = ticker.symbol
@@ -42,9 +50,27 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
             )
             positions.append(position)
             target_weights[symbol] = weight
+            if ticker.isin in self._holdings:
+                existing_positions.append(position)
+            else:
+                new_positions.append(position)
 
-        logger.info("Portfolio constructed: %d positions", len(positions))
-        return PortfolioProposal(positions=positions, target_weights=target_weights)
+        close_positions = [
+            p for isin, p in self._holding_positions.items()
+            if isin not in selected_isins
+        ]
+
+        logger.info(
+            "Portfolio constructed: %d positions (%d new, %d existing, %d to close)",
+            len(positions), len(new_positions), len(existing_positions), len(close_positions),
+        )
+        return PortfolioProposal(
+            positions=positions,
+            target_weights=target_weights,
+            new_positions=new_positions,
+            existing_positions=existing_positions,
+            close_positions=close_positions,
+        )
 
     def _compute_weights(self, input: SelectionResult) -> dict[str, float]:
         n = len(input.selected)

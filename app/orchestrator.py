@@ -2,6 +2,7 @@ import asyncio
 import logging
 import traceback
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from app.agents.execution import TradeExecutionAgent
@@ -12,8 +13,14 @@ from app.agents.screening import SecuritySelectionAgent
 from app.agents.universe import UniverseAgent, UniverseInput
 from app.agents.warrant_selection import WarrantSelectionAgent
 from app.config import settings
-from app.db import executions_collection, update_stage_progress
-from app.models.market import Ticker
+from app.db import (
+    executions_collection,
+    finance_db,
+    quant_systems_collection,
+    update_stage_progress,
+    virtual_depot_snapshots_collection,
+)
+from app.models.market import Position, Ticker
 from app.models.signals import (
     ExecutionPlan,
     PortfolioProposal,
@@ -170,11 +177,55 @@ class Pipeline:
         ]
         scores = {(w.warrant_wkn or w.warrant_isin): w.score for w in warrant_result.selected}
         selection = SelectionResult(selected=warrant_tickers, scores=scores, rationale={})
+
+        current_holdings = await self._fetch_holdings(run)
         return await PortfolioConstructionAgent(
-            capital_eur=settings.portfolio.capital_eur,
+            capital_eur=run.get("capital_eur", settings.portfolio.capital_eur),
+            current_holdings=current_holdings,
             sizing_method=settings.portfolio.sizing_method,
             max_position_weight=settings.portfolio.max_position_weight,
         ).run(selection)
+
+    async def _fetch_holdings(self, run: dict) -> list[Position]:
+        """Return current holdings from the depot linked to the QuantSystem."""
+        qs_id = run.get("quant_system_id")
+        if not qs_id:
+            return []
+        qs = await quant_systems_collection().find_one({"quant_system_id": qs_id})
+        if not qs or not qs.get("depot_id"):
+            return []
+
+        depot_id = qs["depot_id"]
+        depot_type = qs.get("depot_type", "virtual")
+
+        if depot_type == "real":
+            snapshot = await finance_db()["depot_snapshots"].find_one(
+                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
+            )
+        else:
+            snapshot = await virtual_depot_snapshots_collection().find_one(
+                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
+            )
+
+        if not snapshot:
+            return []
+
+        holdings: list[Position] = []
+        for pos in snapshot.get("positions", []):
+            isin = pos.get("isin")
+            wkn = pos.get("wkn") or isin or ""
+            qty_raw = pos.get("quantity", {})
+            qty = qty_raw.get("value") if isinstance(qty_raw, dict) else qty_raw
+            try:
+                quantity = Decimal(str(qty)) if qty else Decimal("0")
+            except Exception:
+                quantity = Decimal("0")
+            holdings.append(Position(
+                ticker=Ticker(symbol=wkn, isin=isin, name=pos.get("instrument_name")),
+                quantity=quantity,
+                avg_cost=Decimal("0"),
+            ))
+        return holdings
 
     async def _run_risk(self, run: dict) -> RiskAssessment:
         proposal = PortfolioProposal.model_validate(run["stages"]["portfolio"]["result"])
