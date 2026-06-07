@@ -66,10 +66,7 @@ def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3
         result.append({"time": dates[i], "value": val, "bull": trend == 1})
     return result
 
-# Primary router — all execution routes live under /quant-systems/{qs_id}/executions
 router = APIRouter(prefix="/quant-systems")
-# Convenience global list at /executions (no qs scoping)
-global_router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 STAGES = ["universe", "research", "screening", "warrant_selection", "portfolio", "risk", "execution"]
@@ -101,7 +98,7 @@ def _stage_ctx(execution: dict, current_stage: str) -> dict:
     return {
         "execution": execution,
         "execution_id": execution["execution_id"],
-        "qs_id": execution.get("quant_system_id", ""),
+        "qs_id": execution["quant_system_id"],
         "current_stage": current_stage,
         "stages": STAGES,
         "stage_labels": STAGE_LABELS,
@@ -110,16 +107,6 @@ def _stage_ctx(execution: dict, current_stage: str) -> dict:
         "stage_error": s_data.get("error"),
         "stage_progress": s_data.get("progress"),
     }
-
-
-# ---------------------------------------------------------------------------
-# Global execution list (no QS scope)
-# ---------------------------------------------------------------------------
-
-@global_router.get("/executions", response_class=HTMLResponse)
-async def list_all_executions(request: Request) -> HTMLResponse:
-    executions = await executions_collection().find({}, _NO_ID).sort("created_at", -1).to_list()
-    return templates.TemplateResponse(request, "executions/list.html", {"executions": executions, "qs": None})
 
 
 # ---------------------------------------------------------------------------
@@ -182,8 +169,6 @@ async def execution_detail(qs_id: str, execution_id: str) -> RedirectResponse:
 @router.get("/{qs_id}/executions/{execution_id}/stages/{stage}", response_class=HTMLResponse)
 async def stage_review(request: Request, qs_id: str, execution_id: str, stage: str) -> HTMLResponse:
     execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
-    if execution is None:
-        execution = {"execution_id": execution_id, "quant_system_id": qs_id, "current_stage": stage, "stages": {}, "indices": []}
     ctx = _stage_ctx(execution, stage)
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 

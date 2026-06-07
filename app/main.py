@@ -6,7 +6,6 @@ from app.routes import pipeline, quant_systems
 
 app = FastAPI(title="Alpha Agents", lifespan=lifespan)
 app.include_router(pipeline.router)         # /quant-systems/{qs_id}/executions/...
-app.include_router(pipeline.global_router)  # /executions (global list)
 app.include_router(quant_systems.router)    # /quant-systems CRUD + /quant-systems/depots/virtual
 
 
