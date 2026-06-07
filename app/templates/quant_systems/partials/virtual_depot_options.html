@@ -1,0 +1,6 @@
+{% for vd in virtual_depots %}
+<option value="{{ vd.depot_id }}"
+  {% if selected_depot_id is defined and vd.depot_id == selected_depot_id %}selected{% endif %}>
+  {{ vd.name }} (virtual)
+</option>
+{% endfor %}

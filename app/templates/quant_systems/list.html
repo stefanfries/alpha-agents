@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Quant Systems — Alpha Agents{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">Quant Systems</h4>
+    <a href="/quant-systems/new" class="btn btn-primary">+ New Quant System</a>
+  </div>
+
+  {% if qs_list %}
+  <div class="row g-3">
+    {% for qs in qs_list %}
+    <div class="col-md-6 col-xl-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <h6 class="card-title mb-0">{{ qs.name }}</h6>
+            {% if qs.status == "active" %}<span class="badge bg-success">active</span>
+            {% elif qs.status == "paused" %}<span class="badge bg-warning text-dark">paused</span>
+            {% elif qs.status == "archived" %}<span class="badge bg-secondary">archived</span>
+            {% else %}<span class="badge bg-light text-dark border">draft</span>{% endif %}
+          </div>
+          <p class="small text-muted mb-1">
+            <span class="fw-semibold">Indices:</span> {{ qs.indices | join(", ") }}
+          </p>
+          <p class="small text-muted mb-1">
+            <span class="fw-semibold">Capital:</span> {{ "%.0f"|format(qs.capital_eur) }} EUR
+          </p>
+          <p class="small text-muted mb-0">
+            <span class="fw-semibold">Depot:</span>
+            <span class="badge {% if qs.depot_type == 'real' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+              {{ qs.depot_type }}
+            </span>
+            <code class="ms-1">{{ qs.depot_id }}</code>
+          </p>
+        </div>
+        <div class="card-footer d-flex gap-2">
+          <a href="/quant-systems/{{ qs.quant_system_id }}/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
+          <a href="/executions?qs={{ qs.quant_system_id }}" class="btn btn-sm btn-outline-primary">Executions</a>
+          <form method="post" action="/quant-systems/{{ qs.quant_system_id }}/delete" class="ms-auto"
+                onsubmit="return confirm('Delete {{ qs.name }}?')">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center text-muted py-5">
+    <p>No Quant Systems yet. <a href="/quant-systems/new">Create one</a>.</p>
+  </div>
+  {% endif %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}

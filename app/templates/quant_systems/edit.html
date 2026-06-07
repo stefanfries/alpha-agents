@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ qs.name }} — Alpha Agents{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:680px">
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/quant-systems">Quant Systems</a></li>
+      <li class="breadcrumb-item active">{{ qs.name }}</li>
+    </ol>
+  </nav>
+  <h4 class="mb-4">Edit Quant System</h4>
+
+  <form method="post" action="/quant-systems/{{ qs.quant_system_id }}">
+    <!-- Name -->
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Name</label>
+      <input type="text" class="form-control" name="name" required value="{{ qs.name }}">
+    </div>
+
+    <!-- Indices -->
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Indices</label>
+      <div class="d-flex flex-wrap gap-3">
+        {% for idx in indices %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="indices" value="{{ idx }}"
+                 id="idx-{{ idx }}" {% if idx in qs.indices %}checked{% endif %}>
+          <label class="form-check-label" for="idx-{{ idx }}">{{ idx }}</label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Capital -->
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Capital (EUR)</label>
+      <input type="number" class="form-control" name="capital_eur" value="{{ qs.capital_eur }}" step="1000" min="1000">
+    </div>
+
+    <!-- Depot picker -->
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Depot</label>
+      <select class="form-select" name="depot_id" id="depot-select" required>
+        <option value="" disabled>— choose a depot —</option>
+        {% if real_depots %}
+        <optgroup label="Real depots (Comdirect)">
+          {% for d in real_depots %}
+          <option value="{{ d.depot_id }}" data-type="real"
+                  {% if d.depot_id == qs.depot_id %}selected{% endif %}>
+            {{ d.display_name or d.account_name }} ({{ d.depot_id }})
+          </option>
+          {% endfor %}
+        </optgroup>
+        {% endif %}
+        {% if virtual_depots %}
+        <optgroup label="Virtual depots (paper trading)" id="virtual-optgroup">
+          {% for vd in virtual_depots %}
+          <option value="{{ vd.depot_id }}" data-type="virtual"
+                  {% if vd.depot_id == qs.depot_id %}selected{% endif %}>
+            {{ vd.name }} (virtual)
+          </option>
+          {% endfor %}
+        </optgroup>
+        {% else %}
+        <optgroup label="Virtual depots (paper trading)" id="virtual-optgroup"></optgroup>
+        {% endif %}
+      </select>
+      <input type="hidden" name="depot_type" id="depot_type" value="{{ qs.depot_type }}">
+    </div>
+
+    <!-- Status -->
+    <div class="mb-4">
+      <label class="form-label fw-semibold">Status</label>
+      <select class="form-select" name="status">
+        {% for s in ["draft", "active", "paused", "archived"] %}
+        <option value="{{ s }}" {% if s == qs.status %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-success">Save Changes</button>
+      <a href="/quant-systems" class="btn btn-outline-secondary">Cancel</a>
+      <form method="post" action="/quant-systems/{{ qs.quant_system_id }}/delete" class="ms-auto"
+            onsubmit="return confirm('Delete {{ qs.name }}? This cannot be undone.')">
+        <button type="submit" class="btn btn-outline-danger">Delete</button>
+      </form>
+    </div>
+  </form>
+
+  <hr class="my-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 text-muted">Executions</h6>
+    <a href="/executions?qs={{ qs.quant_system_id }}" class="btn btn-sm btn-outline-primary">View all executions</a>
+  </div>
+  <p class="small text-muted mt-2">ID: <code>{{ qs.quant_system_id }}</code></p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  document.getElementById('depot-select').addEventListener('change', function() {
+    var opt = this.selectedOptions[0];
+    document.getElementById('depot_type').value = opt.dataset.type || '';
+  });
+</script>
+{% endblock %}
