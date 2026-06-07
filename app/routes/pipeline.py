@@ -10,7 +10,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.db import executions_collection
+from app.db import executions_collection, quant_systems_collection
 from app.indicators import supertrend_bands
 from app.models.market import Ticker
 from app.orchestrator import get_pipeline
@@ -66,7 +66,10 @@ def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3
         result.append({"time": dates[i], "value": val, "bull": trend == 1})
     return result
 
-router = APIRouter(prefix="/executions")
+# Primary router — all execution routes live under /quant-systems/{qs_id}/executions
+router = APIRouter(prefix="/quant-systems")
+# Convenience global list at /executions (no qs scoping)
+global_router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 STAGES = ["universe", "research", "screening", "warrant_selection", "portfolio", "risk", "execution"]
@@ -98,6 +101,7 @@ def _stage_ctx(execution: dict, current_stage: str) -> dict:
     return {
         "execution": execution,
         "execution_id": execution["execution_id"],
+        "qs_id": execution.get("quant_system_id", ""),
         "current_stage": current_stage,
         "stages": STAGES,
         "stage_labels": STAGE_LABELS,
@@ -109,33 +113,47 @@ def _stage_ctx(execution: dict, current_stage: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Run list
+# Global execution list (no QS scope)
 # ---------------------------------------------------------------------------
 
-@router.get("", response_class=HTMLResponse)
-async def list_executions(request: Request) -> HTMLResponse:
+@global_router.get("/executions", response_class=HTMLResponse)
+async def list_all_executions(request: Request) -> HTMLResponse:
     executions = await executions_collection().find({}, _NO_ID).sort("created_at", -1).to_list()
-    return templates.TemplateResponse(request, "executions/list.html", {"executions": executions})
+    return templates.TemplateResponse(request, "executions/list.html", {"executions": executions, "qs": None})
 
 
 # ---------------------------------------------------------------------------
-# New run — triggers universe immediately
+# Per-QS execution list
 # ---------------------------------------------------------------------------
 
-@router.post("", response_class=RedirectResponse)
+@router.get("/{qs_id}/executions", response_class=HTMLResponse)
+async def list_qs_executions(request: Request, qs_id: str) -> HTMLResponse:
+    qs = await quant_systems_collection().find_one({"quant_system_id": qs_id}, _NO_ID)
+    executions = await executions_collection().find({"quant_system_id": qs_id}, _NO_ID).sort("created_at", -1).to_list()
+    return templates.TemplateResponse(request, "executions/list.html", {"executions": executions, "qs": qs})
+
+
+# ---------------------------------------------------------------------------
+# New execution — reads config from parent QuantSystem
+# ---------------------------------------------------------------------------
+
+@router.post("/{qs_id}/executions", response_class=RedirectResponse)
 async def create_execution(
-    indices: Annotated[list[str], Form()],
-    capital_eur: Annotated[float, Form()],
+    qs_id: str,
     hitl_mode: Annotated[bool, Form()] = True,
 ) -> RedirectResponse:
+    qs = await quant_systems_collection().find_one({"quant_system_id": qs_id}, _NO_ID)
+    if qs is None:
+        return RedirectResponse(url=f"/quant-systems/{qs_id}/executions", status_code=303)
     execution_id = uuid.uuid4().hex[:6]
     execution_doc = {
         "execution_id": execution_id,
+        "quant_system_id": qs_id,
         "created_at": datetime.now(timezone.utc),
-        "indices": indices,
-        "capital_eur": capital_eur,
+        "indices": qs["indices"],
+        "capital_eur": qs["capital_eur"],
         "hitl_mode": hitl_mode,
-        "config_overrides": {},
+        "config_overrides": dict(qs.get("config_overrides", {})),
         "current_stage": STAGES[0],
         "status": "running",
         "stages": {s: {"status": "pending"} for s in STAGES},
@@ -143,29 +161,29 @@ async def create_execution(
     execution_doc["stages"][STAGES[0]]["status"] = "running"
     await executions_collection().insert_one(execution_doc)
     _fire(get_pipeline().run_stage(execution_id, STAGES[0]))
-    return RedirectResponse(url=f"/executions/{execution_id}", status_code=303)
+    return RedirectResponse(url=f"/quant-systems/{qs_id}/executions/{execution_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
-# Run detail — redirect to current stage
+# Execution detail — redirect to current stage
 # ---------------------------------------------------------------------------
 
-@router.get("/{execution_id}", response_class=RedirectResponse)
-async def execution_detail(execution_id: str) -> RedirectResponse:
+@router.get("/{qs_id}/executions/{execution_id}", response_class=RedirectResponse)
+async def execution_detail(qs_id: str, execution_id: str) -> RedirectResponse:
     execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
     stage = execution["current_stage"] if execution else STAGES[0]
-    return RedirectResponse(url=f"/executions/{execution_id}/stages/{stage}")
+    return RedirectResponse(url=f"/quant-systems/{qs_id}/executions/{execution_id}/stages/{stage}")
 
 
 # ---------------------------------------------------------------------------
 # Stage review pages
 # ---------------------------------------------------------------------------
 
-@router.get("/{execution_id}/stages/{stage}", response_class=HTMLResponse)
-async def stage_review(request: Request, execution_id: str, stage: str) -> HTMLResponse:
+@router.get("/{qs_id}/executions/{execution_id}/stages/{stage}", response_class=HTMLResponse)
+async def stage_review(request: Request, qs_id: str, execution_id: str, stage: str) -> HTMLResponse:
     execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
     if execution is None:
-        execution = {"execution_id": execution_id, "current_stage": stage, "stages": {}, "indices": []}
+        execution = {"execution_id": execution_id, "quant_system_id": qs_id, "current_stage": stage, "stages": {}, "indices": []}
     ctx = _stage_ctx(execution, stage)
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 
@@ -174,8 +192,9 @@ async def stage_review(request: Request, execution_id: str, stage: str) -> HTMLR
 # Approve — triggers the next stage
 # ---------------------------------------------------------------------------
 
-@router.post("/{execution_id}/stages/{stage}/approve", response_class=RedirectResponse)
+@router.post("/{qs_id}/executions/{execution_id}/stages/{stage}/approve", response_class=RedirectResponse)
 async def approve_stage(
+    qs_id: str,
     execution_id: str,
     stage: str,
     kept: Annotated[list[str] | None, Form()] = None,
@@ -193,21 +212,22 @@ async def approve_stage(
             }},
         )
         _fire(get_pipeline().run_stage(execution_id, next_stage))
-        return RedirectResponse(url=f"/executions/{execution_id}/stages/{next_stage}", status_code=303)
+        return RedirectResponse(url=f"/quant-systems/{qs_id}/executions/{execution_id}/stages/{next_stage}", status_code=303)
 
     await executions_collection().update_one(
         {"execution_id": execution_id},
         {"$set": {f"stages.{stage}.status": "approved", "status": "complete"}},
     )
-    return RedirectResponse(url=f"/executions/{execution_id}/stages/{stage}", status_code=303)
+    return RedirectResponse(url=f"/quant-systems/{qs_id}/executions/{execution_id}/stages/{stage}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
 # Restart — re-runs from the chosen stage
 # ---------------------------------------------------------------------------
 
-@router.post("/{execution_id}/stages/{stage}/restart", response_class=RedirectResponse)
+@router.post("/{qs_id}/executions/{execution_id}/stages/{stage}/restart", response_class=RedirectResponse)
 async def restart_stage(
+    qs_id: str,
     execution_id: str,
     stage: str,
     from_stage: Annotated[str, Form()],
@@ -227,7 +247,6 @@ async def restart_stage(
     updates[f"stages.{from_stage}.status"] = "running"
     updates["status"] = "running"
 
-    # Persist policy overrides when submitted from the screening policy panel
     if policies_submitted is not None:
         updates["config_overrides.screening"] = {
             "policy_supertrend": policy_supertrend is not None,
@@ -238,15 +257,15 @@ async def restart_stage(
 
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})
     _fire(get_pipeline().run_stage(execution_id, from_stage))
-    return RedirectResponse(url=f"/executions/{execution_id}/stages/{from_stage}", status_code=303)
+    return RedirectResponse(url=f"/quant-systems/{qs_id}/executions/{execution_id}/stages/{from_stage}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
 # Chart fragments (stubs)
 # ---------------------------------------------------------------------------
 
-@router.get("/{execution_id}/charts/screening/{ticker}", response_class=HTMLResponse)
-async def chart_screening(execution_id: str, ticker: str) -> HTMLResponse:
+@router.get("/{qs_id}/executions/{execution_id}/charts/screening/{ticker}", response_class=HTMLResponse)
+async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLResponse:
     try:
         t = Ticker(symbol=ticker)
         async with YFinanceTool() as yf:
@@ -303,8 +322,8 @@ async def chart_screening(execution_id: str, ticker: str) -> HTMLResponse:
     )
 
 
-@router.get("/{execution_id}/charts/warrant_selection/{ticker}", response_class=HTMLResponse)
-async def chart_warrant(execution_id: str, ticker: str, strike: float | None = None, maturity: str | None = None) -> HTMLResponse:
+@router.get("/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}", response_class=HTMLResponse)
+async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: float | None = None, maturity: str | None = None) -> HTMLResponse:
     try:
         t = Ticker(symbol=ticker)
         async with YFinanceTool() as yf:
@@ -355,11 +374,11 @@ async def chart_warrant(execution_id: str, ticker: str, strike: float | None = N
     )
 
 
-@router.get("/{execution_id}/charts/portfolio", response_class=HTMLResponse)
-async def chart_portfolio(execution_id: str) -> HTMLResponse:
+@router.get("/{qs_id}/executions/{execution_id}/charts/portfolio", response_class=HTMLResponse)
+async def chart_portfolio(qs_id: str, execution_id: str) -> HTMLResponse:
     return HTMLResponse("<p class='text-muted'>Portfolio weight chart — not yet implemented</p>")
 
 
-@router.get("/{execution_id}/charts/risk", response_class=HTMLResponse)
-async def chart_risk(execution_id: str) -> HTMLResponse:
+@router.get("/{qs_id}/executions/{execution_id}/charts/risk", response_class=HTMLResponse)
+async def chart_risk(qs_id: str, execution_id: str) -> HTMLResponse:
     return HTMLResponse("<p class='text-muted'>Risk weight chart — not yet implemented</p>")

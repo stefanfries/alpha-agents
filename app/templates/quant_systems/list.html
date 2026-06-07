@@ -37,7 +37,7 @@
         </div>
         <div class="card-footer d-flex gap-2">
           <a href="/quant-systems/{{ qs.quant_system_id }}/edit" class="btn btn-sm btn-outline-secondary">Edit</a>
-          <a href="/executions?qs={{ qs.quant_system_id }}" class="btn btn-sm btn-outline-primary">Executions</a>
+          <a href="/quant-systems/{{ qs.quant_system_id }}/executions" class="btn btn-sm btn-outline-primary">Executions</a>
           <form method="post" action="/quant-systems/{{ qs.quant_system_id }}/delete" class="ms-auto"
                 onsubmit="return confirm('Delete {{ qs.name }}?')">
             <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>

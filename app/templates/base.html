@@ -175,12 +175,12 @@
       });
     }
 
-    function loadScreeningChart(executionId, ticker, row) {
+    function loadScreeningChart(qsId, executionId, ticker, row) {
       row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
       row.classList.add('table-active');
       var panel = document.getElementById('chart-panel');
       panel.innerHTML = '<p class="text-muted text-center small mt-4">Loading…</p>';
-      fetch('/executions/' + executionId + '/charts/screening/' + ticker)
+      fetch('/quant-systems/' + qsId + '/executions/' + executionId + '/charts/screening/' + ticker)
         .then(function(r) { return r.text(); })
         .then(function(html) {
           panel.innerHTML = html;
@@ -191,7 +191,7 @@
         });
     }
 
-    function loadWarrantDetailPanel(executionId, sym, row) {
+    function loadWarrantDetailPanel(qsId, executionId, sym, row) {
       row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
       row.classList.add('table-active');
       var panel = document.getElementById('warrant-detail-panel');
@@ -215,7 +215,7 @@
         var lev = w.leverage != null ? w.leverage.toFixed(1) + '×' : '—';
         var delta = w.delta != null ? w.delta.toFixed(2) : '—';
         var score = w.score != null ? w.score.toFixed(2) : '—';
-        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + executionId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',this)">';
+        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + qsId + '\',\'' + executionId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',this)">';
         html += '<td><code>' + (w.warrant_wkn || '—') + '</code></td>';
         html += '<td class="small text-muted">' + (w.warrant_isin || '—') + '</td>';
         html += '<td class="text-end small">' + strike + '</td>';
@@ -230,7 +230,7 @@
       panel.innerHTML = html;
     }
 
-    function loadWarrantChart(executionId, ticker, strike, maturity, row) {
+    function loadWarrantChart(qsId, executionId, ticker, strike, maturity, row) {
       if (row) {
         row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
         row.classList.add('table-active');
@@ -238,7 +238,7 @@
       var chartPanel = document.getElementById('warrant-chart-panel');
       if (!chartPanel) return;
       chartPanel.innerHTML = '<p class="text-muted text-center small mt-2">Loading…</p>';
-      var url = '/executions/' + executionId + '/charts/warrant_selection/' + ticker;
+      var url = '/quant-systems/' + qsId + '/executions/' + executionId + '/charts/warrant_selection/' + ticker;
       var params = [];
       if (strike != null) params.push('strike=' + strike);
       if (maturity) params.push('maturity=' + maturity);

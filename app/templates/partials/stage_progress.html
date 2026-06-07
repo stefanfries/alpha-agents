@@ -2,7 +2,7 @@
 {% for s in stages %}
   {% set s_status = execution.stages.get(s, {}).get("status", "pending") %}
   {% set is_current = (s == current_stage) %}
-  <a href="/executions/{{ execution.execution_id }}/stages/{{ s }}"
+  <a href="/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}/stages/{{ s }}"
      class="stage-link {% if is_current %}active{% endif %}">
     {% if s_status == "approved" %}
       <span class="badge bg-success">✓</span>

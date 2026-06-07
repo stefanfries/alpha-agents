@@ -109,7 +109,7 @@
               <tr style="cursor:pointer"
                   data-top3='{{ top3_list | tojson }}'
                   data-analyzed="{{ analyzed }}"
-                  onclick="loadWarrantDetailPanel('{{ execution.execution_id }}', '{{ sym }}', this)">
+                  onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td class="text-muted small">{{ rank.n }}</td>
                 <td>
                   <code>{{ w.underlying.symbol }}</code>

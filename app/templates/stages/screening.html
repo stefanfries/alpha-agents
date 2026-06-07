@@ -21,7 +21,7 @@
 {% elif stage_status == "awaiting_review" %}
   {% if stage_result %}
   {% set r = stage_result %}
-  {% set active_policies = run.get("config_overrides", {}).get("screening", {}) %}
+  {% set active_policies = execution.get("config_overrides", {}).get("screening", {}) %}
   {% macro rank_cell(deltas, idx) %}
     {% set delta = deltas[idx] if deltas | length > idx else none %}
     {% if delta is none %}
@@ -87,7 +87,7 @@
               {% endfor %}
               <tr class="{% if selected %}table-success{% elif score <= 0 %}text-muted{% endif %}"
                   style="cursor:pointer"
-                  onclick="loadScreeningChart('{{ execution.execution_id }}', '{{ sym }}', this)">
+                  onclick="loadScreeningChart('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td class="small">{% if selected %}{{ sel_rank.n }}{% else %}—{% endif %}</td>
                 <td><code>{{ sym }}</code></td>
                 <td class="small" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ meta.name }}</td>
@@ -119,12 +119,12 @@
       <div class="row align-items-end g-3">
         {# Policy checkboxes — submits as a restart from screening #}
         <div class="col-auto">
-          <form method="post" action="/executions/{{ execution.execution_id }}/stages/screening/restart"
+          <form method="post" action="/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}/stages/screening/restart"
                 class="d-flex align-items-center gap-3 flex-wrap">
             <input type="hidden" name="from_stage" value="screening">
             <input type="hidden" name="policies_submitted" value="1">
             <span class="text-muted small fw-semibold">Policies:</span>
-            {% set pol_cfg = run.get("config_overrides", {}).get("screening", {}) %}
+            {% set pol_cfg = execution.get("config_overrides", {}).get("screening", {}) %}
             <div class="form-check form-check-inline mb-0">
               <input class="form-check-input" type="checkbox" name="policy_supertrend" id="pol_st"
                      {% if pol_cfg.get("policy_supertrend", true) %}checked{% endif %}>

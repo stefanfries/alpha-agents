@@ -1,80 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Executions — Alpha Agents{% endblock %}
+{% block title %}Executions{% if qs %} — {{ qs.name }}{% endif %} — Alpha Agents{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h4 class="mb-0">Executions</h4>
-  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#new-execution-form">
-    + New Execution
-  </button>
-</div>
-
-<div class="collapse mb-4" id="new-execution-form">
-  <div class="card card-body">
-    <form method="post" action="/executions">
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label fw-semibold">Indices</label>
-          <div class="d-flex flex-column gap-1">
-            {% for idx in ["DAX", "MDAX", "SDAX", "TecDAX", "EuroStoxx50", "NASDAQ100", "SP500", "FTSE100"] %}
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" name="indices" value="{{ idx }}"
-                     id="idx-{{ idx }}" {% if idx == "DAX" %}checked{% endif %}>
-              <label class="form-check-label" for="idx-{{ idx }}">{{ idx }}</label>
-            </div>
-            {% endfor %}
-          </div>
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    {% if qs %}
+    <div>
+      <nav aria-label="breadcrumb" class="mb-1">
+        <ol class="breadcrumb mb-0">
+          <li class="breadcrumb-item"><a href="/quant-systems">Quant Systems</a></li>
+          <li class="breadcrumb-item"><a href="/quant-systems/{{ qs.quant_system_id }}/edit">{{ qs.name }}</a></li>
+          <li class="breadcrumb-item active">Executions</li>
+        </ol>
+      </nav>
+    </div>
+    <form method="post" action="/quant-systems/{{ qs.quant_system_id }}/executions">
+      <div class="d-flex align-items-center gap-2">
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" name="hitl_mode" value="true" id="hitl" checked>
+          <label class="form-check-label small" for="hitl">HITL</label>
         </div>
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Capital (EUR)</label>
-          <input type="number" class="form-control" name="capital_eur" value="10000" step="500" min="1000">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">HITL Mode</label>
-          <div class="form-check form-switch mt-1">
-            <input class="form-check-input" type="checkbox" name="hitl_mode" value="true" checked>
-            <label class="form-check-label">Pause for review</label>
-          </div>
-        </div>
-        <div class="col-md-2 d-flex align-items-end">
-          <button type="submit" class="btn btn-success w-100">Start</button>
-        </div>
+        <button type="submit" class="btn btn-primary">▶ Start Execution</button>
       </div>
     </form>
+    {% else %}
+    <h4 class="mb-0">All Executions</h4>
+    <a href="/quant-systems" class="btn btn-outline-secondary btn-sm">Select a Quant System to start</a>
+    {% endif %}
   </div>
-</div>
 
-{% if executions %}
-<table class="table table-hover rounded shadow-sm">
-  <thead>
-    <tr>
-      <th>Execution ID</th>
-      <th>Indices</th>
-      <th>Status</th>
-      <th>Current Stage</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for execution in executions %}
-    <tr style="cursor:pointer" onclick="location.href='/executions/{{ execution.execution_id }}'">
-      <td><code>{{ execution.execution_id }}</code></td>
-      <td>{{ execution.indices | join(", ") }}</td>
-      <td>
-        {% if execution.status == "complete" %}<span class="badge bg-success">complete</span>
-        {% elif execution.status == "error" %}<span class="badge bg-danger">error</span>
-        {% elif execution.status == "running" %}<span class="badge bg-primary">running</span>
-        {% else %}<span class="badge bg-warning text-dark">awaiting review</span>{% endif %}
-      </td>
-      <td>{{ execution.current_stage }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="text-center text-muted py-5">
-  <p>No executions yet. Start one above.</p>
+  {% if executions %}
+  <table class="table table-hover rounded shadow-sm">
+    <thead>
+      <tr>
+        <th>Execution ID</th>
+        {% if not qs %}<th>Quant System</th>{% endif %}
+        <th>Indices</th>
+        <th>Status</th>
+        <th>Current Stage</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for execution in executions %}
+      {% set qs_id = execution.quant_system_id if execution.quant_system_id else "legacy" %}
+      <tr style="cursor:pointer"
+          onclick="location.href='/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}'">
+        <td><code>{{ execution.execution_id }}</code></td>
+        {% if not qs %}<td><code class="small">{{ qs_id }}</code></td>{% endif %}
+        <td>{{ execution.indices | join(", ") }}</td>
+        <td>
+          {% if execution.status == "complete" %}<span class="badge bg-success">complete</span>
+          {% elif execution.status == "error" %}<span class="badge bg-danger">error</span>
+          {% elif execution.status == "running" %}<span class="badge bg-primary">running</span>
+          {% else %}<span class="badge bg-warning text-dark">awaiting review</span>{% endif %}
+        </td>
+        <td>{{ execution.current_stage }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="text-center text-muted py-5">
+    <p>No executions yet.{% if qs %} Click <strong>Start Execution</strong> above.{% endif %}</p>
+  </div>
+  {% endif %}
 </div>
-{% endif %}
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}
