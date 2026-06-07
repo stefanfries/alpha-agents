@@ -32,7 +32,7 @@ None — order submission to Comdirect requires interactive 2FA authentication p
 ## Configuration (via `config.py`)
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| --------- | ------- | ----------- |
 | `execution_dry_run` | `True` | If True, orders are computed but not submitted |
 | `execution_min_trade_eur` | `100` | Minimum trade size; smaller deltas are skipped |
 | `execution_order_type` | `"limit"` | `"market"` or `"limit"` |

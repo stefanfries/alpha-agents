@@ -70,8 +70,50 @@ async def update_stage_progress(execution_id: str, stage: str, progress: dict | 
     )
 
 
+def quant_systems_collection() -> AsyncIOMotorCollection:
+    if _client is None:
+        raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
+    return _client[settings.db.db_name]["quant_systems"]
+
+
+def virtual_depots_collection() -> AsyncIOMotorCollection:
+    if _client is None:
+        raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
+    return _client[settings.db.db_name]["virtual_depots"]
+
+
+def virtual_depot_snapshots_collection() -> AsyncIOMotorCollection:
+    if _client is None:
+        raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
+    return _client[settings.db.db_name]["virtual_depot_snapshots"]
+
+
+def virtual_depot_transactions_collection() -> AsyncIOMotorCollection:
+    if _client is None:
+        raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
+    return _client[settings.db.db_name]["virtual_depot_transactions"]
+
+
+def finance_db():  # type: ignore[return]
+    """Read-only access to the finance database (written by comdirect_api)."""
+    if _client is None:
+        raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
+    return _client[settings.db.finance_db_name]
+
+
 async def _ensure_indexes() -> None:
-    coll = executions_collection()
-    await coll.create_index("execution_id", unique=True)
-    await coll.create_index("created_at")
-    await coll.create_index("status")
+    await executions_collection().create_index("execution_id", unique=True)
+    await executions_collection().create_index("created_at")
+    await executions_collection().create_index("status")
+    await executions_collection().create_index("quant_system_id")
+
+    await quant_systems_collection().create_index("quant_system_id", unique=True)
+    await quant_systems_collection().create_index("name", unique=True)
+    await quant_systems_collection().create_index("status")
+
+    await virtual_depots_collection().create_index("depot_id", unique=True)
+    await virtual_depots_collection().create_index("name", unique=True)
+
+    await virtual_depot_snapshots_collection().create_index([("depot_id", 1), ("recorded_at", -1)])
+    await virtual_depot_transactions_collection().create_index("transaction_id", unique=True)
+    await virtual_depot_transactions_collection().create_index([("depot_id", 1), ("booking_date", -1)])

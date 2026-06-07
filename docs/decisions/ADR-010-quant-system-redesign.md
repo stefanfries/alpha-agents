@@ -42,7 +42,7 @@ A `QuantSystem` is a durable configuration document. An `Execution` is an immuta
 
 **`quant_systems`** (MongoDB collection, `alpha_agents` database)
 
-```
+```text
 quant_system_id   str          short hex (6 chars), unique
 name              str          user-supplied, unique
 depot_id          str          FK → real depot (finance.depot_snapshots) or virtual_depots
@@ -56,7 +56,7 @@ updated_at        datetime (UTC)
 
 **`executions`** (replaces `pipeline_runs`, `alpha_agents` database)
 
-```
+```text
 execution_id      str          short hex (6 chars), unique
 quant_system_id   str          FK → quant_systems
 created_at        datetime (UTC)
@@ -81,6 +81,7 @@ Each Quant System is associated with exactly one depot at creation time. The dep
 Two depot types are supported:
 
 **Real depots** — read-only cross-database queries against the `finance` database (maintained by the `comdirect_api` sibling project, same Atlas cluster):
+
 - `finance.depot_snapshots` → latest positions (`find_one` sorted by `recorded_at DESC`)
 - `finance.account_balances` → latest cash balance
 
@@ -88,7 +89,7 @@ Two depot types are supported:
 
 **`virtual_depots`** — metadata, rarely mutated
 
-```
+```text
 depot_id          str          short hex, unique
 name              str          user-supplied, unique
 starting_capital  float        EUR, default 100 000
@@ -98,7 +99,7 @@ updated_at        datetime (UTC)
 
 **`virtual_depot_snapshots`** — insert-only; one document per state change
 
-```
+```text
 depot_id          str          FK → virtual_depots
 current_cash      float        EUR after the triggering operation
 positions         list[dict]   [{wkn, isin, instrument_name, quantity,
@@ -109,7 +110,7 @@ triggered_by      str          execution_id that caused this snapshot
 
 **`virtual_depot_transactions`** — insert-only; one document per BUY/SELL
 
-```
+```text
 transaction_id    str          UUID, unique
 depot_id          str          FK → virtual_depots
 execution_id      str          FK → executions
@@ -126,7 +127,7 @@ This mirrors the `depot_snapshots` + `transactions` pattern used by `comdirect_a
 
 ### 4. URL structure
 
-```
+```text
 # Quant System management
 GET    /quant-systems                                             list
 GET    /quant-systems/new                                         creation wizard
@@ -153,7 +154,7 @@ DELETE /depots/virtual/{depot_id}                                delete virtual 
 ### 5. MongoDB database layout
 
 | Database | Collections | Writer |
-|---|---|---|
+| -------- | ----------- | ------ |
 | `alpha_agents` | `quant_systems`, `executions`, `virtual_depots`, `virtual_depot_snapshots`, `virtual_depot_transactions` | alpha-agents |
 | `finance` | `depot_snapshots`, `account_balances`, `transactions` | comdirect_api |
 
@@ -172,7 +173,7 @@ finance_db_name: str = "finance"
 ## Implementation phases
 
 | Phase | Scope | Verify |
-|---|---|---|
+| ----- | ----- | ------ |
 | 1 | **Rename** — `pipeline_runs` → `executions`, all `run_id`/`run`/`/runs` in Python + templates | App starts, existing docs still readable via new collection name |
 | 2 | **Data models + DB layer** — `app/models/quant_system.py`, `app/db.py` additions | `uv run pytest` passes |
 | 3 | **Quant System CRUD** — `app/routes/quant_systems.py`, creation wizard (name → depot picker → config), new templates | Can create/edit/delete a QS in browser |

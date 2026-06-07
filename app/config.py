@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class DBSettings(BaseModel):
     mongodb_uri: str = ""
     db_name: str = "alpha_agents"
+    finance_db_name: str = "finance"
 
 
 class BrokerSettings(BaseModel):

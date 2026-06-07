@@ -36,7 +36,7 @@ Processing is split into two independent phases after a hard pre-filter:
 ### Pre-filter (hard gates)
 
 | Filter | Config key | Default |
-|--------|------------|---------|
+| ------ | ---------- | ------- |
 | Minimum market cap | `min_market_cap_eur` | 500 M EUR |
 | Minimum bar count | >= 60 OHLCV bars | n/a |
 
@@ -53,6 +53,7 @@ Every ticker that passes the pre-filter receives three computed values:
 TQ = R^2_60 * Slope_60 / ATR_20
 
 Where:
+
 - R^2_60 = coefficient of determination of a linear regression over the last 60 closing prices — rewards **smoothness** (0 = random walk, 1 = perfect line)
 - Slope_60 = regression slope in price units per bar — rewards **upward direction and steepness**
 - ATR_20 = 20-period Average True Range — **normalises** slope for per-ticker volatility
@@ -76,7 +77,7 @@ With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillat
 Four boolean policies are evaluated independently. A ticker is a **candidate** only if all *enabled* policies pass. The top-N candidates by TQ are then selected into `SelectionResult.selected`.
 
 | Policy key | Condition | Default |
-|------------|-----------|---------|
+| ---------- | --------- | ------- |
 | `policy_supertrend` | SuperTrend bullish on the last bar (SuperTrend period=10, multiplier=3) | on |
 | `policy_ema20_rising` | EMA20[-1] > EMA20[-6] (5-bar slope > 0) | on |
 | `policy_adx` | ADX[-1] > `min_adx` AND regression slope of ADX[-5:] > 0 (rising trend) | on |
@@ -101,7 +102,7 @@ The agent compares the current TQ ranking against prior rankings stored in the d
 ## Configuration (`ScreeningSettings`)
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| --------- | ------- | ----------- |
 | `top_n` | `20` | Maximum tickers to select |
 | `min_market_cap_eur` | `500_000_000` | Hard cap filter |
 | `min_adx` | `20` | Minimum ADX threshold for policy |
