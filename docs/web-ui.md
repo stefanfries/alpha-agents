@@ -1,8 +1,8 @@
-# Web UI Spec — MITL Review Interface
+# Web UI Spec — HITL Review Interface
 
 ## Purpose
 
-The web UI is the man-in-the-loop (MITL) interface for pipeline runs. It lets the user start a run, inspect each stage's output, and decide to approve (advance to the next stage) or restart from any earlier stage with optionally adjusted parameters. It is implemented as FastAPI + Jinja2 + HTMX (see ADR-008).
+The web UI is the human-in-the-loop (HITL) interface for pipeline runs. It lets the user start a run, inspect each stage's output, and decide to approve (advance to the next stage) or restart from any earlier stage with optionally adjusted parameters. It is implemented as FastAPI + Jinja2 + HTMX (see ADR-008).
 
 ---
 
@@ -48,7 +48,7 @@ A simple form for configuring a new pipeline run. Submitted via standard form PO
 | ----- | ---- | ------- | ----------- |
 | Indices | Multi-checkbox | DAX checked | Select one or more: DAX, MDAX, SDAX, TecDAX |
 | Capital (EUR) | Number input | `portfolio_capital_eur` from config | Total capital to deploy |
-| MITL mode | Toggle | On | If off, all checkpoints are auto-approved |
+| HITL mode | Toggle | On | If off, all checkpoints are auto-approved |
 
 ---
 
@@ -287,7 +287,7 @@ A `DRY RUN` badge is shown prominently if `execution_dry_run=True`.
 
 ---
 
-## MITL interaction model
+## HITL interaction model
 
 ### Approve flow
 

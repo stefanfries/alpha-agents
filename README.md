@@ -32,7 +32,7 @@ UniverseSpec (e.g. ["DAX", "MDAX"])
         └──────────────────┘    └──────────────────┘
 ```
 
-Each agent has a single responsibility, consumes a typed Pydantic input contract, and produces a typed Pydantic output contract. No shared mutable state. Every intermediate result is persisted to MongoDB Atlas before the optional **man-in-the-loop (MITL) review checkpoint**.
+Each agent has a single responsibility, consumes a typed Pydantic input contract, and produces a typed Pydantic output contract. No shared mutable state. Every intermediate result is persisted to MongoDB Atlas before the optional **human-in-the-loop (HITL) review checkpoint**.
 
 ## Agents
 
@@ -89,7 +89,7 @@ Key `.env` settings:
 MONGODB_URI=mongodb+srv://...
 PORTFOLIO_CAPITAL_EUR=10000.0
 EXECUTION_DRY_RUN=true      # set to false only when ready to trade
-MITL_MODE=true
+HITL_MODE=true
 ```
 
 ## Documentation
@@ -98,7 +98,7 @@ MITL_MODE=true
 | -------- | -------- |
 | [docs/system-design.md](docs/system-design.md) | Component overview, data flow, technology choices |
 | [docs/data-models.md](docs/data-models.md) | Full Pydantic model reference (market types, signals, persistence) |
-| [docs/web-ui.md](docs/web-ui.md) | MITL web UI spec: pages, tables, interactive charts |
+| [docs/web-ui.md](docs/web-ui.md) | HITL web UI spec: pages, tables, interactive charts |
 | [docs/agents/universe.md](docs/agents/universe.md) | Universe Agent spec |
 | [docs/agents/research.md](docs/agents/research.md) | Research Agent spec |
 | [docs/agents/screening.md](docs/agents/screening.md) | Stock Selection Agent spec (ADR-009: TQ scoring + policy selection) |
@@ -111,5 +111,5 @@ MITL_MODE=true
 ## Safety defaults
 
 - `EXECUTION_DRY_RUN=true` — no live orders are submitted unless explicitly disabled
-- `MITL_MODE=true` — the pipeline pauses after every stage for human review
+- `HITL_MODE=true` — the pipeline pauses after every stage for human review
 - Comdirect requires 2FA — autonomous order submission is not supported; orders are reviewed and placed manually

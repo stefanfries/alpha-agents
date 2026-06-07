@@ -236,7 +236,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | `selected` | `list[Ticker]` | Top-N tickers that passed all enabled policies, sorted by TQ descending |
-| `all_tickers` | `list[Ticker]` | Full scored universe including non-selected tickers (for MITL display) |
+| `all_tickers` | `list[Ticker]` | Full scored universe including non-selected tickers (for HITL display) |
 | `scores` | `dict[str, float]` | Primary TQ score ($R^2_{60} \times Slope_{60}/ATR_{20}$) per ticker |
 | `rationale` | `dict[str, str]` | Human-readable summary per ticker |
 | `tq_short` | `dict[str, float]` | TQ-20 short-window score per ticker |
@@ -253,7 +253,7 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | ----- | ---- | ----------- |
 | `selected` | `list[SelectedWarrant]` | Single best-scoring warrant per underlying stock |
 | `skipped` | `list[str]` | Underlying symbols for which no warrant was found |
-| `top3` | `dict[str, list[SelectedWarrant]]` | Symbol → up to 3 best warrants by score (for MITL detail panel) |
+| `top3` | `dict[str, list[SelectedWarrant]]` | Symbol → up to 3 best warrants by score (for HITL detail panel) |
 | `analyzed_count` | `dict[str, int]` | Symbol → total warrant details fetched and scored |
 
 ### `PortfolioProposal`
@@ -313,5 +313,5 @@ Embedded in `PipelineRun.stages`. One record per completed stage.
 | `stage` | `str` | Stage name (e.g. `"stock_selection"`) |
 | `completed_at` | `datetime` | UTC timestamp |
 | `output` | `dict` | Serialised agent output (Pydantic `.model_dump()`) |
-| `mitl_status` | `Literal["pending", "approved", "rejected"]` | User review status |
-| `mitl_note` | `str \| None` | Optional user comment |
+| `hitl_status` | `Literal["pending", "approved", "rejected"]` | User review status |
+| `hitl_note` | `str \| None` | Optional user comment |

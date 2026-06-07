@@ -27,7 +27,7 @@ None — order submission to Comdirect requires interactive 2FA authentication p
 3. For positions where delta is below a minimum threshold → `skipped` (avoid unnecessary churn)
 4. For positions requiring a trade → construct an `Order` with all details needed for manual placement and add to `orders`
 5. In dry-run mode (default): return the `ExecutionPlan` without any broker interaction
-6. Display the `ExecutionPlan` in the MITL checkpoint; the user places orders manually via Comdirect web or mobile app
+6. Display the `ExecutionPlan` in the HITL checkpoint; the user places orders manually via Comdirect web or mobile app
 
 ## Configuration (via `config.py`)
 

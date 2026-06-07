@@ -3,7 +3,7 @@
 ## Responsibility
 
 `Pipeline` manages the full lifecycle of a pipeline run: stage sequencing, per-stage
-result persistence to MongoDB Atlas, MITL checkpoint pausing, config override application,
+result persistence to MongoDB Atlas, HITL checkpoint pausing, config override application,
 and restart-from-stage logic. It is the sole entry point for starting and advancing runs.
 
 ---
@@ -22,10 +22,10 @@ log messages throughout the system.
 ## Execution model
 
 Each stage is triggered by an explicit HTTP call — either from the web UI (user approves)
-or from the orchestrator itself (auto-approve in non-MITL mode). The pipeline is **not**
+or from the orchestrator itself (auto-approve in non-HITL mode). The pipeline is **not**
 a long-running async process; it executes one stage per HTTP request and persists its
 result before returning. This makes the system resilient to process restarts (Azure
-Container Apps scale-to-zero) between MITL reviews.
+Container Apps scale-to-zero) between HITL reviews.
 
 ```text
 POST /runs                         → create run document, trigger stage "universe"
@@ -35,7 +35,7 @@ POST …/stages/universe/approve     → trigger stage "research"
 POST …/stages/execution/approve    → mark run "complete"
 ```
 
-In non-MITL mode, the orchestrator calls `_advance()` immediately after each stage
+In non-HITL mode, the orchestrator calls `_advance()` immediately after each stage
 completes, without waiting for an HTTP approve.
 
 ---
@@ -49,7 +49,7 @@ Each pipeline run is stored as a single document in collection `pipeline_runs`.
   "run_id":          "a3f9c1",
   "created_at":      "2026-05-09T08:00:00Z",
   "indices":         ["DAX", "MDAX"],
-  "mitl_mode":       true,
+  "hitl_mode":       true,
   "config_overrides": {},
   "current_stage":   "screening",
   "status":          "awaiting_review",
@@ -75,7 +75,7 @@ MongoDB `$set` on `stages.{stage_name}`.
 | ------ | ------- |
 | `pending` | Not yet run in this run |
 | `running` | Currently executing |
-| `awaiting_review` | Complete; waiting for user approval (MITL mode only) |
+| `awaiting_review` | Complete; waiting for user approval (HITL mode only) |
 | `approved` | User approved (or auto-approved); result locked |
 | `error` | Stage raised an exception; run is halted |
 
@@ -98,7 +98,7 @@ class Pipeline:
         self,
         indices: list[str],
         capital_eur: float,
-        mitl_mode: bool = True,
+        hitl_mode: bool = True,
     ) -> str:
         """Create a run document in MongoDB and trigger the first stage. Returns run_id."""
 
@@ -144,9 +144,9 @@ When `_run_stage(run_id, stage_name)` is called:
 5. Run the agent: `result = await agent.run(input_model)`.
 6. Write `stages.{stage_name}.result = result.model_dump()` and
    `stages.{stage_name}.completed_at = now()` to MongoDB.
-7. If MITL mode: set `stages.{stage_name}.status = "awaiting_review"`,
+7. If HITL mode: set `stages.{stage_name}.status = "awaiting_review"`,
    `run.status = "awaiting_review"`, `run.current_stage = stage_name`. Return.
-8. If non-MITL mode: set `stages.{stage_name}.status = "approved"`. Call `_advance(run_id)`.
+8. If non-HITL mode: set `stages.{stage_name}.status = "approved"`. Call `_advance(run_id)`.
 
 `_advance(run_id)` finds the next `pending` stage in the sequence and calls
 `_run_stage(run_id, next_stage)`, or marks the run `complete` if no stages remain.
@@ -155,7 +155,7 @@ When `_run_stage(run_id, stage_name)` is called:
 
 ## Selection overrides (screening and warrant stages)
 
-At the screening and warrant selection MITL checkpoints, the user can deselect tickers
+At the screening and warrant selection HITL checkpoints, the user can deselect tickers
 or warrants via checkboxes before approving. The `approve` endpoint accepts a
 `selection_override` list of identifiers (ticker symbols for screening; ISINs for warrants).
 
@@ -237,10 +237,10 @@ of a CLI script.
 
 ## Autonomous mode
 
-When `mitl_mode=False`, the pipeline runs all stages without pausing. Each stage is
+When `hitl_mode=False`, the pipeline runs all stages without pausing. Each stage is
 auto-approved immediately after completion. This is intended for scheduled/unattended
 runs. All stage results are still persisted to MongoDB for post-run review.
 
 The pipeline logs a warning at startup if `execution_dry_run=False` and
-`mitl_mode=False` simultaneously — this combination would result in live orders
+`hitl_mode=False` simultaneously — this combination would result in live orders
 without human review.

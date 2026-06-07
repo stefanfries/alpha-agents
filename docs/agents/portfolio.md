@@ -57,5 +57,5 @@ class PortfolioProposal(AgentOutput):
 ## Notes
 
 - The constraint of **one warrant per underlying stock** is enforced here: if two warrants for the same underlying somehow pass the warrant stage, only the higher-scoring one is retained
-- `close_positions` are included in the proposal for the user's information at the MITL checkpoint — the `RiskAgent` and `ExecutionAgent` decide whether to actually close them
+- `close_positions` are included in the proposal for the user's information at the HITL checkpoint — the `RiskAgent` and `ExecutionAgent` decide whether to actually close them
 - Does not interact with the broker for order submission — position sizing is purely computational at this stage

@@ -23,7 +23,7 @@ The primary investment instruments are **stocks** and **Call Warrants** (Options
 ┌─────────────────────────────────────────────────────┐
 │              orchestrator.Pipeline                  │
 │   Chains agents sequentially; persists each         │
-│   stage result to MongoDB Atlas for MITL review     │
+│   stage result to MongoDB Atlas for HITL review     │
 └──┬────────┬─────────┬────────┬────────┬─────────────┘
    │        │         │        │        │        │
    ▼        ▼         ▼        ▼        ▼        ▼
@@ -55,9 +55,9 @@ Universe Research  Stock   Warrant  Portfolio  Risk   Execution
 7. **Risk Agent**: Validates the proposed portfolio against risk limits; may reject positions
 8. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
 
-Each stage result is persisted to MongoDB Atlas before the **man-in-the-loop (MITL) checkpoint**. The user reviews the output and either approves (continuing to the next stage) or rejects (returning to the previous stage with adjusted parameters).
+Each stage result is persisted to MongoDB Atlas before the **human-in-the-loop (HITL) checkpoint**. The user reviews the output and either approves (continuing to the next stage) or rejects (returning to the previous stage with adjusted parameters).
 
-## Man-in-the-loop (MITL) checkpoints
+## Human-in-the-loop (HITL) checkpoints
 
 ```text
 Universe → [✓ review] → Research → [✓ review] → Stock Selection → [✓ review]
@@ -71,7 +71,7 @@ At each `[✓ review]` point:
 - The **web UI** (FastAPI + Jinja2 + HTMX, see ADR-008) renders a stage-summary page with charts
 - The user responds: **continue** → advance to next stage; **restart** → return to a named stage (optionally with new config parameters)
 
-The pipeline is designed for **autonomous operation** in production (all checkpoints auto-approved), but MITL mode is the default during development.
+The pipeline is designed for **autonomous operation** in production (all checkpoints auto-approved), but HITL mode is the default during development.
 
 ## Technology choices
 

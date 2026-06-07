@@ -13,6 +13,7 @@ The previous screening algorithm used a two-gate voting approach:
 - **Score (TQ)**: computed only for tickers that cleared Gate 1
 
 This had two problems:
+
 1. Scoring and selection were entangled in a single algorithm, making it hard to experiment with either independently.
 2. Bearish tickers received a positive TQ score (bearish regression slope / ATR > 0) and appeared in `scores` but not in `selected`, causing non-consecutive rank numbers in the UI.
 
@@ -25,7 +26,7 @@ Separate screening into two independent phases, applied after the hard pre-filte
 All tickers that pass the pre-filters receive three computed values:
 
 | Column | Formula | Meaning |
-|--------|---------|---------|
+| ------ | ------- | ------- |
 | **TQ** | `R² × slope / ATR` (60-bar) | Primary ranking score: trend linearity × normalised steepness |
 | **TQ-20** | `R² × slope / ATR` (20-bar) | Short-window variant; detects early breakouts |
 | **TSI** | `100 × EMA_s(EMA_f(ΔClose)) / EMA_s(EMA_f(\|ΔClose\|))` (fast=13, slow=25) | Momentum context; informational only |
@@ -37,7 +38,7 @@ TQ remains the primary sort column. TQ-20 and TSI are displayed for reference.
 Four independent boolean policies, each backed by a checkbox in the UI and persisted per-run:
 
 | Policy | Condition | Default |
-|--------|-----------|---------|
+| ------ | --------- | ------- |
 | `policy_supertrend` | SuperTrend bullish on last bar | on |
 | `policy_ema20_rising` | EMA20[-1] > EMA20[-6] | on |
 | `policy_adx` | ADX[-1] > threshold AND ADX[-1] > ADX[-6] | on |

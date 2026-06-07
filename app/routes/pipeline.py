@@ -126,7 +126,7 @@ async def list_runs(request: Request) -> HTMLResponse:
 async def create_run(
     indices: Annotated[list[str], Form()],
     capital_eur: Annotated[float, Form()],
-    mitl_mode: Annotated[bool, Form()] = True,
+    hitl_mode: Annotated[bool, Form()] = True,
 ) -> RedirectResponse:
     run_id = uuid.uuid4().hex[:6]
     run_doc = {
@@ -134,7 +134,7 @@ async def create_run(
         "created_at": datetime.now(timezone.utc),
         "indices": indices,
         "capital_eur": capital_eur,
-        "mitl_mode": mitl_mode,
+        "hitl_mode": hitl_mode,
         "config_overrides": {},
         "current_stage": STAGES[0],
         "status": "running",

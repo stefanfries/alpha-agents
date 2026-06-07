@@ -2,19 +2,19 @@
 
 **Date:** 2026-04-17
 **Status:** Proposed
-**Supersedes:** ADR-005 (CLI-based man-in-the-loop pattern)
+**Supersedes:** ADR-005 (CLI-based human-in-the-loop pattern)
 
 ---
 
 ## Context
 
-The system is intended to run in the cloud (Azure Container Apps, AWS, or GCP). A CLI-based man-in-the-loop interface (as specified in ADR-005) is unsuitable for a cloud deployment: it requires terminal access to the running container and cannot be used from a browser.
+The system is intended to run in the cloud (Azure Container Apps, AWS, or GCP). A CLI-based human-in-the-loop interface (as specified in ADR-005) is unsuitable for a cloud deployment: it requires terminal access to the running container and cannot be used from a browser.
 
 Requirements for the new interface:
 
 - Must be accessible from a browser without terminal access
 - Must be implementable in Python only (no TypeScript/React/Vue)
-- Must support the MITL review workflow: inspect stage outputs, approve or restart from a named stage
+- Must support the HITL review workflow: inspect stage outputs, approve or restart from a named stage
 - Must be able to render financial charts (candlestick, trend indicators) inline
 - Must work within the existing FastAPI ecosystem used in the sibling projects
 
@@ -32,9 +32,9 @@ Pure Python, quick to prototype, built-in chart support. However:
 
 - Not designed for production web apps — routing, authentication, and layout control are limited
 - Hard to integrate with an existing FastAPI service
-- Streamlit's execution model (full re-run on every interaction) does not map cleanly onto the pipeline's step-by-step MITL workflow
+- Streamlit's execution model (full re-run on every interaction) does not map cleanly onto the pipeline's step-by-step HITL workflow
 
-**Verdict: Not a good fit for the MITL review use case.**
+**Verdict: Not a good fit for the HITL review use case.**
 
 ### Option C: FastAPI + Jinja2 + HTMX
 
@@ -52,7 +52,7 @@ Implement the web UI as a **FastAPI + Jinja2 + HTMX** application.
 Key structural choices:
 
 - The pipeline orchestrator exposes a FastAPI router (`/pipeline`) with endpoints for starting, resuming, and reviewing runs
-- Each MITL checkpoint renders a stage-summary HTML fragment that HTMX loads into the review panel without a full page reload
+- Each HITL checkpoint renders a stage-summary HTML fragment that HTMX loads into the review panel without a full page reload
 - The user approves or restarts by clicking a button — HTMX POSTs to the orchestrator, which advances or rewinds the pipeline and returns the next fragment
 - Pipeline run state is persisted in MongoDB Atlas as before (no change to the persistence model)
 - Charts are rendered on demand by the server: the `/charts/{run_id}/{stage}` endpoint returns a Plotly HTML fragment that HTMX swaps into a `<div>` in the review panel
@@ -81,7 +81,7 @@ HTMX is loaded from the CDN in the base template and requires no `uv add` step.
 
 ## Consequences
 
-- ADR-005's CLI MITL checkpoint protocol is superseded; the `_checkpoint()` logic in the orchestrator is replaced by HTTP endpoints
+- ADR-005's CLI HITL checkpoint protocol is superseded; the `_checkpoint()` logic in the orchestrator is replaced by HTTP endpoints
 - The deployment unit expands: the pipeline is no longer a standalone CLI script (`main.py`) but a FastAPI application (`app/main.py`) that also exposes the web UI
 - This aligns with the existing `fastapi-azure-container-app` deployment pattern used in sibling projects
 - The `execution_dry_run=True` default and all safety constraints from ADR-005 are unchanged — the web UI adds a confirmation step before the execution stage

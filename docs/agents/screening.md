@@ -13,7 +13,7 @@ Score every ticker in the research universe using three quantitative metrics, th
 ```python
 class SelectionResult(BaseModel):
     selected: list[Ticker]                         # Top-N tickers that passed all policies
-    all_tickers: list[Ticker]                      # Full scored universe (for MITL display)
+    all_tickers: list[Ticker]                      # Full scored universe (for HITL display)
     scores: dict[str, float]                       # Primary TQ score per ticker
     rationale: dict[str, str]                      # Human-readable summary per ticker
     tq_short: dict[str, float]                     # TQ-20 (short window) per ticker
@@ -86,7 +86,7 @@ Four boolean policies are evaluated independently. A ticker is a **candidate** o
 
 If all policies pass for a ticker -> it is a candidate. Candidates are sorted by TQ descending; the top `top_n` (default 20) are selected.
 
-If zero candidates result (all tickers fail at least one policy), the user can uncheck a policy in the MITL UI and re-run screening without creating a new run.
+If zero candidates result (all tickers fail at least one policy), the user can uncheck a policy in the HITL UI and re-run screening without creating a new run.
 
 ### Policy persistence
 
