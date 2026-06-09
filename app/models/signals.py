@@ -37,6 +37,7 @@ class SelectionResult(BaseModel):
     policy_results: dict[str, dict[str, bool]] = {}
     rank_changes: dict[str, list[int | None]] = {}  # sym → [delta_1w, delta_2w]
     history_labels: list[str] = []
+    trend_signals: dict[str, str | None] = {}  # sym → "NEW" | "HOLD" | "BREAK" | None
 
 
 class SelectedWarrant(BaseModel):

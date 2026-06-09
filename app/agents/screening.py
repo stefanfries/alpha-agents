@@ -39,6 +39,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         tsi_vals: dict[str, float] = {}
         rationale: dict[str, str] = {}
         policy_results: dict[str, dict[str, bool]] = {}
+        trend_signals: dict[str, str | None] = {}
         candidate_symbols: set[str] = set()
 
         for ticker in input.tickers:
@@ -77,6 +78,21 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             }
             passes = all(policies[p] for p, on in enabled.items() if on)
 
+            # Trend signal: compare current policies to 5 bars ago
+            if len(bars) > 5 + _MIN_BARS:
+                policies_5d = self._evaluate_policies(bars[:-5])
+                passes_5d = all(policies_5d[p] for p, on in enabled.items() if on)
+            else:
+                passes_5d = None  # insufficient history
+
+            if passes and passes_5d is False:
+                trend_signals[symbol] = "NEW"
+            elif passes and passes_5d is True:
+                trend_signals[symbol] = "HOLD"
+            elif not passes and passes_5d is True:
+                trend_signals[symbol] = "BREAK"
+            # else: consistently out → None (no signal)
+
             policy_detail = " | ".join(
                 f"{k}={'✓' if v else '✗'}" for k, v in policies.items()
             )
@@ -112,6 +128,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             policy_results=policy_results,
             rank_changes=rank_changes,
             history_labels=history_labels,
+            trend_signals=trend_signals,
         )
 
     # ------------------------------------------------------------------ #

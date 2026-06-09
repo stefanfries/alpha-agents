@@ -66,6 +66,80 @@ def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3
         result.append({"time": dates[i], "value": val, "bull": trend == 1})
     return result
 
+def _compute_signal_markers(
+    bars: list[Any],
+    min_adx: int = 20,
+    policy_supertrend: bool = True,
+    policy_ema20_rising: bool = True,
+    policy_adx: bool = True,
+    policy_price_above_ema50: bool = True,
+    supertrend_period: int = 10,
+    supertrend_multiplier: float = 3.0,
+) -> list[dict]:
+    """Return NEW/BREAK transition markers across the full bar history."""
+    n = len(bars)
+    if n < 70:
+        return []
+
+    highs  = np.array([float(b.high)  for b in bars])
+    lows   = np.array([float(b.low)   for b in bars])
+    closes = np.array([float(b.close) for b in bars])
+    dates  = [b.date.isoformat() for b in bars]
+
+    ema20    = talib.EMA(closes, timeperiod=20)
+    ema50    = talib.EMA(closes, timeperiod=50)
+    adx_vals = talib.ADX(highs, lows, closes, timeperiod=14)
+    final_upper, final_lower = supertrend_bands(highs, lows, closes, supertrend_period, supertrend_multiplier)
+
+    # SuperTrend direction per bar
+    st_bull = np.zeros(n, dtype=bool)
+    trend = 1
+    started = False
+    for i in range(n):
+        if np.isnan(final_upper[i]):
+            continue
+        if not started:
+            started = True
+        elif trend == 1 and closes[i] < final_lower[i]:
+            trend = -1
+        elif trend == -1 and closes[i] > final_upper[i]:
+            trend = 1
+        st_bull[i] = trend == 1
+
+    # Per-bar policy pass boolean
+    passes = np.zeros(n, dtype=bool)
+    for i in range(n):
+        checks: list[bool] = []
+        if policy_supertrend:
+            checks.append(bool(st_bull[i]))
+        if policy_ema20_rising:
+            if i >= 5 and not (np.isnan(ema20[i]) or np.isnan(ema20[i - 5])):
+                checks.append(float(ema20[i]) > float(ema20[i - 5]))
+            else:
+                checks.append(False)
+        if policy_adx:
+            if i >= 4 and not np.any(np.isnan(adx_vals[i - 4 : i + 1])):
+                slope = float(np.polyfit(np.arange(5, dtype=float), adx_vals[i - 4 : i + 1], 1)[0])
+                checks.append(float(adx_vals[i]) > min_adx and slope > 0)
+            else:
+                checks.append(False)
+        if policy_price_above_ema50:
+            if not np.isnan(ema50[i]):
+                checks.append(float(closes[i]) > float(ema50[i]))
+            else:
+                checks.append(False)
+        passes[i] = bool(checks) and all(checks)
+
+    # Emit a marker at each transition
+    markers: list[dict] = []
+    for i in range(1, n):
+        if passes[i] and not passes[i - 1]:
+            markers.append({"time": dates[i], "position": "belowBar", "color": "#26a69a", "shape": "arrowUp", "text": "NEW"})
+        elif not passes[i] and passes[i - 1]:
+            markers.append({"time": dates[i], "position": "aboveBar", "color": "#ef5350", "shape": "arrowDown", "text": "BREAK"})
+    return markers
+
+
 router = APIRouter(prefix="/quant-systems")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -251,6 +325,17 @@ async def restart_stage(
 
 @router.get("/{qs_id}/executions/{execution_id}/charts/screening/{ticker}", response_class=HTMLResponse)
 async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLResponse:
+    execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
+    scr_cfg: dict = {}
+    if execution:
+        scr_cfg = execution.get("config_overrides", {}).get("screening", {})
+    min_adx: int = scr_cfg.get("min_adx", 20)
+    policy_supertrend: bool = scr_cfg.get("policy_supertrend", True)
+    policy_ema20_rising: bool = scr_cfg.get("policy_ema20_rising", True)
+    policy_adx: bool = scr_cfg.get("policy_adx", True)
+    policy_price_above_ema50: bool = scr_cfg.get("policy_price_above_ema50", True)
+    supertrend_period: int = scr_cfg.get("supertrend_period", 10)
+    supertrend_multiplier: float = scr_cfg.get("supertrend_multiplier", 3.0)
     try:
         t = Ticker(symbol=ticker)
         async with YFinanceTool() as yf:
@@ -270,16 +355,22 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
         for d, b in zip(dates, bars)
     ]
     adx_data, plus_di, minus_di = _compute_adx(bars)
+    signal_markers = _compute_signal_markers(
+        bars, min_adx, policy_supertrend, policy_ema20_rising,
+        policy_adx, policy_price_above_ema50, supertrend_period, supertrend_multiplier,
+    )
     chart_data = json.dumps({
-        "ticker":     ticker,
-        "ohlcv":      ohlcv,
-        "ema20":      _compute_ema(closes, dates, 20),
-        "ema50":      _compute_ema(closes, dates, 50),
-        "sma200":     _compute_sma(closes, dates, 200),
-        "adx":        adx_data,
-        "plus_di":    plus_di,
-        "minus_di":   minus_di,
-        "supertrend": _compute_supertrend(bars),
+        "ticker":         ticker,
+        "ohlcv":          ohlcv,
+        "ema20":          _compute_ema(closes, dates, 20),
+        "ema50":          _compute_ema(closes, dates, 50),
+        "sma200":         _compute_sma(closes, dates, 200),
+        "adx":            adx_data,
+        "plus_di":        plus_di,
+        "minus_di":       minus_di,
+        "supertrend":     _compute_supertrend(bars),
+        "min_adx":        min_adx,
+        "signal_markers": signal_markers,
     })
     return HTMLResponse(
         f"<div class='d-flex flex-column gap-1' data-chart='{chart_data}'>"

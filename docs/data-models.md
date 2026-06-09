@@ -244,6 +244,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `policy_results` | `dict[str, dict[str, bool]]` | Per-ticker pass/fail for each policy (`supertrend`, `ema20_rising`, `adx`, `price_above_ema50`) |
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
+| `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below) |
 
 ### `WarrantSelectionResult`
 

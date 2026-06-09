@@ -84,10 +84,13 @@
           title: 'Strike',
         });
       }
-      // Maturity date marker (warrant charts)
+      // Markers: policy signal transitions (screening) + maturity (warrant charts)
+      var allMarkers = (d.signal_markers || []).slice();
       if (d.maturity) {
-        var maturityMarkers = [{ time: d.maturity, position: 'aboveBar', color: '#FF9800', shape: 'arrowDown' }];
-        candles.setMarkers(maturityMarkers);
+        allMarkers.push({ time: d.maturity, position: 'aboveBar', color: '#FF9800', shape: 'arrowDown' });
+      }
+      if (allMarkers.length) {
+        candles.setMarkers(allMarkers);
       }
 
       // SuperTrend: one LineSeries per contiguous segment so lines never bridge across trend flips
@@ -125,7 +128,7 @@
 
         var adxSeries = adxChart.addLineSeries({ color: '#FFD700', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
         adxSeries.setData(d.adx);
-        adxSeries.createPriceLine({ price: 25, color: 'rgba(255,255,255,0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
+        adxSeries.createPriceLine({ price: d.min_adx || 20, color: 'rgba(255,255,255,0.25)', lineWidth: 2, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false });
         adxChart.addLineSeries({ color: '#26a69a', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.plus_di);
         adxChart.addLineSeries({ color: '#ef5350', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(d.minus_di);
 

@@ -21,6 +21,7 @@ class SelectionResult(BaseModel):
     policy_results: dict[str, dict[str, bool]]     # policy_name -> pass/fail per ticker
     rank_changes: dict[str, list[int | None]]      # sym -> [delta_1W, delta_2W, delta_4W]
     history_labels: list[str]                      # ["1W", "2W", "4W"]
+    trend_signals: dict[str, str | None]           # sym -> "NEW" | "HOLD" | "BREAK" | None
 ```
 
 ## Tools used
@@ -88,6 +89,19 @@ Four boolean policies are evaluated independently. A ticker is a **candidate** o
 If all policies pass for a ticker -> it is a candidate. Candidates are sorted by TQ descending; the top `top_n` (default 20) are selected.
 
 If zero candidates result (all tickers fail at least one policy), the user can uncheck a policy in the HITL UI and re-run screening without creating a new run.
+
+### Trend signal
+
+For every ticker with sufficient bar history (> `_MIN_BARS + 5`), the agent also evaluates whether all enabled policies passed **5 trading days ago** (by re-running `_evaluate_policies` on `bars[:-5]`). The result is stored in `trend_signals`:
+
+| Signal | Condition |
+| ------ | --------- |
+| `"NEW"` | Passes now, did **not** pass 5 days ago — trend freshly established |
+| `"HOLD"` | Passes now, also passed 5 days ago — trend already established |
+| `"BREAK"` | Does **not** pass now, but passed 5 days ago — trend recently broken |
+| `None` | Failed both now and 5 days ago — no meaningful signal |
+
+This signal is purely observational. It informs entry timing at the screening stage; it does not trigger orders.
 
 ### Policy persistence
 

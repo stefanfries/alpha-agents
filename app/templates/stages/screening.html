@@ -22,6 +22,7 @@
   {% if stage_result %}
   {% set r = stage_result %}
   {% set active_policies = execution.get("config_overrides", {}).get("screening", {}) %}
+  {% set min_adx = active_policies.get("min_adx", 20) %}
   {% macro rank_cell(deltas, idx) %}
     {% set delta = deltas[idx] if deltas | length > idx else none %}
     {% if delta is none %}
@@ -41,10 +42,35 @@
     </span>
   {% endmacro %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
-    <p class="flex-shrink-0 text-muted small mb-2">
-      <strong class="text-body">{{ r.selected | length }}</strong> selected of
-      <strong class="text-body">{{ r.scores | length }}</strong> scored.
-    </p>
+    <div class="flex-shrink-0 d-flex align-items-center gap-3 mb-2">
+      <p class="text-muted small mb-0">
+        <strong class="text-body">{{ r.selected | length }}</strong> selected of
+        <strong class="text-body">{{ r.scores | length }}</strong> scored.
+      </p>
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small">Show:</span>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" id="filter-all" checked onchange="applySignalFilter()">
+          <label class="form-check-label small" for="filter-all">All</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" id="filter-new" checked onchange="applySignalFilter()">
+          <label class="form-check-label small text-success fw-semibold" for="filter-new">NEW</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" id="filter-hold" checked onchange="applySignalFilter()">
+          <label class="form-check-label small text-warning fw-semibold" for="filter-hold">HOLD</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" id="filter-break" checked onchange="applySignalFilter()">
+          <label class="form-check-label small text-danger fw-semibold" for="filter-break">BREAK</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" id="filter-none" checked onchange="applySignalFilter()">
+          <label class="form-check-label small text-secondary" for="filter-none">—</label>
+        </div>
+      </div>
+    </div>
     <div class="flex-grow-1 overflow-auto" style="min-height:0">
       <div class="row h-100">
         <div class="col-lg-7 h-100 d-flex flex-column">
@@ -59,13 +85,14 @@
                 <th>Symbol</th>
                 <th>Company</th>
                 <th>ISIN</th>
-                <th title="R² × slope / ATR (60-bar)">TQ</th>
+                <th title="R² × slope / ATR (60-bar)">TQ-60</th>
                 <th title="R² × slope / ATR (20-bar)">TQ-20</th>
                 <th title="True Strength Index">TSI</th>
-                <th class="text-center" title="SuperTrend bullish">ST</th>
-                <th class="text-center" title="EMA20 rising">E20</th>
-                <th class="text-center" title="ADX &gt; threshold and rising">ADX</th>
-                <th class="text-center" title="Price above EMA50">E50</th>
+                <th class="text-center" title="SuperTrend bullish">SuperTr</th>
+                <th class="text-center" title="EMA20 rising">EMA20</th>
+                <th class="text-center" title="ADX &gt; {{ min_adx }} and rising">ADX</th>
+                <th class="text-center" title="Price above EMA50">EMA50</th>
+                <th class="text-center" title="Trend signal vs 5 trading days ago">Signal</th>
                 {% if r.history_labels %}
                   {% for lbl in r.history_labels %}
                     <th class="text-center">{{ lbl }}</th>
@@ -99,6 +126,18 @@
                 <td class="text-center">{{ policy_badge(pol.get("ema20_rising", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("adx", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("price_above_ema50", false)) }}</td>
+                {% set sig = r.trend_signals.get(sym) or "" %}
+                <td class="text-center" data-signal="{{ sig }}">
+                  {% if sig == "NEW" %}
+                    <span class="badge bg-success">NEW</span>
+                  {% elif sig == "HOLD" %}
+                    <span class="badge bg-warning text-dark">HOLD</span>
+                  {% elif sig == "BREAK" %}
+                    <span class="badge bg-danger">BREAK</span>
+                  {% else %}
+                    <span class="text-secondary">—</span>
+                  {% endif %}
+                </td>
                 {% for i in range(r.history_labels | length) %}
                   {{ rank_cell(deltas, i) }}
                 {% endfor %}
@@ -138,7 +177,7 @@
             <div class="form-check form-check-inline mb-0">
               <input class="form-check-input" type="checkbox" name="policy_adx" id="pol_adx"
                      {% if pol_cfg.get("policy_adx", true) %}checked{% endif %}>
-              <label class="form-check-label small" for="pol_adx">ADX</label>
+              <label class="form-check-label small" for="pol_adx">ADX &gt; {{ min_adx }} and rising</label>
             </div>
             <div class="form-check form-check-inline mb-0">
               <input class="form-check-input" type="checkbox" name="policy_price_above_ema50" id="pol_ema50"
@@ -166,4 +205,23 @@
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for Research stage.</div>
 {% endif %}
+
+<script>
+function applySignalFilter() {
+  const showAll   = document.getElementById('filter-all').checked;
+  const showNew   = document.getElementById('filter-new').checked;
+  const showHold  = document.getElementById('filter-hold').checked;
+  const showBreak = document.getElementById('filter-break').checked;
+  const showNone  = document.getElementById('filter-none').checked;
+  document.querySelectorAll('tbody tr').forEach(row => {
+    if (showAll) { row.style.display = ''; return; }
+    const sig = row.querySelector('td[data-signal]')?.dataset.signal ?? '';
+    const visible = (sig === 'NEW'   && showNew)
+                 || (sig === 'HOLD'  && showHold)
+                 || (sig === 'BREAK' && showBreak)
+                 || (sig === ''      && showNone);
+    row.style.display = visible ? '' : 'none';
+  });
+}
+</script>
 {% endblock %}
