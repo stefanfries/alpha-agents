@@ -5,7 +5,7 @@ import talib
 
 from app.agents.base import Agent
 from app.config import ScreeningSettings
-from app.indicators import supertrend_bullish
+from app.indicators import supertrend_bands
 from app.models.market import OHLCV
 from app.models.signals import ResearchResult, SelectionResult
 
@@ -30,8 +30,14 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         self._tsi_slow = cfg.tsi_slow
         self._policy_supertrend = cfg.policy_supertrend
         self._policy_ema20_rising = cfg.policy_ema20_rising
-        self._policy_adx = cfg.policy_adx
+        self._policy_adx_above = cfg.policy_adx_above
+        self._policy_adx_rising = cfg.policy_adx_rising
         self._policy_price_above_ema50 = cfg.policy_price_above_ema50
+        self._policy_ema20_falling_break = cfg.policy_ema20_falling_break
+        self._policy_supertrend_break = cfg.policy_supertrend_break
+        self._policy_adx_below_break = cfg.policy_adx_below_break
+        self._policy_adx_falling_break = cfg.policy_adx_falling_break
+        self._policy_price_below_ema50_break = cfg.policy_price_below_ema50_break
 
     async def run(self, input: ResearchResult) -> SelectionResult:
         scores: dict[str, float] = {}
@@ -70,35 +76,30 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             policies = self._evaluate_policies(bars)
             policy_results[symbol] = policies
 
-            enabled = {
+            new_enabled = {
                 "supertrend": self._policy_supertrend,
                 "ema20_rising": self._policy_ema20_rising,
-                "adx": self._policy_adx,
+                "adx_above": self._policy_adx_above,
+                "adx_rising": self._policy_adx_rising,
                 "price_above_ema50": self._policy_price_above_ema50,
             }
-            passes = all(policies[p] for p, on in enabled.items() if on)
+            break_enabled = {
+                "supertrend_bearish": self._policy_supertrend_break,
+                "ema20_falling": self._policy_ema20_falling_break,
+                "adx_below": self._policy_adx_below_break,
+                "adx_falling": self._policy_adx_falling_break,
+                "price_below_ema50": self._policy_price_below_ema50_break,
+            }
+            passes_new = all(policies[p] for p, on in new_enabled.items() if on)
 
-            # Trend signal: compare current policies to 5 bars ago
-            if len(bars) > 5 + _MIN_BARS:
-                policies_5d = self._evaluate_policies(bars[:-5])
-                passes_5d = all(policies_5d[p] for p, on in enabled.items() if on)
-            else:
-                passes_5d = None  # insufficient history
-
-            if passes and passes_5d is False:
-                trend_signals[symbol] = "NEW"
-            elif passes and passes_5d is True:
-                trend_signals[symbol] = "HOLD"
-            elif not passes and passes_5d is True:
-                trend_signals[symbol] = "BREAK"
-            # else: consistently out → None (no signal)
+            trend_signals[symbol] = self._trend_signal(bars, new_enabled, break_enabled)
 
             policy_detail = " | ".join(
                 f"{k}={'✓' if v else '✗'}" for k, v in policies.items()
             )
             rationale[symbol] = f"TQ={tq:.3f} TQ20={tqs:.3f} TSI={tsi:.1f} | {policy_detail}"
 
-            if passes:
+            if passes_new:
                 candidate_symbols.add(symbol)
 
         ranked_symbols = sorted(
@@ -110,12 +111,13 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         rank_changes, history_labels = self._rank_changes(input, scores, ranked_set)
 
         logger.info(
-            "Screening complete: %d/%d selected (policies: ST=%s EMA20=%s ADX=%s EMA50=%s)",
+            "Screening complete: %d/%d selected (new: ST=%s EMA20=%s ADX>=%s ADX↑=%s EMA50=%s)",
             len(selected),
             len(input.tickers),
             self._policy_supertrend,
             self._policy_ema20_rising,
-            self._policy_adx,
+            self._policy_adx_above,
+            self._policy_adx_rising,
             self._policy_price_above_ema50,
         )
         return SelectionResult(
@@ -179,13 +181,124 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
     # Policy evaluation                                                    #
     # ------------------------------------------------------------------ #
 
+    def _trend_signal(
+        self,
+        bars: list[OHLCV],
+        new_enabled: dict[str, bool],
+        break_enabled: dict[str, bool],
+    ) -> str | None:
+        """State machine over full bar history → NEW / BREAK / HOLD / None.
+
+        Transitions: OUT -[NEW]-> IN_TREND -[BREAK]-> OUT.
+        Consecutive same-direction signals are impossible by construction.
+        """
+        n = len(bars)
+        if n < _MIN_BARS:
+            return None
+
+        close = np.array([float(b.close) for b in bars])
+        high  = np.array([float(b.high)  for b in bars])
+        low   = np.array([float(b.low)   for b in bars])
+
+        ema20    = talib.EMA(close, timeperiod=20)
+        ema50    = talib.EMA(close, timeperiod=50)
+        adx_vals = talib.ADX(high, low, close, timeperiod=14)
+        final_upper, final_lower = supertrend_bands(
+            high, low, close, self._supertrend_period, self._supertrend_multiplier
+        )
+
+        st_bull = np.zeros(n, dtype=bool)
+        st_dir = 1
+        st_started = False
+        for i in range(n):
+            if np.isnan(final_upper[i]):
+                continue
+            if not st_started:
+                st_started = True
+            elif st_dir == 1 and close[i] < final_lower[i]:
+                st_dir = -1
+            elif st_dir == -1 and close[i] > final_upper[i]:
+                st_dir = 1
+            st_bull[i] = st_dir == 1
+
+        def _bar_passes(i: int) -> tuple[bool, bool]:
+            seg = adx_vals[i - 4 : i + 1] if i >= 4 else np.array([np.nan])
+            if not np.any(np.isnan(seg)):
+                slope = float(np.polyfit(np.arange(5, dtype=float), seg, 1)[0])
+                adx_above  = float(adx_vals[i]) > self._min_adx
+                adx_rising = slope > 0
+            else:
+                adx_above = adx_rising = False
+            ema20_rising = (
+                bool(float(ema20[i]) > float(ema20[i - 5]))
+                if i >= 5 and not (np.isnan(ema20[i]) or np.isnan(ema20[i - 5]))
+                else False
+            )
+            price_above_ema50 = bool(not np.isnan(ema50[i]) and float(close[i]) > float(ema50[i]))
+            c = {
+                "supertrend": bool(st_bull[i]),
+                "supertrend_bearish": not bool(st_bull[i]),
+                "ema20_rising": ema20_rising,
+                "ema20_falling": not ema20_rising,
+                "adx_above": adx_above,
+                "adx_below": not adx_above,
+                "adx_rising": adx_rising,
+                "adx_falling": not adx_rising,
+                "price_above_ema50": price_above_ema50,
+                "price_below_ema50": not price_above_ema50,
+            }
+            new_checks   = [c[k] for k, on in new_enabled.items()   if on]
+            break_checks = [c[k] for k, on in break_enabled.items() if on]
+            return (
+                bool(new_checks)   and all(new_checks),
+                bool(break_checks) and any(break_checks),
+            )
+
+        prev_pn, prev_pb = _bar_passes(0)
+        state = "OUT"
+        last_signal: str | None = None
+        last_signal_bar = -1
+
+        for i in range(1, n):
+            pn, pb = _bar_passes(i)
+            if state == "OUT" and pn and not prev_pn:
+                state = "IN_TREND"
+                last_signal = "NEW"
+                last_signal_bar = i
+            elif state == "IN_TREND" and pb and not prev_pb:
+                state = "OUT"
+                last_signal = "BREAK"
+                last_signal_bar = i
+            prev_pn, prev_pb = pn, pb
+
+        age = n - 1 - last_signal_bar  # 0 = fired on current (last) bar
+        if last_signal == "NEW" and age <= 5:
+            return "NEW"
+        if last_signal == "BREAK" and age <= 5:
+            return "BREAK"
+        if state == "IN_TREND":
+            return "HOLD"
+        return None
+
     def _evaluate_policies(self, bars: list[OHLCV]) -> dict[str, bool]:
         close = np.array([float(b.close) for b in bars])
         high = np.array([float(b.high) for b in bars])
         low = np.array([float(b.low) for b in bars])
 
-        # SuperTrend bullish
-        st_bull = bool(supertrend_bullish(high, low, close, self._supertrend_period, self._supertrend_multiplier))
+        # SuperTrend bullish (last bar)
+        final_upper, final_lower = supertrend_bands(high, low, close, self._supertrend_period, self._supertrend_multiplier)
+        st_dir = 1
+        st_started = False
+        for i in range(len(close)):
+            if np.isnan(final_upper[i]):
+                continue
+            if not st_started:
+                st_started = True
+            elif st_dir == 1 and close[i] < final_lower[i]:
+                st_dir = -1
+            elif st_dir == -1 and close[i] > final_upper[i]:
+                st_dir = 1
+        st_bull = st_dir == 1
 
         # EMA20 rising (compare last bar to 5 bars ago)
         ema20 = talib.EMA(close, timeperiod=20)
@@ -198,11 +311,13 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         # ADX above threshold and rising (slope of last 5 values > 0)
         adx = talib.ADX(high, low, close, timeperiod=14)
         adx_segment = adx[-5:]
-        adx_ok = (
-            not np.any(np.isnan(adx_segment))
-            and float(adx[-1]) > self._min_adx
-            and float(np.polyfit(np.arange(5, dtype=float), adx_segment, 1)[0]) > 0
-        )
+        if not np.any(np.isnan(adx_segment)):
+            adx_slope = float(np.polyfit(np.arange(5, dtype=float), adx_segment, 1)[0])
+            adx_above = float(adx[-1]) > self._min_adx
+            adx_rising = adx_slope > 0
+        else:
+            adx_above = False
+            adx_rising = False
 
         # Price above EMA50
         ema50 = talib.EMA(close, timeperiod=50)
@@ -210,9 +325,15 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
 
         return {
             "supertrend": st_bull,
+            "supertrend_bearish": not st_bull,
             "ema20_rising": ema20_rising,
-            "adx": bool(adx_ok),
+            "ema20_falling": not ema20_rising,
+            "adx_above": adx_above,
+            "adx_below": not adx_above,
+            "adx_rising": adx_rising,
+            "adx_falling": not adx_rising,
             "price_above_ema50": price_above_ema50,
+            "price_below_ema50": not price_above_ema50,
         }
 
     # ------------------------------------------------------------------ #

@@ -69,10 +69,18 @@ def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3
 def _compute_signal_markers(
     bars: list[Any],
     min_adx: int = 20,
+    # NEW detection policies
     policy_supertrend: bool = True,
     policy_ema20_rising: bool = True,
-    policy_adx: bool = True,
+    policy_adx_above: bool = True,
+    policy_adx_rising: bool = True,
     policy_price_above_ema50: bool = True,
+    # BREAK detection policies
+    policy_supertrend_break: bool = True,
+    policy_ema20_falling_break: bool = True,
+    policy_adx_below_break: bool = True,
+    policy_adx_falling_break: bool = True,
+    policy_price_below_ema50_break: bool = True,
     supertrend_period: int = 10,
     supertrend_multiplier: float = 3.0,
 ) -> list[dict]:
@@ -106,37 +114,65 @@ def _compute_signal_markers(
             trend = 1
         st_bull[i] = trend == 1
 
-    # Per-bar policy pass boolean
-    passes = np.zeros(n, dtype=bool)
-    for i in range(n):
-        checks: list[bool] = []
-        if policy_supertrend:
-            checks.append(bool(st_bull[i]))
-        if policy_ema20_rising:
-            if i >= 5 and not (np.isnan(ema20[i]) or np.isnan(ema20[i - 5])):
-                checks.append(float(ema20[i]) > float(ema20[i - 5]))
-            else:
-                checks.append(False)
-        if policy_adx:
-            if i >= 4 and not np.any(np.isnan(adx_vals[i - 4 : i + 1])):
-                slope = float(np.polyfit(np.arange(5, dtype=float), adx_vals[i - 4 : i + 1], 1)[0])
-                checks.append(float(adx_vals[i]) > min_adx and slope > 0)
-            else:
-                checks.append(False)
-        if policy_price_above_ema50:
-            if not np.isnan(ema50[i]):
-                checks.append(float(closes[i]) > float(ema50[i]))
-            else:
-                checks.append(False)
-        passes[i] = bool(checks) and all(checks)
+    def _bar_indicators(i: int) -> dict[str, bool]:
+        adx_seg = adx_vals[i - 4 : i + 1] if i >= 4 else np.array([np.nan])
+        if not np.any(np.isnan(adx_seg)):
+            adx_slope = float(np.polyfit(np.arange(5, dtype=float), adx_seg, 1)[0])
+            _adx_above  = float(adx_vals[i]) > min_adx
+            _adx_rising = adx_slope > 0
+        else:
+            _adx_above = _adx_rising = False
+        _ema20_rising = (
+            bool(float(ema20[i]) > float(ema20[i - 5]))
+            if i >= 5 and not (np.isnan(ema20[i]) or np.isnan(ema20[i - 5]))
+            else False
+        )
+        _price_above_ema50 = bool(not np.isnan(ema50[i]) and float(closes[i]) > float(ema50[i]))
+        return {
+            "supertrend": bool(st_bull[i]),
+            "supertrend_bearish": not bool(st_bull[i]),
+            "ema20_rising": _ema20_rising,
+            "ema20_falling": not _ema20_rising,
+            "adx_above": _adx_above,
+            "adx_below": not _adx_above,
+            "adx_rising": _adx_rising,
+            "adx_falling": not _adx_rising,
+            "price_above_ema50": _price_above_ema50,
+            "price_below_ema50": not _price_above_ema50,
+        }
 
-    # Emit a marker at each transition
+    new_mask = {
+        "supertrend": policy_supertrend, "ema20_rising": policy_ema20_rising,
+        "adx_above": policy_adx_above, "adx_rising": policy_adx_rising,
+        "price_above_ema50": policy_price_above_ema50,
+    }
+    break_mask = {
+        "supertrend_bearish": policy_supertrend_break,
+        "ema20_falling": policy_ema20_falling_break,
+        "adx_below": policy_adx_below_break,
+        "adx_falling": policy_adx_falling_break,
+        "price_below_ema50": policy_price_below_ema50_break,
+    }
+
+    passes_new   = np.zeros(n, dtype=bool)
+    passes_break = np.zeros(n, dtype=bool)
+    for i in range(n):
+        c = _bar_indicators(i)
+        new_checks   = [c[k] for k, on in new_mask.items()   if on]
+        break_checks = [c[k] for k, on in break_mask.items() if on]
+        passes_new[i]   = bool(new_checks)   and all(new_checks)
+        passes_break[i] = bool(break_checks) and any(break_checks)
+
+    # State machine: OUT -[NEW]-> IN_TREND -[BREAK]-> OUT
+    state = "OUT"
     markers: list[dict] = []
     for i in range(1, n):
-        if passes[i] and not passes[i - 1]:
+        if state == "OUT" and passes_new[i] and not passes_new[i - 1]:
             markers.append({"time": dates[i], "position": "belowBar", "color": "#26a69a", "shape": "arrowUp", "text": "NEW"})
-        elif not passes[i] and passes[i - 1]:
+            state = "IN_TREND"
+        elif state == "IN_TREND" and passes_break[i] and not passes_break[i - 1]:
             markers.append({"time": dates[i], "position": "aboveBar", "color": "#ef5350", "shape": "arrowDown", "text": "BREAK"})
+            state = "OUT"
     return markers
 
 
@@ -293,8 +329,14 @@ async def restart_stage(
     policies_submitted: Annotated[str | None, Form()] = None,
     policy_supertrend: Annotated[str | None, Form()] = None,
     policy_ema20_rising: Annotated[str | None, Form()] = None,
-    policy_adx: Annotated[str | None, Form()] = None,
+    policy_adx_above: Annotated[str | None, Form()] = None,
+    policy_adx_rising: Annotated[str | None, Form()] = None,
     policy_price_above_ema50: Annotated[str | None, Form()] = None,
+    policy_supertrend_break: Annotated[str | None, Form()] = None,
+    policy_ema20_falling_break: Annotated[str | None, Form()] = None,
+    policy_adx_below_break: Annotated[str | None, Form()] = None,
+    policy_adx_falling_break: Annotated[str | None, Form()] = None,
+    policy_price_below_ema50_break: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(from_stage)
     updates: dict = {}
@@ -310,8 +352,14 @@ async def restart_stage(
         updates["config_overrides.screening"] = {
             "policy_supertrend": policy_supertrend is not None,
             "policy_ema20_rising": policy_ema20_rising is not None,
-            "policy_adx": policy_adx is not None,
+            "policy_adx_above": policy_adx_above is not None,
+            "policy_adx_rising": policy_adx_rising is not None,
             "policy_price_above_ema50": policy_price_above_ema50 is not None,
+            "policy_supertrend_break": policy_supertrend_break is not None,
+            "policy_ema20_falling_break": policy_ema20_falling_break is not None,
+            "policy_adx_below_break": policy_adx_below_break is not None,
+            "policy_adx_falling_break": policy_adx_falling_break is not None,
+            "policy_price_below_ema50_break": policy_price_below_ema50_break is not None,
         }
 
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})
@@ -332,8 +380,14 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
     min_adx: int = scr_cfg.get("min_adx", 20)
     policy_supertrend: bool = scr_cfg.get("policy_supertrend", True)
     policy_ema20_rising: bool = scr_cfg.get("policy_ema20_rising", True)
-    policy_adx: bool = scr_cfg.get("policy_adx", True)
+    policy_adx_above: bool = scr_cfg.get("policy_adx_above", True)
+    policy_adx_rising: bool = scr_cfg.get("policy_adx_rising", True)
     policy_price_above_ema50: bool = scr_cfg.get("policy_price_above_ema50", True)
+    policy_supertrend_break: bool = scr_cfg.get("policy_supertrend_break", True)
+    policy_ema20_falling_break: bool = scr_cfg.get("policy_ema20_falling_break", True)
+    policy_adx_below_break: bool = scr_cfg.get("policy_adx_below_break", True)
+    policy_adx_falling_break: bool = scr_cfg.get("policy_adx_falling_break", True)
+    policy_price_below_ema50_break: bool = scr_cfg.get("policy_price_below_ema50_break", True)
     supertrend_period: int = scr_cfg.get("supertrend_period", 10)
     supertrend_multiplier: float = scr_cfg.get("supertrend_multiplier", 3.0)
     try:
@@ -356,8 +410,10 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
     ]
     adx_data, plus_di, minus_di = _compute_adx(bars)
     signal_markers = _compute_signal_markers(
-        bars, min_adx, policy_supertrend, policy_ema20_rising,
-        policy_adx, policy_price_above_ema50, supertrend_period, supertrend_multiplier,
+        bars, min_adx,
+        policy_supertrend, policy_ema20_rising, policy_adx_above, policy_adx_rising, policy_price_above_ema50,
+        policy_supertrend_break, policy_ema20_falling_break, policy_adx_below_break, policy_adx_falling_break, policy_price_below_ema50_break,
+        supertrend_period, supertrend_multiplier,
     )
     chart_data = json.dumps({
         "ticker":         ticker,

@@ -90,7 +90,8 @@
                 <th title="True Strength Index">TSI</th>
                 <th class="text-center" title="SuperTrend bullish">SuperTr</th>
                 <th class="text-center" title="EMA20 rising">EMA20</th>
-                <th class="text-center" title="ADX &gt; {{ min_adx }} and rising">ADX</th>
+                <th class="text-center" title="ADX &gt; {{ min_adx }}">ADX&gt;</th>
+                <th class="text-center" title="ADX rising">ADX↑</th>
                 <th class="text-center" title="Price above EMA50">EMA50</th>
                 <th class="text-center" title="Trend signal vs 5 trading days ago">Signal</th>
                 {% if r.history_labels %}
@@ -124,7 +125,8 @@
                 <td>{{ "%.1f" | format(r.tsi.get(sym, 0)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("supertrend", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("ema20_rising", false)) }}</td>
-                <td class="text-center">{{ policy_badge(pol.get("adx", false)) }}</td>
+                <td class="text-center">{{ policy_badge(pol.get("adx_above", false)) }}</td>
+                <td class="text-center">{{ policy_badge(pol.get("adx_rising", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("price_above_ema50", false)) }}</td>
                 {% set sig = r.trend_signals.get(sym) or "" %}
                 <td class="text-center" data-signal="{{ sig }}">
@@ -159,32 +161,69 @@
         {# Policy checkboxes — submits as a restart from screening #}
         <div class="col-auto">
           <form method="post" action="/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}/stages/screening/restart"
-                class="d-flex align-items-center gap-3 flex-wrap">
+                class="d-flex flex-column gap-2">
             <input type="hidden" name="from_stage" value="screening">
             <input type="hidden" name="policies_submitted" value="1">
-            <span class="text-muted small fw-semibold">Policies:</span>
             {% set pol_cfg = execution.get("config_overrides", {}).get("screening", {}) %}
-            <div class="form-check form-check-inline mb-0">
-              <input class="form-check-input" type="checkbox" name="policy_supertrend" id="pol_st"
-                     {% if pol_cfg.get("policy_supertrend", true) %}checked{% endif %}>
-              <label class="form-check-label small" for="pol_st">SuperTrend</label>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <span class="text-muted small fw-semibold" style="min-width:5rem">NEW:</span>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_supertrend" id="pol_st"
+                       {% if pol_cfg.get("policy_supertrend", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_st">SuperTrend bullish</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_ema20_rising" id="pol_ema20"
+                       {% if pol_cfg.get("policy_ema20_rising", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_ema20">EMA20 rising</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_adx_above" id="pol_adx_above"
+                       {% if pol_cfg.get("policy_adx_above", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_adx_above">ADX &gt; {{ min_adx }}</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_adx_rising" id="pol_adx_rising"
+                       {% if pol_cfg.get("policy_adx_rising", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_adx_rising">ADX rising</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_price_above_ema50" id="pol_ema50"
+                       {% if pol_cfg.get("policy_price_above_ema50", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_ema50">Price &gt; EMA50</label>
+              </div>
             </div>
-            <div class="form-check form-check-inline mb-0">
-              <input class="form-check-input" type="checkbox" name="policy_ema20_rising" id="pol_ema20"
-                     {% if pol_cfg.get("policy_ema20_rising", true) %}checked{% endif %}>
-              <label class="form-check-label small" for="pol_ema20">EMA20 rising</label>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <span class="text-muted small fw-semibold" style="min-width:5rem">BREAK:</span>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_supertrend_break" id="pol_st_brk"
+                       {% if pol_cfg.get("policy_supertrend_break", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_st_brk">SuperTrend bearish</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_ema20_falling_break" id="pol_ema20_brk"
+                       {% if pol_cfg.get("policy_ema20_falling_break", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_ema20_brk">EMA20 falling</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_adx_below_break" id="pol_adx_below_brk"
+                       {% if pol_cfg.get("policy_adx_below_break", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_adx_below_brk">ADX &lt; {{ min_adx }}</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_adx_falling_break" id="pol_adx_falling_brk"
+                       {% if pol_cfg.get("policy_adx_falling_break", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_adx_falling_brk">ADX falling</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="policy_price_below_ema50_break" id="pol_ema50_brk"
+                       {% if pol_cfg.get("policy_price_below_ema50_break", true) %}checked{% endif %}>
+                <label class="form-check-label small" for="pol_ema50_brk">Price &lt; EMA50</label>
+              </div>
             </div>
-            <div class="form-check form-check-inline mb-0">
-              <input class="form-check-input" type="checkbox" name="policy_adx" id="pol_adx"
-                     {% if pol_cfg.get("policy_adx", true) %}checked{% endif %}>
-              <label class="form-check-label small" for="pol_adx">ADX &gt; {{ min_adx }} and rising</label>
+            <div>
+              <button type="submit" class="btn btn-sm btn-outline-primary">Apply &amp; Re-run</button>
             </div>
-            <div class="form-check form-check-inline mb-0">
-              <input class="form-check-input" type="checkbox" name="policy_price_above_ema50" id="pol_ema50"
-                     {% if pol_cfg.get("policy_price_above_ema50", true) %}checked{% endif %}>
-              <label class="form-check-label small" for="pol_ema50">Price &gt; EMA50</label>
-            </div>
-            <button type="submit" class="btn btn-sm btn-outline-primary">Apply &amp; Re-run</button>
           </form>
         </div>
 
