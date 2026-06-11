@@ -27,6 +27,13 @@
     [data-bs-theme="light"] .stage-link { color: #495057; }
     [data-bs-theme="light"] .stage-link:hover { background: #f0f0f0; color: #212529; }
     [data-bs-theme="light"] .stage-link.active { background: #e7f1ff; color: #0d6efd; }
+
+    .finhub-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; cursor: default; flex-shrink: 0; }
+    .finhub-dot.finhub-unknown   { background: #555; }
+    .finhub-dot.finhub-checking  { background: #ffc107; animation: finhub-pulse 1.2s ease-in-out infinite; }
+    .finhub-dot.finhub-ok        { background: #28a745; box-shadow: 0 0 4px #28a745; }
+    .finhub-dot.finhub-error     { background: #dc3545; }
+    @keyframes finhub-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
   </style>
   <script>
     (function() {
@@ -270,6 +277,7 @@
   <span class="text-secondary small">Execution <code class="text-light">{{ execution_id }}</code></span>
   {% endif %}
   <div class="d-flex align-items-center gap-2">
+    <span id="finhub-status" class="finhub-dot finhub-unknown" title="FinHub API: unknown"></span>
     <button id="theme-toggle" class="btn btn-sm btn-outline-secondary" title="Toggle light/dark mode" onclick="toggleTheme()">☀</button>
     <a href="/quant-systems" class="btn btn-sm btn-outline-light">Quant Systems</a>
     <a href="/executions" class="btn btn-sm btn-outline-secondary">Executions</a>
@@ -287,6 +295,56 @@
     var theme = document.documentElement.getAttribute('data-bs-theme');
     document.getElementById('theme-toggle').textContent = theme === 'dark' ? '☀' : '🌙';
   });
+</script>
+<script>
+  (function() {
+    var dot = null;
+    var keepaliveTimer = null;
+    var retryTimer = null;
+    var KEEPALIVE_MS = 4 * 60 * 1000;  // ping every 4 min to stay below 5-min ACA idle timeout
+    var RETRY_MS     = 10 * 1000;      // retry every 10 s while waking up
+    var FETCH_TIMEOUT_MS = 12 * 1000; // per-request abort timeout
+
+    function setState(state, label) {
+      if (!dot) return;
+      dot.className = 'finhub-dot finhub-' + state;
+      dot.title = 'FinHub API: ' + label;
+    }
+
+    function ping() {
+      if (retryTimer)    { clearTimeout(retryTimer);    retryTimer    = null; }
+      if (keepaliveTimer){ clearTimeout(keepaliveTimer); keepaliveTimer = null; }
+      setState('checking', 'Checking\u2026');
+      var ctrl = new AbortController();
+      var t = setTimeout(function() { ctrl.abort(); }, FETCH_TIMEOUT_MS);
+      fetch('/api/finhub/health', { signal: ctrl.signal })
+        .then(function(r) {
+          clearTimeout(t);
+          if (r.ok) {
+            setState('ok', 'Online');
+            keepaliveTimer = setTimeout(ping, KEEPALIVE_MS);
+          } else {
+            setState('error', 'Unavailable');
+            retryTimer = setTimeout(ping, RETRY_MS);
+          }
+        })
+        .catch(function() {
+          clearTimeout(t);
+          setState('error', 'Waking up\u2026');
+          retryTimer = setTimeout(ping, RETRY_MS);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      dot = document.getElementById('finhub-status');
+      ping();
+    });
+
+    window.addEventListener('beforeunload', function() {
+      if (keepaliveTimer) clearTimeout(keepaliveTimer);
+      if (retryTimer)     clearTimeout(retryTimer);
+    });
+  })();
 </script>
 
 <div class="container-fluid">
