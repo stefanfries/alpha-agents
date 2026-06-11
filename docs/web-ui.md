@@ -15,7 +15,7 @@ It is implemented as FastAPI + Jinja2 + HTMX + Bootstrap 5 (see ADR-008, ADR-010
 
 Every page shares a base template with:
 
-- **Top navbar**: app name, link to Quant Systems list, current execution ID (if on an execution page)
+- **Top navbar**: app name, link to Quant Systems list, current execution ID (if on an execution page), **FinHub API status dot** (see below), light/dark theme toggle
 - **Left sidebar** (execution pages): pipeline progress indicator showing all 7 stages with status badges (pending / running / awaiting review / approved / error). Clicking a completed stage navigates to its review page.
 - **Main content area**: page-specific content
 
@@ -433,3 +433,41 @@ templates/
 ```
 
 Stage pages extend `base.html` and include `partials/action_bar.html`. Chart routes return raw Plotly HTML (no template — just `HTMLResponse`).
+
+---
+
+## FinHub API keepalive
+
+The FinHub data API is deployed as an Azure Container App with **scale-to-zero**. A cold start takes 30–60 seconds; after 5 minutes of inactivity the ACA scales back down.
+
+To keep the API warm while the browser client is open, `base.html` includes a keepalive mechanism:
+
+### Server-side proxy — `GET /api/finhub/health`
+
+`app/main.py` exposes a thin proxy that forwards to `settings.finhub.base_url + /health`. The browser calls this local endpoint instead of FinHub directly, which avoids CORS issues and keeps the API base URL server-side.
+
+- Returns `200 {"status": "ok"}` on success
+- Returns `503 {"status": "error"}` on any failure
+- Hard-coded 10 s request timeout
+
+### Client-side behaviour (JS IIFE in `base.html`)
+
+| Phase | Behaviour |
+|-------|-----------|
+| On `DOMContentLoaded` | Immediately pings `/api/finhub/health` to trigger cold-start |
+| While waking up | Retries every **10 s** until a 200 response is received |
+| Once online | Schedules a ping every **4 minutes** (below the 5-min ACA idle threshold) |
+| On `beforeunload` | Clears all timers |
+
+### Navbar status dot
+
+A small 8px dot to the left of the theme toggle shows the current API state:
+
+| State | Appearance | Meaning |
+|-------|-----------|---------|
+| `unknown` | Grey | Page just loaded, not yet checked |
+| `checking` | Amber, pulsing | Request in flight / waking up |
+| `ok` | Green, glowing | API online |
+| `error` | Red | API unreachable |
+
+Hovering the dot shows a tooltip with the human-readable status text.
