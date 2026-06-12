@@ -59,6 +59,10 @@ class YFinanceTool(Tool):
 
     async def fetch_fundamentals(self, ticker: Ticker) -> dict:
         def _info() -> dict:
-            return yf.Ticker(ticker.symbol).info
+            info = yf.Ticker(ticker.symbol).info
+            # yfinance can return a near-empty stub dict without raising
+            if len(info) <= 2:
+                raise ValueError(f"Empty fundamentals stub for {ticker.symbol}")
+            return info
 
         return await asyncio.to_thread(_info)

@@ -17,27 +17,29 @@ class ResearchInput(AgentInput):
 ```python
 class ResearchResult(AgentOutput):
     tickers: list[Ticker]
-    bars: dict[str, list[OHLCV]]   # Keyed by ticker symbol; full OHLCV history
+    bars: dict[str, list[OHLCV]]        # Keyed by ticker symbol; full OHLCV history
+    fundamentals: dict[str, dict]       # Keyed by ticker symbol; raw yfinance .info dict
 ```
 
 ## Tools used
 
-- `YFinanceTool` — fetches OHLCV daily bars for each symbol
+- `YFinanceTool` — fetches OHLCV daily bars (batch) and fundamentals (per-ticker) via yfinance
 
 ## Behaviour
 
-1. For each ticker, fetch `lookback_days` of daily OHLCV candles
-2. Return all bars; no filtering, scoring, or fundamental data at this stage
-3. Persist the `ResearchResult` to MongoDB Atlas for the current `run_id`
+1. Fetch `lookback_days` of daily OHLCV candles for all tickers in one batch call
+2. Concurrently fetch fundamentals (yfinance `.info`) for each ticker (semaphore: 10 concurrent)
+3. Tickers with no OHLCV data are excluded from output and logged as a warning
+4. Tickers with no fundamentals are kept in output with an empty dict
 
 ## Error handling
 
-- If a ticker returns no data (delisted, invalid symbol), it is excluded from output and logged as a warning
-- Partial failures do not abort the pipeline; only tickers with complete data proceed
+- If a ticker returns no OHLCV data (delisted, invalid symbol), it is excluded from output
+- Fundamentals fetch retries once (1 s delay) before falling back to `{}`; yfinance can return a near-empty stub dict without raising — this is treated as a failure and triggers the retry
+- Partial failures do not abort the pipeline; only tickers with complete OHLCV data proceed
 
 ## Notes
 
-- Data is fetched concurrently using `asyncio.gather()` across tickers
-- This agent does not make investment decisions — it only collects OHLCV candles
-- Fundamental metrics are not required here; the trend-detection focus of the downstream `StockSelectionAgent` operates entirely on price and volume data
+- OHLCV is fetched in a single `yf.download()` batch call for efficiency
+- Fundamentals are fetched concurrently with a semaphore of 10 to avoid rate-limiting
 - A sufficient `lookback_days` value (≥ 200) is required to compute long-period moving averages downstream

@@ -39,15 +39,21 @@ class ResearchAgent(Agent[ResearchInput, ResearchResult]):
 
         async def fetch_fundamentals_safe(ticker: Ticker) -> tuple[str, dict]:
             async with sem:
-                try:
-                    result = (ticker.symbol, await self._tool.fetch_fundamentals(ticker))
-                except Exception:
-                    logger.warning("Failed to fetch fundamentals for %s", ticker.symbol, exc_info=True)
-                    result = (ticker.symbol, {})
+                info: dict = {}
+                for attempt in range(2):
+                    try:
+                        info = await self._tool.fetch_fundamentals(ticker)
+                        break
+                    except Exception:
+                        if attempt == 0:
+                            logger.warning("Retrying fundamentals for %s", ticker.symbol)
+                            await asyncio.sleep(1)
+                        else:
+                            logger.warning("Failed to fetch fundamentals for %s", ticker.symbol, exc_info=True)
             done[0] += 1
             if self._on_progress:
                 await self._on_progress("fundamentals", done[0], len(input.tickers))
-            return result
+            return ticker.symbol, info
 
         fund_results = await asyncio.gather(*[fetch_fundamentals_safe(t) for t in input.tickers])
         fundamentals: dict[str, dict] = dict(fund_results)
