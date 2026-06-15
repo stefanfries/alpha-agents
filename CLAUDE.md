@@ -79,8 +79,12 @@ The parent repo at `../CLAUDE.md` defines shared conventions (uv, Pydantic V2, h
 # Install dependencies
 uv sync
 
-# Run the web UI (development)
+# Run the web UI (development, localhost only)
 uv run uvicorn app.main:app --reload
+
+# Run the web UI accessible from other devices on the LAN (e.g. phone/tablet)
+# Requires inbound TCP 8000 allowed in Windows Firewall
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Add a dependency
 uv add <package>

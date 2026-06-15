@@ -1,12 +1,18 @@
+from pathlib import Path
+
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import lifespan
 from app.routes import pipeline, quant_systems
 
+STATIC_DIR = Path(__file__).parent / "static"
+
 app = FastAPI(title="Alpha Agents", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(pipeline.router)         # /quant-systems/{qs_id}/executions/...
 app.include_router(quant_systems.router)    # /quant-systems CRUD + /quant-systems/depots/virtual
 
@@ -14,6 +20,11 @@ app.include_router(quant_systems.router)    # /quant-systems CRUD + /quant-syste
 @app.get("/", include_in_schema=False)
 async def root() -> RedirectResponse:
     return RedirectResponse(url="/quant-systems")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
 
 
 @app.get("/api/finhub/health", include_in_schema=False)

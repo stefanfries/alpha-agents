@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
+from app import warrant_availability
 from app.agents.execution import TradeExecutionAgent
 from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.research import ResearchAgent, ResearchInput
@@ -89,9 +90,23 @@ class Pipeline:
         execution_id = run["execution_id"]
         async with FinHubTool() as finhub, WikipediaIndexTool() as wikipedia:
             await self._wake_finhub(execution_id, finhub, "universe")
-            return await UniverseAgent(finhub=finhub, wikipedia=wikipedia).run(
+            result = await UniverseAgent(finhub=finhub, wikipedia=wikipedia).run(
                 UniverseInput(indices=run.get("indices", []))
             )
+
+            # Warrant availability is only uncertain for ADRs — regular stocks
+            # reliably have warrants at comdirect, so only ADR ISINs are scanned.
+            adr_set = set(result.adr_isins)
+            adr_tickers = [t for t in result.tickers if t.isin in adr_set]
+
+            async def on_avail_progress(done: int, total: int) -> None:
+                await update_stage_progress(execution_id, "universe", {
+                    "step": "warrants", "done": done, "total": total,
+                })
+
+            await warrant_availability.scan(finhub, adr_tickers, on_avail_progress)
+            await update_stage_progress(execution_id, "universe", None)
+            return result
 
     async def _wake_finhub(self, execution_id: str, finhub: FinHubTool, stage: str) -> None:
         """Ping FinHub; if cold-start takes >3 s, surface a progress message."""
@@ -154,6 +169,7 @@ class Pipeline:
         async def on_progress(done: int, total: int, active: list[str]) -> None:
             await update_stage_progress(execution_id, "warrant_selection", {"done": done, "total": total, "active": active})
 
+        overrides = await warrant_availability.overrides_map()
         async with FinHubTool() as finhub:
             await self._wake_finhub(execution_id, finhub, "warrant_selection")
             return await WarrantSelectionAgent(
@@ -163,6 +179,7 @@ class Pipeline:
                 max_days_to_expiry=settings.warrant_selection.max_days_to_expiry,
                 atm_band=settings.warrant_selection.atm_band,
                 atm_band_fallback=settings.warrant_selection.atm_band_fallback,
+                isin_overrides=overrides,
                 on_progress=on_progress,
             ).run(screening)
 

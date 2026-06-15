@@ -34,12 +34,34 @@ class WarrantSelectionResult(BaseModel):
 | `ask` | `float \| None` | Ask price |
 | `score` | `float` | Composite score in [0, 1] |
 | `rationale` | `str` | Human-readable score breakdown |
+| `issuer_action` | `bool` | Issuer promo flag ("Aktion") |
+| `issuer_no_fee_action` | `bool` | Issuer fee-free promo flag |
+| `chart_symbol` | `str \| None` | yfinance symbol to chart for the strike currency; set only for ISIN-override underlyings (e.g. `ASML.AS`), otherwise `None` |
 
 ## Tools used
 
-- `FinHubTool` — two FinHub API endpoints:
+- `FinHubTool` — three FinHub API endpoints:
   - `GET /v1/warrants` — warrant search filtered by underlying ISIN, type, maturity range, and strike band
   - `GET /v1/warrants/{isin}` — full reference data, live market data, and analytics (Greeks)
+  - `GET /v1/instruments/{isin}` — resolves an override underlying's yfinance symbol (for the chart)
+
+## ISIN overrides (ADRs)
+
+For an ADR whose warrants are written on a different underlying (e.g. the ASML ADR
+`USN070592100`, whose EUR-listed stock `NL0010273215` carries the warrants), a persisted
+manual override (see ADR-012) redirects **warrant lookup only**. When an override is active
+for a ticker:
+
+- `get_warrants` / `get_warrant_detail` use the **override ISIN**, not the ADR's.
+- The strike band is derived from the **override underlying's own native-currency price**
+  (read from a warrant's `reference_data.underlying_price`, same currency as `strike`) —
+  **no FX conversion**. Using the ADR's `currentPrice` would be the wrong currency and
+  magnitude (USD vs EUR).
+- `chart_symbol` is set to the override underlying's yfinance symbol (e.g. `ASML.AS`) so the
+  warrant-selection chart plots candles in the same currency as the strike line.
+
+The ADR remains the analyzed instrument everywhere else (research, screening, fundamentals,
+name); only warrant sourcing and the strike chart follow the override.
 
 ## Behaviour
 
@@ -80,4 +102,4 @@ The warrant selection stage page shows:
 
 - **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score. Clicking a row loads the top-3 detail panel.
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
-- **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}`.
+- **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.

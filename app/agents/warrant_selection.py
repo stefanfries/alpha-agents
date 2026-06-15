@@ -21,9 +21,10 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         finhub: FinHubTool,
         prices: dict[str, float],
         min_days_to_expiry: int = 270,
-        max_days_to_expiry: int = 365,
+        max_days_to_expiry: int = 456,
         atm_band: float = 0.02,
         atm_band_fallback: float = 0.10,
+        isin_overrides: dict[str, str] | None = None,
         on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
     ) -> None:
         self._finhub = finhub
@@ -32,6 +33,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._max_days = max_days_to_expiry
         self._atm_band = atm_band
         self._atm_band_fallback = atm_band_fallback
+        self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
 
     async def run(self, input: SelectionResult) -> WarrantSelectionResult:
@@ -92,14 +94,31 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             logger.warning("No ISIN for %s — skipping", ticker.symbol)
             return None
 
-        price = self._prices.get(ticker.symbol)
+        # Warrant lookup may use a manual override ISIN (e.g. an ADR whose
+        # underlying stock carries the warrants). Display + price stay on `ticker`.
+        lookup_isin = self._isin_overrides.get(ticker.isin, ticker.isin)
+        if lookup_isin != ticker.isin:
+            logger.info("%s: using override ISIN %s for warrant lookup", ticker.symbol, lookup_isin)
+
+        # The strike band must be expressed in the warrant's strike currency. For
+        # an override the ADR's `currentPrice` is in the wrong currency (e.g. USD
+        # ADR vs EUR-denominated underlying), so derive the band from the override
+        # underlying's own native-currency price instead — no FX conversion.
+        chart_symbol: str | None = None
+        if lookup_isin != ticker.isin:
+            price = await self._override_underlying_price(lookup_isin, maturity_from, maturity_to)
+            # Chart the override underlying (matching the strike currency) instead
+            # of the ADR, so candles and the strike line share one currency.
+            chart_symbol = await self._override_chart_symbol(lookup_isin)
+        else:
+            price = self._prices.get(ticker.symbol)
         strike_min = round(price * (1 - self._atm_band), 4) if price else None
         strike_max = round(price * (1 + self._atm_band), 4) if price else None
 
         async def fetch_warrants(s_min: float | None, s_max: float | None) -> list[dict[str, Any]] | None:
             try:
                 return await self._finhub.get_warrants(
-                    underlying=ticker.isin,
+                    underlying=lookup_isin,
                     preselection="CALL",
                     maturity_from=maturity_from,
                     maturity_to=maturity_to,
@@ -110,7 +129,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                 await asyncio.sleep(2)
                 try:
                     return await self._finhub.get_warrants(
-                        underlying=ticker.isin,
+                        underlying=lookup_isin,
                         preselection="CALL",
                         maturity_from=maturity_from,
                         maturity_to=maturity_to,
@@ -166,18 +185,59 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             fetch_detail(c["isin"]) for c in candidates if c.get("isin")
         ])
         details = [d for d in raw if d]
+        details = [d for d in details if not (d.get("reference_data") or {}).get("is_capped")]
 
         if not details:
-            logger.warning("%s: all %d detail fetches failed — skipping", ticker.symbol, len(candidates))
+            logger.warning("%s: all %d detail fetches failed or were capped — skipping", ticker.symbol, len(candidates))
             return None
 
         scored = sorted(details, key=lambda d: self._score(d, today), reverse=True)
         best_detail = scored[0]
         top3_details = scored[:3]
 
-        best = self._build(ticker, best_detail, today)
-        top3 = [self._build(ticker, d, today) for d in top3_details]
+        best = self._build(ticker, best_detail, today, chart_symbol)
+        top3 = [self._build(ticker, d, today, chart_symbol) for d in top3_details]
         return best, top3, len(details)
+
+    async def _override_chart_symbol(self, lookup_isin: str) -> str | None:
+        """yfinance symbol of an override underlying (native-currency price series)."""
+        try:
+            inst = await self._finhub.get_instrument(lookup_isin)
+        except Exception:
+            logger.warning("override chart: get_instrument failed for %s", lookup_isin)
+            return None
+        return (inst or {}).get("global_identifiers", {}).get("symbol_yfinance")
+
+    async def _override_underlying_price(
+        self, lookup_isin: str, maturity_from: str, maturity_to: str
+    ) -> float | None:
+        """Native-currency price of an override underlying for the strike band.
+
+        Read from a warrant's ``reference_data.underlying_price`` (same currency
+        as ``strike``), so the band needs no FX conversion. Returns None if no
+        warrant or price is available, in which case the band is left unbounded.
+        """
+        try:
+            candidates = await self._finhub.get_warrants(
+                underlying=lookup_isin,
+                preselection="CALL",
+                maturity_from=maturity_from,
+                maturity_to=maturity_to,
+            )
+        except Exception:
+            logger.warning("override price: get_warrants failed for %s", lookup_isin)
+            return None
+        for c in candidates:
+            if not c.get("isin"):
+                continue
+            try:
+                detail = await self._finhub.get_warrant_detail(c["isin"])
+            except Exception:
+                continue
+            price = (detail or {}).get("reference_data", {}).get("underlying_price")
+            if price:
+                return float(price)
+        return None
 
     def _score(self, detail: dict, today: date) -> float:
         md = detail.get("market_data") or {}
@@ -213,7 +273,9 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
         return score
 
-    def _build(self, underlying: Ticker, detail: dict, today: date) -> SelectedWarrant:
+    def _build(
+        self, underlying: Ticker, detail: dict, today: date, chart_symbol: str | None = None
+    ) -> SelectedWarrant:
         md = detail.get("market_data") or {}
         an = detail.get("analytics") or {}
         rd = detail.get("reference_data") or {}
@@ -253,4 +315,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             ask=md.get("ask"),
             score=self._score(detail, today),
             rationale=", ".join(parts) if parts else "—",
+            issuer_action=bool(rd.get("issuer_action")),
+            issuer_no_fee_action=bool(rd.get("issuer_no_fee_action")),
+            chart_symbol=chart_symbol,
         )

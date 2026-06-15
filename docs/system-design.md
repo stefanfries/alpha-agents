@@ -90,7 +90,7 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 | Warrant search | FinHub API `/v1/warrants` | Finder by underlying WKN/ISIN with type and maturity filters |
 | Warrant detail | FinHub API `/v1/warrants/{identifier}` | Full reference data, market data, and analytics (Greeks) |
 | Current holdings | MongoDB Atlas `finance` DB | Read-only; synced from Comdirect by `comdirect_api` sibling project (`finance.depot_snapshots`, `finance.account_balances`) |
-| Persistence | MongoDB Atlas `alpha_agents` DB | `quant_systems`, `executions`, `virtual_depots`, `virtual_depot_snapshots` (see ADR-010) |
+| Persistence | MongoDB Atlas `alpha_agents` DB | `quant_systems`, `executions`, `virtual_depots`, `virtual_depot_snapshots`, `warrant_availability` (see ADR-010, ADR-012) |
 | Order placement | Manual (Comdirect web/app) | Comdirect requires 2FA — autonomous submission not supported |
 | Package manager | uv | Project-wide convention |
 | Testing | pytest + pytest-asyncio | Async-first test runner |

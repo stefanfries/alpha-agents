@@ -29,6 +29,7 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
     async def run(self, input: UniverseInput) -> UniverseResult:
         all_entries: list[tuple[Ticker, str]] = []  # (ticker, source_index_name)
         unresolved: list[str] = []
+        self._adr_isins: set[str] = set()
 
         for index_name in input.indices:
             tickers = await self._resolve_index(index_name)
@@ -79,16 +80,18 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
         ]
 
         missing_isin = [t.symbol for t in final if t.isin is None]
+        adr_isins = [t.isin for t in final if t.isin in self._adr_isins]
 
         logger.info(
-            "Universe resolved: %d tickers, %d missing ISIN, %d unresolved indices",
-            len(final), len(missing_isin), len(unresolved),
+            "Universe resolved: %d tickers, %d missing ISIN, %d unresolved indices, %d ADRs",
+            len(final), len(missing_isin), len(unresolved), len(adr_isins),
         )
         return UniverseResult(
             tickers=final,
             source=source,
             missing_isin=missing_isin,
             unresolved_indices=unresolved,
+            adr_isins=adr_isins,
         )
 
     async def _resolve_index(self, index_name: str) -> list[Ticker] | None:
@@ -137,6 +140,10 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
             if instrument is None:
                 logger.warning("No instrument found for ISIN %s", isin)
                 return None
+            security_type = (instrument.get("details") or {}).get("security_type", "")
+            if security_type == "ADR":
+                self._adr_isins.add(isin)
+                logger.info("ADR included %s (%s) — verify warrant availability at comdirect", isin, member.get("name"))
             identifiers = instrument.get("global_identifiers") or {}
             symbol = identifiers.get("symbol_yfinance") or identifiers.get("symbol_comdirect")
             if not symbol:

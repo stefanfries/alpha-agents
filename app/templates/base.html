@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Alpha Agents{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -225,9 +226,11 @@
         var lev = w.leverage != null ? w.leverage.toFixed(1) + '×' : '—';
         var delta = w.delta != null ? w.delta.toFixed(2) : '—';
         var score = w.score != null ? w.score.toFixed(2) : '—';
-        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + qsId + '\',\'' + executionId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',this)">';
+        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + qsId + '\',\'' + executionId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',\'' + (w.chart_symbol || '') + '\',this)">';
+        var actionBadge = w.issuer_action ? ' <span class="badge" style="background:#ffc107;color:#000;font-size:0.65rem">Aktion</span>' : '';
+        var freeBadge = w.issuer_no_fee_action ? ' <span class="badge" style="background:#198754;color:#fff;font-size:0.65rem">Free</span>' : '';
         html += '<td><code>' + (w.warrant_wkn || '—') + '</code></td>';
-        html += '<td class="small text-muted">' + (w.warrant_isin || '—') + '</td>';
+        html += '<td class="small text-muted">' + (w.warrant_isin || '—') + actionBadge + freeBadge + '</td>';
         html += '<td class="text-end small">' + strike + '</td>';
         html += '<td class="small">' + maturity + '</td>';
         html += '<td class="text-end small">' + spread + '</td>';
@@ -240,7 +243,7 @@
       panel.innerHTML = html;
     }
 
-    function loadWarrantChart(qsId, executionId, ticker, strike, maturity, row) {
+    function loadWarrantChart(qsId, executionId, ticker, strike, maturity, chartSymbol, row) {
       if (row) {
         row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
         row.classList.add('table-active');
@@ -252,6 +255,7 @@
       var params = [];
       if (strike != null) params.push('strike=' + strike);
       if (maturity) params.push('maturity=' + maturity);
+      if (chartSymbol) params.push('chart_symbol=' + encodeURIComponent(chartSymbol));
       if (params.length) url += '?' + params.join('&');
       fetch(url)
         .then(function(r) { return r.text(); })

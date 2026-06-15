@@ -121,7 +121,9 @@ Stage-specific content is described below.
 
 No charts.
 
-**User actions at approve:** none (no overrides at this stage).
+**ADR warrant availability** (see ADR-012): for members flagged as ADRs, an **ADR Warrants** badge shows whether comdirect carries an uncapped CALL warrant — `available` (green) / `none` (yellow) / `override ✓` (a manual ISIN override is active). Non-ADR rows show `—`. The scan runs incrementally after universe resolution (only ADR ISINs that are unknown or > 30 days old), with progress shown on the page. Rows with `none` expose an inline input to set an **override underlying ISIN** (e.g. the EUR-listed stock for a USD ADR) used for warrant lookup only; overrides persist globally by ISIN.
+
+**User actions at approve:** optionally set or clear ADR ISIN overrides (persisted globally; see ADR-012).
 
 ---
 
@@ -222,7 +224,7 @@ Right side — two vertically stacked panels:
 - **Orange dashed horizontal line** at the selected warrant's strike price (labelled "Strike")
 - **Orange arrow marker** at the maturity date (labelled "Expiry")
 - Time range selector: 3M / 6M / 1Y (default) / 3Y
-- Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}`
+- Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings (ADRs), `chart_symbol` plots the override underlying in its native currency so candles and the strike line share one currency (no FX); otherwise the underlying symbol is charted.
 
 **User actions at approve:** all selected warrants advance to portfolio construction.
 

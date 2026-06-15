@@ -21,6 +21,7 @@ class UniverseResult(AgentOutput):
     source: dict[str, str]         # Maps ISIN → originating index name
     missing_isin: list[str]        # Symbols for which no ISIN could be resolved (warning)
     unresolved_indices: list[str]  # Indices that could not be resolved
+    adr_isins: list[str]           # ISINs flagged as ADRs (warrant availability is checked only for these)
 ```
 
 ## Tools used
@@ -77,6 +78,7 @@ Wikipedia sometimes provides Frankfurt (Xetra) suffixes inconsistently. The agen
 - **ISIN availability by source**: The FastAPI `/v1/indices/{index_name}` endpoint always returns ISINs. Wikipedia includes ISINs in constituent tables for DAX, MDAX, SDAX, TecDAX, NASDAQ-100, and S&P 500; ISIN coverage from Wikipedia is high for the initially supported indices.
 - **Cold start**: The FastAPI container uses Scale to Zero. On the first request of the day, allow up to 30 seconds for the container to start. The `InstrumentApiTool` should configure an HTTP timeout of at least 35 seconds.
 - **Fallback for missing ISINs**: If the source does not provide an ISIN for an entry, the agent queries the `instrument_master` collection by `ticker_yfinance` symbol. Tickers with no ISIN after this fallback are included in `missing_isin` and proceed with `isin=None`; they will be excluded from any downstream step that requires ISIN (warrant search, Comdirect data fetch).
+- **ADR detection**: Members whose `instrument_master` `security_type == "ADR"` are kept in the universe (no longer skipped) and their ISINs collected in `adr_isins`. The orchestrator uses this list to run the ADR-only warrant-availability scan (see ADR-012). The ADR's yfinance `symbol` and price candles are unchanged.
 - **Deduplication rule**: ISIN is the primary key. A stock listed in both DAX and TecDAX is included once; the first source wins in the `source` map.
 - Resolution failures (unknown index names) are reported in `unresolved_indices`; the pipeline continues with whatever could be resolved
 - This agent is intentionally stateless — it produces the same output for the same inputs; results can be cached per `(indices, date)` key

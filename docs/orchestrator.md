@@ -169,6 +169,21 @@ The modified result is what downstream stages read as their input.
 
 ---
 
+## Warrant availability and ISIN overrides (ADRs)
+
+Two stage runners integrate the global `warrant_availability` collection (see ADR-012):
+
+- **`_run_universe`** — after resolving tickers, scans **only the ADR members**
+  (`UniverseResult.adr_isins`) for an uncapped CALL warrant via
+  `warrant_availability.scan(...)`, persisting results and surfacing progress. Regular
+  stocks are not scanned.
+- **`_run_warrant_selection`** — loads `warrant_availability.overrides_map()` and passes it
+  to `WarrantSelectionAgent(isin_overrides=...)`. An override redirects warrant lookup to the
+  override ISIN, derives the strike band from that underlying's native-currency price (no FX),
+  and sets each warrant's `chart_symbol`; the ADR remains the analyzed instrument.
+
+---
+
 ## Config override handling
 
 Config overrides are stored in `run.config_overrides` (a flat dict) and applied at

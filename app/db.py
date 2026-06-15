@@ -94,6 +94,12 @@ def virtual_depot_transactions_collection() -> AsyncIOMotorCollection:
     return _client[settings.db.db_name]["virtual_depot_transactions"]
 
 
+def warrant_availability_collection() -> AsyncIOMotorCollection:
+    if _client is None:
+        raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
+    return _client[settings.db.db_name]["warrant_availability"]
+
+
 def finance_db():  # type: ignore[return]
     """Read-only access to the finance database (written by comdirect_api)."""
     if _client is None:
@@ -117,3 +123,5 @@ async def _ensure_indexes() -> None:
     await virtual_depot_snapshots_collection().create_index([("depot_id", 1), ("recorded_at", -1)])
     await virtual_depot_transactions_collection().create_index("transaction_id", unique=True)
     await virtual_depot_transactions_collection().create_index([("depot_id", 1), ("booking_date", -1)])
+
+    await warrant_availability_collection().create_index("override_isin", sparse=True)

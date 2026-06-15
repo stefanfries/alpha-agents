@@ -10,10 +10,12 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app import warrant_availability
 from app.db import executions_collection, quant_systems_collection
 from app.indicators import supertrend_bands
 from app.models.market import Ticker
 from app.orchestrator import get_pipeline
+from app.tools.finhub import FinHubTool
 from app.tools.yfinance import YFinanceTool
 
 
@@ -280,6 +282,9 @@ async def execution_detail(qs_id: str, execution_id: str) -> RedirectResponse:
 async def stage_review(request: Request, qs_id: str, execution_id: str, stage: str) -> HTMLResponse:
     execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
     ctx = _stage_ctx(execution, stage)
+    if stage == "universe" and ctx.get("stage_result"):
+        adr_isins = ctx["stage_result"].get("adr_isins", [])
+        ctx["availability"] = await warrant_availability.availability_map(adr_isins)
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 
 
@@ -365,6 +370,28 @@ async def restart_stage(
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})
     _fire(get_pipeline().run_stage(execution_id, from_stage))
     return RedirectResponse(url=f"/quant-systems/{qs_id}/executions/{execution_id}/stages/{from_stage}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Warrant availability — manual ISIN override / re-check (global, by ISIN)
+# ---------------------------------------------------------------------------
+
+@router.post("/{qs_id}/executions/{execution_id}/warrant-availability/override", response_class=RedirectResponse)
+async def set_warrant_override(
+    qs_id: str,
+    execution_id: str,
+    original_isin: Annotated[str, Form()],
+    override_isin: Annotated[str, Form()] = "",
+) -> RedirectResponse:
+    override = override_isin.strip().upper()
+    async with FinHubTool() as finhub:
+        if override:
+            await warrant_availability.set_override(finhub, original_isin, override)
+        else:
+            await warrant_availability.clear_override(original_isin)
+    return RedirectResponse(
+        url=f"/quant-systems/{qs_id}/executions/{execution_id}/stages/universe", status_code=303
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -455,17 +482,20 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
 
 
 @router.get("/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}", response_class=HTMLResponse)
-async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: float | None = None, maturity: str | None = None) -> HTMLResponse:
+async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: float | None = None, maturity: str | None = None, chart_symbol: str | None = None) -> HTMLResponse:
+    # `chart_symbol` overrides the underlying charted (e.g. an ADR's warrants are
+    # written on the EUR-listed stock); it keeps candles in the strike currency.
+    plot_symbol = chart_symbol or ticker
     try:
-        t = Ticker(symbol=ticker)
+        t = Ticker(symbol=plot_symbol)
         async with YFinanceTool() as yf:
             bars_map = await yf.fetch_ohlcv_batch([t], lookback_days=1460)
     except Exception as exc:
         return HTMLResponse(f"<p class='text-danger small mt-2'>Chart error: {exc}</p>")
 
-    bars = bars_map.get(ticker, [])
+    bars = bars_map.get(plot_symbol, [])
     if not bars:
-        return HTMLResponse(f"<p class='text-muted text-center small mt-4'>No data for {ticker}</p>")
+        return HTMLResponse(f"<p class='text-muted text-center small mt-4'>No data for {plot_symbol}</p>")
 
     dates  = [b.date.isoformat() for b in bars]
     closes = [float(b.close)     for b in bars]
@@ -475,7 +505,7 @@ async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: floa
         for d, b in zip(dates, bars)
     ]
     chart_data = json.dumps({
-        "ticker":     ticker,
+        "ticker":     plot_symbol,
         "ohlcv":      ohlcv,
         "ema20":      _compute_ema(closes, dates, 20),
         "ema50":      _compute_ema(closes, dates, 50),
@@ -490,7 +520,7 @@ async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: floa
     return HTMLResponse(
         f"<div class='d-flex flex-column gap-1' data-chart='{chart_data}'>"
         f"  <div class='d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1'>"
-        f"    <span class='small fw-semibold'>{ticker}"
+        f"    <span class='small fw-semibold'>{plot_symbol}"
         + (f" — strike <strong>{strike:.2f}</strong>" if strike else "")
         + (f" — expires <strong>{maturity}</strong>" if maturity else "")
         + "</span>"

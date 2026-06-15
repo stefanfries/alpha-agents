@@ -219,6 +219,7 @@ Output of `UniverseAgent`. Input of `ResearchAgent`.
 | `source` | `dict[str, str]` | ISIN → originating index name |
 | `missing_isin` | `list[str]` | yfinance symbols for which no ISIN could be resolved (warning; these tickers cannot use warrant search or Comdirect data) |
 | `unresolved_indices` | `list[str]` | Indices that could not be resolved |
+| `adr_isins` | `list[str]` | ISINs flagged as ADRs (`security_type == "ADR"`); warrant availability is scanned only for these (see ADR-012) |
 
 ### `ResearchResult`
 

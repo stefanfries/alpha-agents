@@ -24,7 +24,11 @@
   {% else %}
     <div class="d-flex align-items-center gap-2 text-primary mb-4">
       <div class="spinner-border spinner-border-sm" role="status"></div>
-      <span>Resolving universe (FinHub / Wikipedia)…</span>
+      {% if stage_progress and stage_progress.step == "warrants" %}
+        <span>Checking warrant availability… {{ stage_progress.done }}/{{ stage_progress.total }}</span>
+      {% else %}
+        <span>Resolving universe (FinHub / Wikipedia)…</span>
+      {% endif %}
     </div>
   {% endif %}
   <script>setTimeout(() => location.reload(), 3000)</script>
@@ -58,11 +62,15 @@
               <th>Company</th>
               <th>ISIN</th>
               <th>Index</th>
+              <th>ADR Warrants</th>
             </tr>
           </thead>
           <tbody>
+            {% set adr_set = r.adr_isins %}
             {% for ticker in r.tickers | sort(attribute='symbol') %}
             {% set src_key = ticker.isin if ticker.isin else ticker.symbol %}
+            {% set is_adr = ticker.isin and ticker.isin in adr_set %}
+            {% set av = availability.get(ticker.isin) if is_adr else None %}
             <tr>
               <td><code>{{ ticker.symbol }}</code></td>
               <td>{{ ticker.name or "—" }}</td>
@@ -71,6 +79,39 @@
                 {% else %}<span class="text-warning">— missing</span>{% endif %}
               </td>
               <td class="text-muted small">{{ r.source.get(src_key, "—") }}</td>
+              <td class="small" style="min-width:260px">
+                {% if not is_adr %}
+                  <span class="text-muted">—</span>
+                {% elif av is none %}
+                  <span class="text-muted">unknown</span>
+                {% elif av.override_isin %}
+                  {% if av.override_has_uncapped_call %}
+                    <span class="badge bg-success">override ✓</span>
+                  {% else %}
+                    <span class="badge bg-danger">override ✗</span>
+                  {% endif %}
+                  <code class="text-muted">{{ av.override_isin }}</code>
+                  <form method="post"
+                        action="/quant-systems/{{ qs_id }}/executions/{{ execution_id }}/warrant-availability/override"
+                        class="d-inline">
+                    <input type="hidden" name="original_isin" value="{{ ticker.isin }}">
+                    <input type="hidden" name="override_isin" value="">
+                    <button class="btn btn-link btn-sm p-0 text-muted" type="submit">clear</button>
+                  </form>
+                {% elif av.has_uncapped_call %}
+                  <span class="badge bg-success">available</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark">none</span>
+                  <form method="post"
+                        action="/quant-systems/{{ qs_id }}/executions/{{ execution_id }}/warrant-availability/override"
+                        class="d-inline-flex align-items-center gap-1 ms-1">
+                    <input type="hidden" name="original_isin" value="{{ ticker.isin }}">
+                    <input type="text" name="override_isin" placeholder="underlying ISIN"
+                           class="form-control form-control-sm" style="width:150px" maxlength="12" required>
+                    <button class="btn btn-outline-primary btn-sm py-0" type="submit">set</button>
+                  </form>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>

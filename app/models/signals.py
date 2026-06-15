@@ -19,6 +19,7 @@ class UniverseResult(BaseModel):
     source: dict[str, str]      # ISIN (or symbol) → originating index name
     missing_isin: list[str]     # symbols for which no ISIN was resolved
     unresolved_indices: list[str]
+    adr_isins: list[str] = []   # ISINs flagged as ADRs (warrant availability is checked only for these)
 
 
 class ResearchResult(BaseModel):
@@ -53,6 +54,9 @@ class SelectedWarrant(BaseModel):
     ask: float | None = None
     score: float
     rationale: str
+    issuer_action: bool = False
+    issuer_no_fee_action: bool = False
+    chart_symbol: str | None = None   # yfinance symbol matching the strike currency (override underlying)
 
 
 class WarrantSelectionResult(BaseModel):
