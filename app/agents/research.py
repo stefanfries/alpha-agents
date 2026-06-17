@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.agents.base import Agent
 from app.models.market import Ticker
 from app.models.signals import ResearchResult
+from app.tools.retry import retry_call
 from app.tools.yfinance import YFinanceTool
 
 logger = logging.getLogger(__name__)
@@ -40,16 +41,10 @@ class ResearchAgent(Agent[ResearchInput, ResearchResult]):
         async def fetch_fundamentals_safe(ticker: Ticker) -> tuple[str, dict]:
             async with sem:
                 info: dict = {}
-                for attempt in range(2):
-                    try:
-                        info = await self._tool.fetch_fundamentals(ticker)
-                        break
-                    except Exception:
-                        if attempt == 0:
-                            logger.warning("Retrying fundamentals for %s", ticker.symbol)
-                            await asyncio.sleep(1)
-                        else:
-                            logger.warning("Failed to fetch fundamentals for %s", ticker.symbol, exc_info=True)
+                try:
+                    info = await retry_call(self._tool.fetch_fundamentals, ticker)
+                except Exception:
+                    logger.warning("Failed to fetch fundamentals for %s", ticker.symbol, exc_info=True)
             done[0] += 1
             if self._on_progress:
                 await self._on_progress("fundamentals", done[0], len(input.tickers))

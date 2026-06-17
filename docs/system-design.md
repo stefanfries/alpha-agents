@@ -81,6 +81,7 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 | Validation | Pydantic V2 | Fast, type-safe data models for all inter-agent contracts |
 | Config | pydantic-settings | Loads secrets from `.env`; never hardcoded |
 | HTTP | httpx (async) | Used for FinHub API calls |
+| Transient-error retries | tenacity | Shared policy in `app/tools/retry.py` (2 attempts, 2 s fixed wait); wraps all external-API calls (FinHub, yfinance) |
 | Instrument master | MongoDB Atlas `instrument_master` | ISIN/WKN/notation-ID ↔ yfinance symbol bridge (see ADR-007) |
 | OHLCV data (stocks) | yfinance | Symbol-based via `symbol_yfinance`; up to 4 years for chart warmup |
 | Technical indicators | TA-Lib (numpy) | EMA, SMA, ADX, PLUS_DI, MINUS_DI, ATR; used for screening charts and SuperTrend |

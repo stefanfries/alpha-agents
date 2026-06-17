@@ -9,6 +9,7 @@ from app.agents.base import Agent
 from app.models.market import Ticker
 from app.models.signals import SelectedWarrant, SelectionResult, WarrantSelectionResult
 from app.tools.finhub import FinHubTool
+from app.tools.retry import retry_call
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
         async def fetch_warrants(s_min: float | None, s_max: float | None) -> list[dict[str, Any]] | None:
             try:
-                return await self._finhub.get_warrants(
+                return await retry_call(
+                    self._finhub.get_warrants,
                     underlying=lookup_isin,
                     preselection="CALL",
                     maturity_from=maturity_from,
@@ -126,19 +128,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                     strike_max=s_max,
                 )
             except Exception:
-                await asyncio.sleep(2)
-                try:
-                    return await self._finhub.get_warrants(
-                        underlying=lookup_isin,
-                        preselection="CALL",
-                        maturity_from=maturity_from,
-                        maturity_to=maturity_to,
-                        strike_min=s_min,
-                        strike_max=s_max,
-                    )
-                except Exception:
-                    logger.warning("get_warrants failed for %s after retry", ticker.symbol)
-                    return None
+                logger.warning("get_warrants failed for %s after retry", ticker.symbol)
+                return None
 
         candidates = await fetch_warrants(strike_min, strike_max)
         if candidates is None:
@@ -172,14 +163,10 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         async def fetch_detail(isin: str) -> dict[str, Any] | None:
             async with detail_sem:
                 try:
-                    return await self._finhub.get_warrant_detail(isin)
+                    return await retry_call(self._finhub.get_warrant_detail, isin)
                 except Exception as exc:
-                    await asyncio.sleep(2)
-                    try:
-                        return await self._finhub.get_warrant_detail(isin)
-                    except Exception:
-                        logger.warning("Failed to fetch detail for %s: %s", isin, exc)
-                        return None
+                    logger.warning("Failed to fetch detail for %s: %s", isin, exc)
+                    return None
 
         raw = await asyncio.gather(*[
             fetch_detail(c["isin"]) for c in candidates if c.get("isin")

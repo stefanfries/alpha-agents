@@ -67,7 +67,7 @@ name); only warrant sourcing and the strike chart follow the override.
 
 1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × (1 ± atm_band)` (default ±2%)
 2. If the narrow band returns no candidates, retry with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
-3. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use a one-retry pattern (2 s sleep) for transient API errors.
+3. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use the shared `retry_call()` helper (`app/tools/retry.py`: 1 retry, 2 s wait) for transient API errors.
 4. Score all successfully fetched details using the scoring model
 5. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
 6. Underlyings with no candidates (neither band) are recorded in `skipped` and excluded from portfolio construction

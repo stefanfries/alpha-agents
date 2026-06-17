@@ -8,6 +8,7 @@ from app.agents.base import Agent
 from app.models.market import Ticker
 from app.models.signals import UniverseResult
 from app.tools.finhub import FinHubTool
+from app.tools.retry import retry_call
 from app.tools.wikipedia import WikipediaIndexTool
 
 logger = logging.getLogger(__name__)
@@ -129,14 +130,10 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
                 return None
             async with sem:
                 try:
-                    instrument = await self._finhub.get_instrument(isin)
+                    instrument = await retry_call(self._finhub.get_instrument, isin)
                 except Exception:
-                    await asyncio.sleep(2)
-                    try:
-                        instrument = await self._finhub.get_instrument(isin)
-                    except Exception:
-                        logger.warning("Failed to fetch instrument for ISIN %s", isin)
-                        return None
+                    logger.warning("Failed to fetch instrument for ISIN %s", isin)
+                    return None
             if instrument is None:
                 logger.warning("No instrument found for ISIN %s", isin)
                 return None

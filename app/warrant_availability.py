@@ -20,6 +20,7 @@ from typing import Any
 
 from app.db import warrant_availability_collection
 from app.tools.finhub import FinHubTool
+from app.tools.retry import retry_call
 
 logger = logging.getLogger(__name__)
 
@@ -43,20 +44,14 @@ async def _has_uncapped_call(finhub: FinHubTool, isin: str) -> bool:
     so the caller does not cache a false "none".
     """
     try:
-        candidates = await finhub.get_warrants(
+        candidates = await retry_call(
+            finhub.get_warrants,
             underlying=isin, preselection="CALL",
             maturity_from="Range_NOW", maturity_to="Range_ENDLESS",
         )
     except Exception:
-        await asyncio.sleep(2)
-        try:
-            candidates = await finhub.get_warrants(
-                underlying=isin, preselection="CALL",
-                maturity_from="Range_NOW", maturity_to="Range_ENDLESS",
-            )
-        except Exception:
-            logger.warning("availability: get_warrants failed for %s after retry", isin)
-            raise
+        logger.warning("availability: get_warrants failed for %s after retry", isin)
+        raise
 
     sample = [c["isin"] for c in candidates if c.get("isin")][:DETAIL_SAMPLE_K]
     if not sample:
@@ -67,13 +62,9 @@ async def _has_uncapped_call(finhub: FinHubTool, isin: str) -> bool:
     async def fetch_detail(wisin: str) -> dict | None:
         async with detail_sem:
             try:
-                return await finhub.get_warrant_detail(wisin)
+                return await retry_call(finhub.get_warrant_detail, wisin)
             except Exception:
-                await asyncio.sleep(2)
-                try:
-                    return await finhub.get_warrant_detail(wisin)
-                except Exception:
-                    return None
+                return None
 
     details = await asyncio.gather(*[fetch_detail(i) for i in sample])
     fetched = [d for d in details if isinstance(d, dict)]

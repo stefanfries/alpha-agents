@@ -24,6 +24,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "ta-lib" },
+    { name = "tenacity" },
     { name = "uvicorn" },
     { name = "yfinance" },
 ]
@@ -46,6 +47,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "python-multipart", specifier = ">=0.0.27" },
     { name = "ta-lib", specifier = ">=0.6.8" },
+    { name = "tenacity", specifier = ">=9.1.4" },
     { name = "uvicorn", specifier = ">=0.46.0" },
     { name = "yfinance", specifier = ">=1.2.0" },
 ]
@@ -960,6 +962,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/82/bc/d2e4c2b752baaee592095feb69514764b004fe53af7cc893ba9c3854cc30/ta_lib-0.6.8-cp314-cp314-win32.whl", hash = "sha256:f5b6174bf4bf9152e368561dff410203c6921e4dd2afbcda3283a95957158112", size = 766352, upload-time = "2025-10-20T20:49:41.088Z" },
     { url = "https://files.pythonhosted.org/packages/40/98/0f2755b5bde81d7b1eaf96b4204f18fabea38b0efc869cb0ea05d57e0afc/ta_lib-0.6.8-cp314-cp314-win_amd64.whl", hash = "sha256:1fb4028437201e19014e4e374272b739867c8a3eb655da46675ef4c2ff14b616", size = 886955, upload-time = "2025-10-20T20:49:38.513Z" },
     { url = "https://files.pythonhosted.org/packages/0b/4c/d341020377f8b183405bdf3c5717fc2ca04a8d33b5c59b2348377ee459d9/ta_lib-0.6.8-cp314-cp314-win_arm64.whl", hash = "sha256:bfad1202fb1f9140e3810cc607058395f59032d9128cc0d716900c78bea5f337", size = 755896, upload-time = "2025-10-20T20:49:39.9Z" },
+]
+
+[[package]]
+name = "tenacity"
+version = "9.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
 ]
 
 [[package]]

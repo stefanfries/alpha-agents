@@ -3,9 +3,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import yfinance as yf
+from tenacity import retry, retry_if_result, stop_after_attempt, wait_fixed
 
 from app.models.market import OHLCV, Ticker
 from app.tools.base import Tool
+from app.tools.retry import ATTEMPTS, WAIT_SECONDS
 
 
 class YFinanceTool(Tool):
@@ -28,7 +30,26 @@ class YFinanceTool(Tool):
         yf_to_original = {yf_s: orig_s for yf_s, orig_s in zip(yf_symbols, symbols)}
 
         def _download() -> dict[str, list[OHLCV]]:
-            df = yf.download(yf_symbols, start=start, end=end, progress=False, auto_adjust=True, group_by="ticker")
+            def _missing(df) -> bool:
+                # yfinance silently drops throttled symbols (no exception); a
+                # missing column means the download should be retried.
+                if df is None or df.empty:
+                    return True
+                present = set(df.columns.get_level_values(0))
+                return any(s not in present for s in yf_symbols)
+
+            @retry(
+                stop=stop_after_attempt(ATTEMPTS),
+                wait=wait_fixed(WAIT_SECONDS),
+                retry=retry_if_result(_missing),
+                retry_error_callback=lambda rs: rs.outcome.result(),  # keep partial data
+            )
+            def _fetch():
+                return yf.download(
+                    yf_symbols, start=start, end=end, progress=False, auto_adjust=True, group_by="ticker"
+                )
+
+            df = _fetch()
             result: dict[str, list[OHLCV]] = {}
             for yf_symbol, original_symbol in yf_to_original.items():
                 ticker = symbol_map[original_symbol]
