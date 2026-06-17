@@ -61,7 +61,7 @@ Lists all pipeline runs in reverse chronological order.
 **Content:**
 
 | Column | Description |
-|--------|-------------|
+| ------ | ----------- |
 | Run ID | Short UUID, links to `GET /runs/{run_id}` |
 | Started | Timestamp |
 | Indices | e.g. `DAX, MDAX` |
