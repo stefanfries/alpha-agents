@@ -21,7 +21,7 @@ class WarrantSelectionResult(BaseModel):
 ### `SelectedWarrant`
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ----- | ---- | ----------- |
 | `underlying` | `Ticker` | The underlying stock |
 | `warrant_isin` | `str` | Warrant ISIN |
 | `warrant_wkn` | `str` | German WKN (6 chars) |
@@ -79,7 +79,7 @@ Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail 
 Each warrant receives a continuous composite score in `[0, 1]` from four criteria:
 
 | # | Criterion | Weight | Function |
-|---|-----------|--------|----------|
+| - | --------- | ------ | -------- |
 | 1 | **Bid-ask spread** | 40% | Linear: 0% -> 1.0, 3% -> 0.0; clamped at 0 |
 | 2 | **Leverage** | 25% | Gaussian peak at 5x, sigma=3 (sweet spot 3–8x) |
 | 3 | **Days to expiry** | 20% | Gaussian peak at 315 days (midpoint of 9–12 month window), sigma=45 |
@@ -90,7 +90,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 ## Configuration (`WarrantSelectionSettings`)
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| --------- | ------- | ----------- |
 | `min_days_to_expiry` | `270` | Minimum remaining life (9 months) for maturity filter |
 | `max_days_to_expiry` | `365` | Maximum remaining life (12 months) for maturity filter |
 | `atm_band` | `0.02` | Primary strike filter half-width (±2%) |
