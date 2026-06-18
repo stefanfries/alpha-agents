@@ -12,26 +12,28 @@ from tenacity import (
     before_sleep_log,
     retry_if_exception_type,
     stop_after_attempt,
-    wait_fixed,
+    wait_exponential,
 )
 
 logger = logging.getLogger(__name__)
 
-ATTEMPTS = 2  # 1 original call + 1 retry
-WAIT_SECONDS = 2.0
+ATTEMPTS = 3  # 1 original call + 2 retries
+WAIT_SECONDS = 2.0  # fixed wait, used by yfinance throttle retry
+WAIT_MIN_SECONDS = 2.0  # exponential backoff floor: ~2s, then ~4s
+WAIT_MAX_SECONDS = 8.0
 
 
 async def retry_call(fn, *args, **kwargs):
-    """Call an async external-API function, retrying once on transient failure.
+    """Call an async external-API function, retrying on transient failure.
 
-    Retries on any ``Exception`` with a fixed ``WAIT_SECONDS`` wait and re-raises
+    Retries on any ``Exception`` with exponential backoff (~2s, ~4s) and re-raises
     the final exception so callers can apply their own fallback::
 
         candidates = await retry_call(finhub.get_warrants, underlying=isin, ...)
     """
     return await AsyncRetrying(
         stop=stop_after_attempt(ATTEMPTS),
-        wait=wait_fixed(WAIT_SECONDS),
+        wait=wait_exponential(multiplier=1, min=WAIT_MIN_SECONDS, max=WAIT_MAX_SECONDS),
         retry=retry_if_exception_type(Exception),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,

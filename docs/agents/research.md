@@ -35,7 +35,7 @@ class ResearchResult(AgentOutput):
 ## Error handling
 
 - If a ticker returns no OHLCV data (delisted, invalid symbol), it is excluded from output
-- Fundamentals fetch retries once (2 s delay, via the shared `retry_call()` helper in `app/tools/retry.py`) before falling back to `{}`; yfinance can return a near-empty stub dict without raising — this is treated as a failure and triggers the retry
+- Fundamentals fetch retries with exponential backoff (~2 s then ~4 s, up to 3 attempts, via the shared `retry_call()` helper in `app/tools/retry.py`) before falling back to `{}`; yfinance can return a near-empty stub dict without raising — this is treated as a failure and triggers the retry
 - Partial failures do not abort the pipeline; only tickers with complete OHLCV data proceed
 
 ## Notes

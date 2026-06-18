@@ -345,16 +345,14 @@ For the screening stage, the POST body includes the list of tickers to carry for
 
 ### Restart flow
 
-The action bar includes a **"Restart from..."** dropdown listing all earlier stages. Selecting a stage and clicking Restart shows a config override panel (HTMX-swapped inline) where the user can adjust parameters before restarting.
+The action bar includes a **"Restart from..."** dropdown listing all earlier stages. Selecting a stage and clicking Restart rewinds the pipeline to that stage and re-runs it.
 
 ```text
 User selects "Restart from: screening" →
-  HTMX loads config override form fragment
-  User optionally adjusts parameters (see table below)
   User clicks "Restart" →
   POST /runs/{run_id}/stages/{stage_name}/restart
-  Body: { from_stage: "screening", config_overrides: {...} }
-  → orchestrator rewinds pipeline to the named stage, applies overrides, re-runs
+  Body: { from_stage: "screening" }
+  → orchestrator rewinds pipeline to the named stage and re-runs
   → redirect to GET /runs/{run_id}/stages/screening
 ```
 
