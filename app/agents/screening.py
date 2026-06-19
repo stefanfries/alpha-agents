@@ -111,7 +111,9 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         rank_changes, history_labels = self._rank_changes(input, scores, ranked_set)
 
         logger.info(
-            "Screening complete: %d/%d selected (new: ST=%s EMA20=%s ADX>=%s ADX↑=%s EMA50=%s)",
+            "Screening complete: %d/%d selected "
+            "(new: ST=%s EMA20=%s ADX>=%s ADX↑=%s EMA50=%s | "
+            "break: ST=%s EMA20↓=%s ADX<=%s ADX↓=%s EMA50<=%s)",
             len(selected),
             len(input.tickers),
             self._policy_supertrend,
@@ -119,6 +121,11 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             self._policy_adx_above,
             self._policy_adx_rising,
             self._policy_price_above_ema50,
+            self._policy_supertrend_break,
+            self._policy_ema20_falling_break,
+            self._policy_adx_below_break,
+            self._policy_adx_falling_break,
+            self._policy_price_below_ema50_break,
         )
         return SelectionResult(
             selected=selected,
