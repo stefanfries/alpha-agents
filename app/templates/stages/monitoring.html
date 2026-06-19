@@ -103,13 +103,20 @@
         {% if r.entry_candidates %}
         <div class="col-12">
           <h6 class="mb-2">Entry candidates <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ r.entry_candidates | length }} / {{ r.free_positions }} slots</span></h6>
-          <div class="d-flex flex-wrap gap-2">
-            {% for t in r.entry_candidates %}
-            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
-              {{ t.symbol }}{% if t.name %} <span class="text-muted fw-normal">{{ t.name }}</span>{% endif %}
-            </span>
-            {% endfor %}
-          </div>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+            <thead class="table-light">
+              <tr><th>Symbol</th><th>Name</th><th>ISIN</th></tr>
+            </thead>
+            <tbody>
+              {% for t in r.entry_candidates %}
+              <tr>
+                <td><code>{{ t.symbol }}</code></td>
+                <td>{{ t.name or "—" }}</td>
+                <td><code class="text-muted">{{ t.isin or "—" }}</code></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
         {% endif %}
 
