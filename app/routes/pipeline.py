@@ -77,12 +77,18 @@ def _compute_signal_markers(
     policy_adx_above: bool = True,
     policy_adx_rising: bool = True,
     policy_price_above_ema50: bool = True,
+    policy_tq60_above: bool = False,
+    policy_tq20_above: bool = False,
+    policy_tq60_min: float = 0.05,
+    policy_tq20_min: float = 0.0,
+    new_min_true: int | None = None,
     # BREAK detection policies
     policy_supertrend_break: bool = True,
     policy_ema20_falling_break: bool = True,
     policy_adx_below_break: bool = True,
     policy_adx_falling_break: bool = True,
     policy_price_below_ema50_break: bool = True,
+    break_min_true: int | None = None,
     supertrend_period: int = 10,
     supertrend_multiplier: float = 3.0,
 ) -> list[dict]:
@@ -99,6 +105,7 @@ def _compute_signal_markers(
     ema20    = talib.EMA(closes, timeperiod=20)
     ema50    = talib.EMA(closes, timeperiod=50)
     adx_vals = talib.ADX(highs, lows, closes, timeperiod=14)
+    atr20    = talib.ATR(highs, lows, closes, timeperiod=20)
     final_upper, final_lower = supertrend_bands(highs, lows, closes, supertrend_period, supertrend_multiplier)
 
     # SuperTrend direction per bar
@@ -116,6 +123,30 @@ def _compute_signal_markers(
             trend = 1
         st_bull[i] = trend == 1
 
+    def _trend_quality_at(i: int, lookback: int) -> float:
+        if i + 1 < lookback:
+            return 0.0
+        atr_val = float(atr20[i])
+        if np.isnan(atr_val) or atr_val <= 0:
+            return 0.0
+        segment = closes[i - lookback + 1 : i + 1]
+        x = np.arange(lookback, dtype=float)
+        slope, intercept = np.polyfit(x, segment, 1)
+        fitted = slope * x + intercept
+        ss_res = float(np.sum((segment - fitted) ** 2))
+        ss_tot = float(np.sum((segment - segment.mean()) ** 2))
+        r2 = max(0.0, 1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+        return r2 * (slope / atr_val)
+
+    def _passes_group(values: dict[str, bool], enabled: dict[str, bool], min_true: int | None) -> bool:
+        selected = [k for k, on in enabled.items() if on]
+        if not selected:
+            return False
+        true_count = sum(1 for k in selected if values.get(k, False))
+        required = min_true if min_true is not None else len(selected)
+        required = max(1, min(required, len(selected)))
+        return true_count >= required
+
     def _bar_indicators(i: int) -> dict[str, bool]:
         adx_seg = adx_vals[i - 4 : i + 1] if i >= 4 else np.array([np.nan])
         if not np.any(np.isnan(adx_seg)):
@@ -130,6 +161,8 @@ def _compute_signal_markers(
             else False
         )
         _price_above_ema50 = bool(not np.isnan(ema50[i]) and float(closes[i]) > float(ema50[i]))
+        _tq60 = _trend_quality_at(i, 60)
+        _tq20 = _trend_quality_at(i, 20)
         return {
             "supertrend": bool(st_bull[i]),
             "supertrend_bearish": not bool(st_bull[i]),
@@ -141,12 +174,15 @@ def _compute_signal_markers(
             "adx_falling": not _adx_rising,
             "price_above_ema50": _price_above_ema50,
             "price_below_ema50": not _price_above_ema50,
+            "tq60_above": _tq60 > policy_tq60_min,
+            "tq20_above": _tq20 > policy_tq20_min,
         }
 
     new_mask = {
         "supertrend": policy_supertrend, "ema20_rising": policy_ema20_rising,
         "adx_above": policy_adx_above, "adx_rising": policy_adx_rising,
         "price_above_ema50": policy_price_above_ema50,
+        "tq60_above": policy_tq60_above, "tq20_above": policy_tq20_above,
     }
     break_mask = {
         "supertrend_bearish": policy_supertrend_break,
@@ -160,10 +196,8 @@ def _compute_signal_markers(
     passes_break = np.zeros(n, dtype=bool)
     for i in range(n):
         c = _bar_indicators(i)
-        new_checks   = [c[k] for k, on in new_mask.items()   if on]
-        break_checks = [c[k] for k, on in break_mask.items() if on]
-        passes_new[i]   = bool(new_checks)   and all(new_checks)
-        passes_break[i] = bool(break_checks) and any(break_checks)
+        passes_new[i] = _passes_group(c, new_mask, new_min_true)
+        passes_break[i] = _passes_group(c, break_mask, break_min_true)
 
     # State machine: OUT -[NEW]-> IN_TREND -[BREAK]-> OUT
     state = "OUT"
@@ -337,11 +371,17 @@ async def restart_stage(
     policy_adx_above: Annotated[str | None, Form()] = None,
     policy_adx_rising: Annotated[str | None, Form()] = None,
     policy_price_above_ema50: Annotated[str | None, Form()] = None,
+    policy_tq60_above: Annotated[str | None, Form()] = None,
+    policy_tq20_above: Annotated[str | None, Form()] = None,
+    policy_tq60_min: Annotated[str | None, Form()] = None,
+    policy_tq20_min: Annotated[str | None, Form()] = None,
+    new_min_true: Annotated[str | None, Form()] = None,
     policy_supertrend_break: Annotated[str | None, Form()] = None,
     policy_ema20_falling_break: Annotated[str | None, Form()] = None,
     policy_adx_below_break: Annotated[str | None, Form()] = None,
     policy_adx_falling_break: Annotated[str | None, Form()] = None,
     policy_price_below_ema50_break: Annotated[str | None, Form()] = None,
+    break_min_true: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(from_stage)
     updates: dict = {}
@@ -354,17 +394,75 @@ async def restart_stage(
     updates["status"] = "running"
 
     if policies_submitted is not None:
+        parsed_new_min: int | None = None
+        parsed_break_min: int | None = None
+        parsed_tq60_min: float = 0.05
+        parsed_tq20_min: float = 0.0
+        try:
+            parsed_new_min = int(new_min_true) if new_min_true not in (None, "") else None
+        except ValueError:
+            parsed_new_min = None
+        try:
+            parsed_break_min = int(break_min_true) if break_min_true not in (None, "") else None
+        except ValueError:
+            parsed_break_min = None
+        try:
+            parsed_tq60_min = float(policy_tq60_min) if policy_tq60_min not in (None, "") else 0.05
+        except (ValueError, TypeError):
+            parsed_tq60_min = 0.05
+        try:
+            parsed_tq20_min = float(policy_tq20_min) if policy_tq20_min not in (None, "") else 0.0
+        except (ValueError, TypeError):
+            parsed_tq20_min = 0.0
+        if not np.isfinite(parsed_tq60_min):
+            parsed_tq60_min = 0.05
+        if not np.isfinite(parsed_tq20_min):
+            parsed_tq20_min = 0.0
+        parsed_tq60_min = max(0.0, min(parsed_tq60_min, 1.0))
+        parsed_tq20_min = max(0.0, min(parsed_tq20_min, 1.0))
+        new_selected = sum(
+            [
+                policy_supertrend is not None,
+                policy_ema20_rising is not None,
+                policy_adx_above is not None,
+                policy_adx_rising is not None,
+                policy_price_above_ema50 is not None,
+                policy_tq60_above is not None,
+                policy_tq20_above is not None,
+            ]
+        )
+        break_selected = sum(
+            [
+                policy_supertrend_break is not None,
+                policy_ema20_falling_break is not None,
+                policy_adx_below_break is not None,
+                policy_adx_falling_break is not None,
+                policy_price_below_ema50_break is not None,
+            ]
+        )
+        safe_new_min = None
+        safe_break_min = None
+        if parsed_new_min is not None and new_selected > 0:
+            safe_new_min = max(1, min(parsed_new_min, new_selected))
+        if parsed_break_min is not None and break_selected > 0:
+            safe_break_min = max(1, min(parsed_break_min, break_selected))
         updates["config_overrides.screening"] = {
             "policy_supertrend": policy_supertrend is not None,
             "policy_ema20_rising": policy_ema20_rising is not None,
             "policy_adx_above": policy_adx_above is not None,
             "policy_adx_rising": policy_adx_rising is not None,
             "policy_price_above_ema50": policy_price_above_ema50 is not None,
+            "policy_tq60_above": policy_tq60_above is not None,
+            "policy_tq20_above": policy_tq20_above is not None,
+            "policy_tq60_min": parsed_tq60_min,
+            "policy_tq20_min": parsed_tq20_min,
+            "new_min_true": safe_new_min,
             "policy_supertrend_break": policy_supertrend_break is not None,
             "policy_ema20_falling_break": policy_ema20_falling_break is not None,
             "policy_adx_below_break": policy_adx_below_break is not None,
             "policy_adx_falling_break": policy_adx_falling_break is not None,
             "policy_price_below_ema50_break": policy_price_below_ema50_break is not None,
+            "break_min_true": safe_break_min,
         }
 
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})
@@ -410,11 +508,17 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
     policy_adx_above: bool = scr_cfg.get("policy_adx_above", True)
     policy_adx_rising: bool = scr_cfg.get("policy_adx_rising", True)
     policy_price_above_ema50: bool = scr_cfg.get("policy_price_above_ema50", True)
+    policy_tq60_above: bool = scr_cfg.get("policy_tq60_above", False)
+    policy_tq20_above: bool = scr_cfg.get("policy_tq20_above", False)
+    policy_tq60_min: float = scr_cfg.get("policy_tq60_min", 0.05)
+    policy_tq20_min: float = scr_cfg.get("policy_tq20_min", 0.0)
+    new_min_true: int | None = scr_cfg.get("new_min_true")
     policy_supertrend_break: bool = scr_cfg.get("policy_supertrend_break", True)
     policy_ema20_falling_break: bool = scr_cfg.get("policy_ema20_falling_break", True)
     policy_adx_below_break: bool = scr_cfg.get("policy_adx_below_break", True)
     policy_adx_falling_break: bool = scr_cfg.get("policy_adx_falling_break", True)
     policy_price_below_ema50_break: bool = scr_cfg.get("policy_price_below_ema50_break", True)
+    break_min_true: int | None = scr_cfg.get("break_min_true")
     supertrend_period: int = scr_cfg.get("supertrend_period", 10)
     supertrend_multiplier: float = scr_cfg.get("supertrend_multiplier", 3.0)
     try:
@@ -439,7 +543,9 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
     signal_markers = _compute_signal_markers(
         bars, min_adx,
         policy_supertrend, policy_ema20_rising, policy_adx_above, policy_adx_rising, policy_price_above_ema50,
+        policy_tq60_above, policy_tq20_above, policy_tq60_min, policy_tq20_min, new_min_true,
         policy_supertrend_break, policy_ema20_falling_break, policy_adx_below_break, policy_adx_falling_break, policy_price_below_ema50_break,
+        break_min_true,
         supertrend_period, supertrend_multiplier,
     )
     chart_data = json.dumps({

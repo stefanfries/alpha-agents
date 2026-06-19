@@ -32,18 +32,28 @@ class ScreeningSettings(BaseModel):
     supertrend_multiplier: float = 3.0
     tsi_fast: int = 13
     tsi_slow: int = 25
-    # NEW detection policies — ALL enabled must pass (entry)
+    # NEW detection policies (entry)
     policy_supertrend: bool = True
     policy_ema20_rising: bool = True
     policy_adx_above: bool = True
     policy_adx_rising: bool = True
     policy_price_above_ema50: bool = True
-    # BREAK detection policies — ANY enabled being met triggers BREAK (exit)
+    policy_tq60_above: bool = False
+    policy_tq20_above: bool = False
+    policy_tq60_min: float = 0.05
+    policy_tq20_min: float = 0.0
+    # Threshold for NEW pass: at least k selected NEW policies true.
+    # None means all selected NEW policies must pass.
+    new_min_true: int | None = None
+    # BREAK detection policies (exit)
     policy_supertrend_break: bool = True
     policy_ema20_falling_break: bool = True
     policy_adx_below_break: bool = True
     policy_adx_falling_break: bool = True
     policy_price_below_ema50_break: bool = True
+    # Threshold for BREAK pass: at least k selected BREAK policies true.
+    # None means all selected BREAK policies must pass.
+    break_min_true: int | None = None
 
 
 class WarrantSelectionSettings(BaseModel):

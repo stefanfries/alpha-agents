@@ -33,11 +33,17 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         self._policy_adx_above = cfg.policy_adx_above
         self._policy_adx_rising = cfg.policy_adx_rising
         self._policy_price_above_ema50 = cfg.policy_price_above_ema50
+        self._policy_tq60_above = cfg.policy_tq60_above
+        self._policy_tq20_above = cfg.policy_tq20_above
+        self._policy_tq60_min = cfg.policy_tq60_min
+        self._policy_tq20_min = cfg.policy_tq20_min
         self._policy_ema20_falling_break = cfg.policy_ema20_falling_break
         self._policy_supertrend_break = cfg.policy_supertrend_break
         self._policy_adx_below_break = cfg.policy_adx_below_break
         self._policy_adx_falling_break = cfg.policy_adx_falling_break
         self._policy_price_below_ema50_break = cfg.policy_price_below_ema50_break
+        self._new_min_true = cfg.new_min_true
+        self._break_min_true = cfg.break_min_true
 
     async def run(self, input: ResearchResult) -> SelectionResult:
         scores: dict[str, float] = {}
@@ -82,6 +88,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 "adx_above": self._policy_adx_above,
                 "adx_rising": self._policy_adx_rising,
                 "price_above_ema50": self._policy_price_above_ema50,
+                "tq60_above": self._policy_tq60_above,
+                "tq20_above": self._policy_tq20_above,
             }
             break_enabled = {
                 "supertrend_bearish": self._policy_supertrend_break,
@@ -90,9 +98,19 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 "adx_falling": self._policy_adx_falling_break,
                 "price_below_ema50": self._policy_price_below_ema50_break,
             }
-            passes_new = all(policies[p] for p, on in new_enabled.items() if on)
+            passes_new = self._passes_policy_group(
+                policies,
+                new_enabled,
+                min_true=self._new_min_true,
+            )
 
-            trend_signals[symbol] = self._trend_signal(bars, new_enabled, break_enabled)
+            trend_signals[symbol] = self._trend_signal(
+                bars,
+                new_enabled,
+                break_enabled,
+                new_min_true=self._new_min_true,
+                break_min_true=self._break_min_true,
+            )
 
             policy_detail = " | ".join(
                 f"{k}={'✓' if v else '✗'}" for k, v in policies.items()
@@ -112,7 +130,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
 
         logger.info(
             "Screening complete: %d/%d selected "
-            "(new: ST=%s EMA20=%s ADX>=%s ADX↑=%s EMA50=%s | "
+            "(new: ST=%s EMA20=%s ADX>=%s ADX↑=%s EMA50=%s TQ60>%s TQ20>%s k=%s | "
             "break: ST=%s EMA20↓=%s ADX<=%s ADX↓=%s EMA50<=%s)",
             len(selected),
             len(input.tickers),
@@ -121,6 +139,9 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             self._policy_adx_above,
             self._policy_adx_rising,
             self._policy_price_above_ema50,
+            self._policy_tq60_above,
+            self._policy_tq20_above,
+            self._new_min_true,
             self._policy_supertrend_break,
             self._policy_ema20_falling_break,
             self._policy_adx_below_break,
@@ -193,6 +214,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         bars: list[OHLCV],
         new_enabled: dict[str, bool],
         break_enabled: dict[str, bool],
+        new_min_true: int | None,
+        break_min_true: int | None,
     ) -> str | None:
         """State machine over full bar history → NEW / BREAK / HOLD / None.
 
@@ -210,6 +233,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         ema20    = talib.EMA(close, timeperiod=20)
         ema50    = talib.EMA(close, timeperiod=50)
         adx_vals = talib.ADX(high, low, close, timeperiod=14)
+        atr20    = talib.ATR(high, low, close, timeperiod=20)
         final_upper, final_lower = supertrend_bands(
             high, low, close, self._supertrend_period, self._supertrend_multiplier
         )
@@ -242,6 +266,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 else False
             )
             price_above_ema50 = bool(not np.isnan(ema50[i]) and float(close[i]) > float(ema50[i]))
+            tq60 = self._trend_quality_at_index(close, atr20, i, self._lookback_regression)
+            tq20 = self._trend_quality_at_index(close, atr20, i, self._lookback_regression_short)
             c = {
                 "supertrend": bool(st_bull[i]),
                 "supertrend_bearish": not bool(st_bull[i]),
@@ -253,12 +279,12 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 "adx_falling": not adx_rising,
                 "price_above_ema50": price_above_ema50,
                 "price_below_ema50": not price_above_ema50,
+                "tq60_above": tq60 > self._policy_tq60_min,
+                "tq20_above": tq20 > self._policy_tq20_min,
             }
-            new_checks   = [c[k] for k, on in new_enabled.items()   if on]
-            break_checks = [c[k] for k, on in break_enabled.items() if on]
             return (
-                bool(new_checks)   and all(new_checks),
-                bool(break_checks) and any(break_checks),
+                self._passes_policy_group(c, new_enabled, new_min_true),
+                self._passes_policy_group(c, break_enabled, break_min_true),
             )
 
         prev_pn, prev_pb = _bar_passes(0)
@@ -279,7 +305,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             prev_pn, prev_pb = pn, pb
 
         age = n - 1 - last_signal_bar  # 0 = fired on current (last) bar
-        if last_signal == "NEW" and age <= 5:
+        current_passes_new = prev_pn
+        if last_signal == "NEW" and age <= 5 and current_passes_new:
             return "NEW"
         if last_signal == "BREAK" and age <= 5:
             return "BREAK"
@@ -330,6 +357,9 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         ema50 = talib.EMA(close, timeperiod=50)
         price_above_ema50 = bool(not np.isnan(ema50[-1]) and float(close[-1]) > float(ema50[-1]))
 
+        tq60 = self._trend_quality(bars, self._lookback_regression)
+        tq20 = self._trend_quality(bars, self._lookback_regression_short)
+
         return {
             "supertrend": st_bull,
             "supertrend_bearish": not st_bull,
@@ -341,11 +371,48 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             "adx_falling": not adx_rising,
             "price_above_ema50": price_above_ema50,
             "price_below_ema50": not price_above_ema50,
+            "tq60_above": tq60 > self._policy_tq60_min,
+            "tq20_above": tq20 > self._policy_tq20_min,
         }
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
     # ------------------------------------------------------------------ #
+
+    def _passes_policy_group(
+        self,
+        policy_results: dict[str, bool],
+        enabled_policies: dict[str, bool],
+        min_true: int | None,
+    ) -> bool:
+        selected = [k for k, on in enabled_policies.items() if on]
+        if not selected:
+            return False
+        true_count = sum(1 for k in selected if policy_results.get(k, False))
+        required = min_true if min_true is not None else len(selected)
+        required = max(1, min(required, len(selected)))
+        return true_count >= required
+
+    def _trend_quality_at_index(
+        self,
+        close: np.ndarray,
+        atr20: np.ndarray,
+        idx: int,
+        lookback: int,
+    ) -> float:
+        if idx + 1 < lookback:
+            return 0.0
+        atr_val = float(atr20[idx])
+        if np.isnan(atr_val) or atr_val <= 0:
+            return 0.0
+        segment = close[idx - lookback + 1 : idx + 1]
+        x = np.arange(lookback, dtype=float)
+        slope, intercept = np.polyfit(x, segment, 1)
+        fitted = slope * x + intercept
+        ss_res = float(np.sum((segment - fitted) ** 2))
+        ss_tot = float(np.sum((segment - segment.mean()) ** 2))
+        r2 = max(0.0, 1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+        return r2 * (slope / atr_val)
 
     def _rank_changes(
         self,
