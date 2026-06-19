@@ -202,6 +202,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 8. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
+
 - **`_run_warrant_selection`**: reads `monitoring.entry_candidates` (falls back to `screening.selected` if monitoring was skipped).
 - **`_run_portfolio`**: reads `monitoring.positions_to_keep` → builds `kept_warrant_isins` set → passes to `PortfolioConstructionAgent`, which excludes kept warrants from `close_positions`.
 

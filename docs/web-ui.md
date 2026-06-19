@@ -491,7 +491,7 @@ To keep the API warm while the browser client is open, `base.html` includes a ke
 ### Client-side behaviour (JS IIFE in `base.html`)
 
 | Phase | Behaviour |
-|-------|-----------|
+| ----- | --------- |
 | On `DOMContentLoaded` | Immediately pings `/api/finhub/health` to trigger cold-start |
 | While waking up | Retries every **10 s** until a 200 response is received |
 | Once online | Schedules a ping every **4 minutes** (below the 5-min ACA idle threshold) |
@@ -502,7 +502,7 @@ To keep the API warm while the browser client is open, `base.html` includes a ke
 A small 8px dot to the left of the theme toggle shows the current API state:
 
 | State | Appearance | Meaning |
-|-------|-----------|---------|
+| ----- | ---------- | ------- |
 | `unknown` | Grey | Page just loaded, not yet checked |
 | `checking` | Amber, pulsing | Request in flight / waking up |
 | `ok` | Green, glowing | API online |

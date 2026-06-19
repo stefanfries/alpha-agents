@@ -137,7 +137,7 @@ class MonitoringResult(BaseModel):
 ### Deviations from the draft sketch
 
 | Draft | Implemented | Reason |
-|-------|-------------|--------|
+| ----- | ----------- | ------ |
 | `sell_reason` includes `"warrant_degraded"` | Only `"exit_signal"` supported | Warrant health checks require FinHub calls; deferred |
 | `positions_to_keep: list[str]` (symbols) | `list[PositionReview]` | Richer — carries warrant ISIN for downstream Portfolio use |
 | Capital recycling within run | Deferred (free_positions = max − current) | Simpler; avoids same-run whipsawing |
