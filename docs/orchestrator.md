@@ -11,7 +11,7 @@ and restart-from-stage logic. It is the sole entry point for starting and advanc
 ## Stage sequence
 
 ```text
-universe → research → screening → warrant_selection → portfolio → risk → execution
+universe → research → screening → monitoring → warrant_selection → portfolio → risk → execution
 ```
 
 Stage names are the canonical identifiers used in MongoDB documents, HTTP routes, and
@@ -51,16 +51,17 @@ Each pipeline run is stored as a single document in collection `pipeline_runs`.
   "indices":         ["DAX", "MDAX"],
   "hitl_mode":       true,
   "config_overrides": {},
-  "current_stage":   "screening",
+  "current_stage":   "monitoring",
   "status":          "awaiting_review",
   "stages": {
-    "universe":   { "status": "approved",         "completed_at": "...", "result": { ... } },
-    "research":   { "status": "approved",         "completed_at": "...", "result": { ... } },
-    "screening":  { "status": "awaiting_review",  "completed_at": "...", "result": { ... } },
+    "universe":          { "status": "approved",        "completed_at": "...", "result": { ... } },
+    "research":          { "status": "approved",        "completed_at": "...", "result": { ... } },
+    "screening":         { "status": "approved",        "completed_at": "...", "result": { ... } },
+    "monitoring":        { "status": "awaiting_review", "completed_at": "...", "result": { ... } },
     "warrant_selection": { "status": "pending" },
-    "portfolio":  { "status": "pending" },
-    "risk":       { "status": "pending" },
-    "execution":  { "status": "pending" }
+    "portfolio":         { "status": "pending" },
+    "risk":              { "status": "pending" },
+    "execution":         { "status": "pending" }
   }
 }
 ```
@@ -181,6 +182,28 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   to `WarrantSelectionAgent(isin_overrides=...)`. An override redirects warrant lookup to the
   override ISIN, derives the strike band from that underlying's native-currency price (no FX),
   and sets each warrant's `chart_symbol`; the ADR remains the analyzed instrument.
+
+---
+
+## Monitoring stage internals
+
+`_run_monitoring(run)` performs depot reconciliation between Screening and Warrant Selection:
+
+1. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem.
+2. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through).
+3. Calls `_fetch_warrant_underlying_map(run)` — queries the last execution for this QuantSystem where `stages.warrant_selection.status == "approved"`, deserialises its `WarrantSelectionResult`, and builds `{warrant_isin → underlying_symbol}`.
+4. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn → date}`.
+5. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
+6. `MonitoringAgent.run()` evaluates each held position:
+   - If the underlying symbol maps to `trend_signals[symbol] == "BREAK"` and `holding_days >= min_holding_days` → `positions_to_sell`
+   - Otherwise → `positions_to_keep`
+   - Positions whose underlying cannot be mapped are always kept (safe default).
+7. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
+8. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
+
+The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
+- **`_run_warrant_selection`**: reads `monitoring.entry_candidates` (falls back to `screening.selected` if monitoring was skipped).
+- **`_run_portfolio`**: reads `monitoring.positions_to_keep` → builds `kept_warrant_isins` set → passes to `PortfolioConstructionAgent`, which excludes kept warrants from `close_positions`.
 
 ---
 

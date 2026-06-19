@@ -1,5 +1,6 @@
 from datetime import date
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -64,6 +65,22 @@ class WarrantSelectionResult(BaseModel):
     skipped: list[str]
     top3: dict[str, list[SelectedWarrant]] = {}       # symbol → up to 3 warrants by score
     analyzed_count: dict[str, int] = {}               # symbol → total candidates evaluated
+
+
+class PositionReview(BaseModel):
+    underlying_symbol: str
+    warrant_isin: str
+    warrant_wkn: str
+    held_since: date | None = None
+    sell_reason: Literal["exit_signal"] | None = None  # None = keep
+
+
+class MonitoringResult(BaseModel):
+    positions_to_sell: list[PositionReview]
+    positions_to_keep: list[PositionReview]
+    entry_candidates: list[Ticker]   # filtered and capped to free_positions
+    free_positions: int
+    excluded_symbols: list[str]      # already held (kept or selling) → blocked from entry
 
 
 class PortfolioProposal(BaseModel):

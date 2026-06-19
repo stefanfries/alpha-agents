@@ -1,7 +1,7 @@
 # ADR-011 — Portfolio Monitoring Stage: Position Review Before New Entries
 
 **Date:** 2026-06-08  
-**Status:** Draft — approved for implementation  
+**Status:** Implemented — 2026-06-19  
 
 ---
 
@@ -116,22 +116,32 @@ Downstream stages (Warrant Selection, Portfolio) operate only on `entry_candidat
 
 ---
 
-## Data model sketch (Pydantic)
+## Data model (implemented)
 
 ```python
 class PositionReview(BaseModel):
-    symbol: str
+    underlying_symbol: str              # yfinance symbol; "" if mapping unavailable
     warrant_isin: str
-    held_since: date
-    sell_reason: Literal["warrant_degraded", "exit_signal", "manual"]
+    warrant_wkn: str
+    held_since: date | None             # most recent BUY date from virtual_depot_transactions
+    sell_reason: Literal["exit_signal"] | None  # None = keep
 
 class MonitoringResult(BaseModel):
     positions_to_sell: list[PositionReview]
-    positions_to_keep: list[str]          # underlying symbols
-    entry_candidates: list[Ticker]        # top-N filtered, capped to free_positions
-    free_positions: int
-    excluded_symbols: list[str]           # already held or in re-entry prevention window
+    positions_to_keep: list[PositionReview]
+    entry_candidates: list[Ticker]      # top-N filtered, capped to free_positions
+    free_positions: int                 # max_positions − len(current_holdings)
+    excluded_symbols: list[str]         # all held underlyings (kept + selling)
 ```
+
+### Deviations from the draft sketch
+
+| Draft | Implemented | Reason |
+|-------|-------------|--------|
+| `sell_reason` includes `"warrant_degraded"` | Only `"exit_signal"` supported | Warrant health checks require FinHub calls; deferred |
+| `positions_to_keep: list[str]` (symbols) | `list[PositionReview]` | Richer — carries warrant ISIN for downstream Portfolio use |
+| Capital recycling within run | Deferred (free_positions = max − current) | Simpler; avoids same-run whipsawing |
+| Re-entry prevention from history | Not yet implemented | Requires transaction history join; `re_entry_prevention_days` stored for future use |
 
 ---
 

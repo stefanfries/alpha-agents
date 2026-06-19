@@ -215,12 +215,13 @@ def _compute_signal_markers(
 router = APIRouter(prefix="/quant-systems")
 templates = Jinja2Templates(directory="app/templates")
 
-STAGES = ["universe", "research", "screening", "warrant_selection", "portfolio", "risk", "execution"]
+STAGES = ["universe", "research", "screening", "monitoring", "warrant_selection", "portfolio", "risk", "execution"]
 
 STAGE_LABELS: dict[str, str] = {
     "universe": "Universe",
     "research": "Research",
     "screening": "Screening",
+    "monitoring": "Monitoring",
     "warrant_selection": "Warrant Selection",
     "portfolio": "Portfolio",
     "risk": "Risk",

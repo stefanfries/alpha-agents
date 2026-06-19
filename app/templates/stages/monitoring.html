@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Monitoring — {{ execution.execution_id }}{% endblock %}
+
+{% block content %}
+<h5 class="mb-1">Monitoring</h5>
+<p class="text-muted small mb-4">Audit open positions; determine exits, keeps, and entry slots.</p>
+
+{% if stage_status == "running" %}
+  <div class="d-flex align-items-center gap-2 text-primary mb-4">
+    <div class="spinner-border spinner-border-sm" role="status"></div>
+    <span>Auditing depot positions…</span>
+  </div>
+  <script>setTimeout(() => location.reload(), 3000)</script>
+
+{% elif stage_status == "error" %}
+  <div class="alert alert-danger">
+    <strong>Stage failed.</strong>
+    <pre class="mt-2 mb-0 small" style="max-height:300px;overflow:auto">{{ stage_error }}</pre>
+  </div>
+
+{% elif stage_status == "awaiting_review" %}
+  {% if stage_result %}
+  {% set r = stage_result %}
+  <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+
+    {# --- Summary cards --- #}
+    <div class="flex-shrink-0 mb-3">
+      <div class="row g-3">
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm border-danger">
+            <div class="fs-3 fw-bold text-danger">{{ r.positions_to_sell | length }}</div>
+            <div class="text-muted small">Sell</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm border-success">
+            <div class="fs-3 fw-bold text-success">{{ r.positions_to_keep | length }}</div>
+            <div class="text-muted small">Keep</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm border-primary">
+            <div class="fs-3 fw-bold text-primary">{{ r.free_positions }}</div>
+            <div class="text-muted small">Free slots</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm">
+            <div class="fs-3 fw-bold">{{ r.entry_candidates | length }}</div>
+            <div class="text-muted small">Entry candidates</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-grow-1 overflow-auto" style="min-height:0">
+      <div class="row g-3">
+
+        {# --- Exits --- #}
+        {% if r.positions_to_sell %}
+        <div class="col-lg-6">
+          <h6 class="text-danger mb-2">Exit signals</h6>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+            <thead class="table-light">
+              <tr><th>Underlying</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
+            </thead>
+            <tbody>
+              {% for p in r.positions_to_sell %}
+              <tr>
+                <td><code>{{ p.underlying_symbol }}</code></td>
+                <td><code>{{ p.warrant_wkn }}</code></td>
+                <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td><span class="badge bg-danger bg-opacity-10 text-danger">{{ p.sell_reason }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {# --- Keeps --- #}
+        {% if r.positions_to_keep %}
+        <div class="col-lg-6">
+          <h6 class="text-success mb-2">Incumbent positions (keep)</h6>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+            <thead class="table-light">
+              <tr><th>Underlying</th><th>Warrant WKN</th><th>Held since</th></tr>
+            </thead>
+            <tbody>
+              {% for p in r.positions_to_keep %}
+              <tr>
+                <td><code>{{ p.underlying_symbol or "?" }}</code></td>
+                <td><code>{{ p.warrant_wkn }}</code></td>
+                <td class="text-muted small">{{ p.held_since or "—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {# --- Entry candidates --- #}
+        {% if r.entry_candidates %}
+        <div class="col-12">
+          <h6 class="mb-2">Entry candidates <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ r.entry_candidates | length }} / {{ r.free_positions }} slots</span></h6>
+          <div class="d-flex flex-wrap gap-2">
+            {% for t in r.entry_candidates %}
+            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1">
+              {{ t.symbol }}{% if t.name %} <span class="text-muted fw-normal">{{ t.name }}</span>{% endif %}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# --- Excluded symbols --- #}
+        {% if r.excluded_symbols %}
+        <div class="col-12">
+          <p class="text-muted small mb-1">Excluded from entry (already held):</p>
+          <div class="d-flex flex-wrap gap-1">
+            {% for sym in r.excluded_symbols %}
+            <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ sym }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+
+  {% include "partials/action_bar.html" %}
+
+{% elif stage_status == "approved" %}
+  <div class="alert alert-success">Stage approved.</div>
+  {% include "partials/action_bar.html" %}
+
+{% else %}
+  <p class="text-muted">Pending.</p>
+{% endif %}
+{% endblock %}

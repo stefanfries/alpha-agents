@@ -63,6 +63,11 @@ class WarrantSelectionSettings(BaseModel):
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
 
 
+class MonitoringSettings(BaseModel):
+    min_holding_days: int = 5        # grace period before exit signal can trigger a sell
+    re_entry_prevention_days: int = 10  # days after selling before same underlying can be re-entered
+
+
 class PortfolioSettings(BaseModel):
     capital_eur: float = 100_000.0
     sizing_method: str = "equal"       # "equal" | "score_weighted" | "trend_weighted"
@@ -105,6 +110,7 @@ class Settings(BaseSettings):
     research: ResearchSettings = ResearchSettings()
     screening: ScreeningSettings = ScreeningSettings()
     warrant_selection: WarrantSelectionSettings = WarrantSelectionSettings()
+    monitoring: MonitoringSettings = MonitoringSettings()
     portfolio: PortfolioSettings = PortfolioSettings()
     risk: RiskSettings = RiskSettings()
     execution: ExecutionSettings = ExecutionSettings()

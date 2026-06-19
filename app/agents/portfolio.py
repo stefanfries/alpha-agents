@@ -17,12 +17,15 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
         current_holdings: list[Position] | None = None,
         sizing_method: str = "equal",
         max_position_weight: float = 0.10,
+        kept_warrant_isins: set[str] | None = None,
     ) -> None:
         self._capital = capital_eur
         self._holdings = {p.ticker.isin for p in (current_holdings or []) if p.ticker.isin}
         self._holding_positions = {p.ticker.isin: p for p in (current_holdings or []) if p.ticker.isin}
         self._sizing_method = sizing_method
         self._max_weight = max_position_weight
+        # Warrant ISINs that monitoring determined should be kept — excluded from close_positions
+        self._kept_isins: set[str] = kept_warrant_isins or set()
 
     async def run(self, input: SelectionResult) -> PortfolioProposal:
         if not input.selected:
@@ -57,7 +60,7 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
 
         close_positions = [
             p for isin, p in self._holding_positions.items()
-            if isin not in selected_isins
+            if isin not in selected_isins and isin not in self._kept_isins
         ]
 
         logger.info(

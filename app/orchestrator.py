@@ -1,12 +1,13 @@
 import asyncio
 import logging
 import traceback
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
 from app import warrant_availability
 from app.agents.execution import TradeExecutionAgent
+from app.agents.monitoring import MonitoringAgent, MonitoringInput
 from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.research import ResearchAgent, ResearchInput
 from app.agents.risk import RiskAgent
@@ -20,10 +21,12 @@ from app.db import (
     quant_systems_collection,
     update_stage_progress,
     virtual_depot_snapshots_collection,
+    virtual_depot_transactions_collection,
 )
 from app.models.market import Position, Ticker
 from app.models.signals import (
     ExecutionPlan,
+    MonitoringResult,
     PortfolioProposal,
     ResearchResult,
     RiskAssessment,
@@ -75,6 +78,8 @@ class Pipeline:
                 return await self._run_research(run)
             case "screening":
                 return await self._run_screening(run)
+            case "monitoring":
+                return await self._run_monitoring(run)
             case "warrant_selection":
                 return await self._run_warrant_selection(run)
             case "portfolio":
@@ -158,7 +163,16 @@ class Pipeline:
 
     async def _run_warrant_selection(self, run: dict) -> WarrantSelectionResult:
         execution_id = run["execution_id"]
-        screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
+        # Use monitoring's entry_candidates if the monitoring stage ran;
+        # fall back to the full screening selection for backward compatibility.
+        monitoring_data = run.get("stages", {}).get("monitoring", {}).get("result")
+        if monitoring_data:
+            monitoring = MonitoringResult.model_validate(monitoring_data)
+            candidates = monitoring.entry_candidates
+        else:
+            screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
+            candidates = screening.selected
+
         research = ResearchResult.model_validate(run["stages"]["research"]["result"])
         prices: dict[str, float] = {
             sym: float(fund["currentPrice"])
@@ -181,7 +195,81 @@ class Pipeline:
                 atm_band_fallback=settings.warrant_selection.atm_band_fallback,
                 isin_overrides=overrides,
                 on_progress=on_progress,
-            ).run(screening)
+            ).run(SelectionResult(selected=candidates, scores={t.symbol: 1.0 for t in candidates}, rationale={}))
+
+    async def _run_monitoring(self, run: dict) -> MonitoringResult:
+        screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
+        current_holdings = await self._fetch_holdings(run)
+
+        # No holdings → pass all screening candidates through as entry candidates
+        if not current_holdings:
+            free = min(len(screening.selected), settings.portfolio.max_positions)
+            return MonitoringResult(
+                positions_to_sell=[],
+                positions_to_keep=[],
+                entry_candidates=screening.selected[:free],
+                free_positions=free,
+                excluded_symbols=[],
+            )
+
+        warrant_underlying_map = await self._fetch_warrant_underlying_map(run)
+        held_since_map = await self._fetch_held_since(run)
+        overrides = run.get("config_overrides", {}).get("monitoring", {})
+        mon_cfg = settings.monitoring.model_copy(update=overrides)
+        return await MonitoringAgent(
+            settings=mon_cfg,
+            max_positions=settings.portfolio.max_positions,
+        ).run(MonitoringInput(
+            candidates=screening.selected,
+            scores=screening.scores,
+            trend_signals=screening.trend_signals,
+            current_holdings=current_holdings,
+            warrant_underlying_map=warrant_underlying_map,
+            held_since_map=held_since_map,
+            max_positions=settings.portfolio.max_positions,
+        ))
+
+    async def _fetch_warrant_underlying_map(self, run: dict) -> dict[str, str]:
+        """Return {warrant_isin → underlying_symbol} from the last approved execution."""
+        qs_id = run.get("quant_system_id")
+        if not qs_id:
+            return {}
+        last_run = await executions_collection().find_one(
+            {
+                "quant_system_id": qs_id,
+                "execution_id": {"$ne": run["execution_id"]},
+                "stages.warrant_selection.status": "approved",
+            },
+            sort=[("created_at", -1)],
+        )
+        if not last_run:
+            return {}
+        ws_data = last_run.get("stages", {}).get("warrant_selection", {}).get("result")
+        if not ws_data:
+            return {}
+        ws = WarrantSelectionResult.model_validate(ws_data)
+        return {w.warrant_isin: w.underlying.symbol for w in ws.selected}
+
+    async def _fetch_held_since(self, run: dict) -> dict[str, date]:
+        """Return {warrant_wkn → most recent BUY booking_date} for the linked virtual depot."""
+        qs_id = run.get("quant_system_id")
+        if not qs_id:
+            return {}
+        qs = await quant_systems_collection().find_one({"quant_system_id": qs_id})
+        if not qs or qs.get("depot_type") != "virtual" or not qs.get("depot_id"):
+            return {}
+        depot_id = qs["depot_id"]
+        transactions = await virtual_depot_transactions_collection().find(
+            {"depot_id": depot_id, "transaction_type": "BUY"},
+            sort=[("booking_date", -1)],
+        ).to_list()
+        held_since: dict[str, date] = {}
+        for txn in transactions:
+            wkn = txn.get("wkn")
+            if wkn and wkn not in held_since:
+                bd = txn.get("booking_date")
+                held_since[wkn] = bd.date() if hasattr(bd, "date") else bd
+        return held_since
 
     async def _run_portfolio(self, run: dict) -> PortfolioProposal:
         warrant_result = WarrantSelectionResult.model_validate(
@@ -196,11 +284,18 @@ class Pipeline:
         selection = SelectionResult(selected=warrant_tickers, scores=scores, rationale={})
 
         current_holdings = await self._fetch_holdings(run)
+        # Warrant ISINs that monitoring decided to keep — excluded from close_positions
+        kept_warrant_isins: set[str] = set()
+        monitoring_data = run.get("stages", {}).get("monitoring", {}).get("result")
+        if monitoring_data:
+            monitoring = MonitoringResult.model_validate(monitoring_data)
+            kept_warrant_isins = {p.warrant_isin for p in monitoring.positions_to_keep if p.warrant_isin}
         return await PortfolioConstructionAgent(
             capital_eur=run.get("capital_eur", settings.portfolio.capital_eur),
             current_holdings=current_holdings,
             sizing_method=settings.portfolio.sizing_method,
             max_position_weight=settings.portfolio.max_position_weight,
+            kept_warrant_isins=kept_warrant_isins,
         ).run(selection)
 
     async def _fetch_holdings(self, run: dict) -> list[Position]:

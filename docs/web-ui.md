@@ -16,7 +16,7 @@ It is implemented as FastAPI + Jinja2 + HTMX + Bootstrap 5 (see ADR-008, ADR-010
 Every page shares a base template with:
 
 - **Top navbar**: app name, link to Quant Systems list, current execution ID (if on an execution page), **FinHub API status dot** (see below), light/dark theme toggle
-- **Left sidebar** (execution pages): pipeline progress indicator showing all 7 stages with status badges (pending / running / awaiting review / approved / error). Clicking a completed stage navigates to its review page.
+- **Left sidebar** (execution pages): pipeline progress indicator showing all 8 stages with status badges (pending / running / awaiting review / approved / error). Clicking a completed stage navigates to its review page.
 - **Main content area**: page-specific content
 
 ---
@@ -182,11 +182,49 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 - **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run
 - Policy state is persisted to `config_overrides.screening` in the run document
 
-**User actions at approve:** the selection advances to warrant selection.
+**User actions at approve:** the selection advances to monitoring.
 
 ---
 
-#### 4.4 Warrant Selection — `/stages/warrant_selection`
+#### 4.4 Monitoring — `/stages/monitoring`
+
+**Summary**: `{keep} positions kept, {sell} positions to sell. {free} free slots. {n} entry candidates.`
+
+**Three-section layout:**
+
+1. **Positions to keep** table: incumbent holdings with no exit trigger.
+
+| Column | Description |
+| ------ | ----------- |
+| Underlying | Symbol mapped from last run's warrant selection |
+| Warrant WKN | Held warrant |
+| Held since | Most recent BUY date (from virtual depot transactions) |
+| Signal | Trend signal (`HOLD` / `NEW` / `—`) |
+
+2. **Positions to sell** table: positions where a BREAK signal was detected and the minimum holding period has elapsed.
+
+| Column | Description |
+| ------ | ----------- |
+| Underlying | Symbol |
+| Warrant WKN | Held warrant |
+| Held since | Date |
+| Days held | Calendar days since most recent BUY |
+| Reason | `exit_signal` |
+
+3. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
+
+| Column | Description |
+| ------ | ----------- |
+| # | Rank from Screening |
+| Symbol | Underlying ticker |
+| TQ | Trend Quality score |
+| Signal | `NEW` / `HOLD` |
+
+**User actions at approve:** entry candidates advance to warrant selection.
+
+---
+
+#### 4.5 Warrant Selection — `/stages/warrant_selection`
 
 **Summary**: `{N} warrants selected. {K} underlyings skipped.`
 
@@ -230,7 +268,7 @@ Right side — two vertically stacked panels:
 
 ---
 
-#### 4.5 Portfolio Construction — `/stages/portfolio`
+#### 4.6 Portfolio Construction — `/stages/portfolio`
 
 **Summary**: `{N} positions. {new} new, {existing} unchanged, {close} to close. Total capital: {EUR}.`
 
@@ -271,7 +309,7 @@ Right side — two vertically stacked panels:
 
 ---
 
-#### 4.6 Risk — `/stages/risk`
+#### 4.7 Risk — `/stages/risk`
 
 **Summary**: `{approved} positions approved. {rejected} positions rejected by risk rules.`
 
@@ -301,7 +339,7 @@ Right side — two vertically stacked panels:
 
 ---
 
-#### 4.7 Execution — `/stages/execution`
+#### 4.8 Execution — `/stages/execution`
 
 **Summary**: `{buys} buy orders, {sells} sell orders. Estimated total: {EUR} deployed.`
 

@@ -24,13 +24,13 @@ The primary investment instruments are **stocks** and **Call Warrants** (Options
 │              orchestrator.Pipeline                  │
 │   Chains agents sequentially; persists each         │
 │   stage result to MongoDB Atlas for HITL review     │
-└──┬────────┬─────────┬────────┬────────┬─────────────┘
-   │        │         │        │        │        │
-   ▼        ▼         ▼        ▼        ▼        ▼
-Universe Research  Stock   Warrant  Portfolio  Risk   Execution
- Agent    Agent  Selection Selection  Agent   Agent    Agent
-   │        │         │        │        │        │        │
-   └────────┴─────────┴────────┴────────┴────────┴────────┘
+└──┬──────┬───────┬────────┬───────┬──────┬───────────┘
+   │      │       │        │       │      │       │       │
+   ▼      ▼       ▼        ▼       ▼      ▼       ▼       ▼
+Universe Res.  Screen. Monitor. Warrant Portfolio Risk  Execution
+ Agent  Agent   Agent   Agent   Select.  Agent  Agent   Agent
+   │      │       │        │       │       │      │       │
+   └──────┴───────┴────────┴───────┴───────┴──────┴───────┘
                               │
                ┌──────────────┴───────────────┐
                ▼                              ▼
@@ -49,11 +49,12 @@ Universe Research  Stock   Warrant  Portfolio  Risk   Execution
 1. **Input**: An `UniverseSpec` — one or more index names (e.g. `["DAX", "MDAX", "SDAX"]`) — is passed to `Pipeline.run()`
 2. **Universe Agent**: Resolves index names to a flat list of ticker symbols; stores the universe document in MongoDB Atlas
 3. **Research Agent**: Fetches OHLCV candles for every ticker in the universe; resolves yfinance symbols via the **instrument master** (see ADR-007)
-4. **Stock Selection Agent**: Scores every pre-filtered ticker with three metrics (Trend Quality TQ, short-window TQ-20, and TSI), evaluates four configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50), and selects the top-N candidates by TQ
-5. **Warrant Selection Agent**: For each selected stock, fetches available Call Warrants from the **FinHub API**; scores each warrant using the optionsschein scoring model (spread 40%, leverage 25%, days-to-expiry 20%, delta 15%); returns the best warrant plus a top-3 shortlist per underlying
-6. **Portfolio Construction Agent**: Allocates weights across the warrant shortlist (one warrant per underlying); compares proposed positions against **current holdings read from MongoDB Atlas** (synced there by the `comdirect_api` sibling project) to identify new trades
-7. **Risk Agent**: Validates the proposed portfolio against risk limits; may reject positions
-8. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
+4. **Stock Selection Agent**: Scores every pre-filtered ticker with three metrics (Trend Quality TQ, short-window TQ-20, and TSI), evaluates configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50), and selects the top-N candidates by TQ; emits `trend_signals` (NEW / HOLD / BREAK) for every scored ticker
+5. **Monitoring Agent**: Reconciles the screening results with the current depot. For each open position, checks whether the underlying has a BREAK trend signal and whether the minimum holding period has elapsed; marks positions for SELL or KEEP. Derives the number of free slots and filters the entry candidate list to exclude already-held underlyings. Downstream stages operate only on `entry_candidates`, not the full screening shortlist. (See ADR-011.)
+6. **Warrant Selection Agent**: For each entry candidate, fetches available Call Warrants from the **FinHub API**; scores each warrant using the optionsschein scoring model (spread 40%, leverage 25%, days-to-expiry 20%, delta 15%); returns the best warrant plus a top-3 shortlist per underlying
+7. **Portfolio Construction Agent**: Allocates weights across the warrant shortlist (one warrant per underlying); compares proposed positions against **current holdings read from MongoDB Atlas** (synced there by the `comdirect_api` sibling project) to identify new trades. Incumbent positions marked KEEP by Monitoring are excluded from `close_positions`.
+8. **Risk Agent**: Validates the proposed portfolio against risk limits; may reject positions
+9. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
 
 Each stage result is persisted to MongoDB Atlas before the **human-in-the-loop (HITL) checkpoint**. The user reviews the output and either approves (continuing to the next stage) or rejects (returning to the previous stage with adjusted parameters).
 
@@ -61,8 +62,8 @@ Each stage result is persisted to MongoDB Atlas before the **human-in-the-loop (
 
 ```text
 Universe → [✓ review] → Research → [✓ review] → Stock Selection → [✓ review]
-        → Warrant Selection → [✓ review] → Portfolio → [✓ review]
-        → Risk → [✓ review] → Execution
+        → Monitoring → [✓ review] → Warrant Selection → [✓ review]
+        → Portfolio → [✓ review] → Risk → [✓ review] → Execution
 ```
 
 At each `[✓ review]` point:
