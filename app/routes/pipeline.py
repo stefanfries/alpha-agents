@@ -414,6 +414,12 @@ async def restart_stage(
             parsed_tq20_min = float(policy_tq20_min) if policy_tq20_min not in (None, "") else 0.0
         except (ValueError, TypeError):
             parsed_tq20_min = 0.0
+        if not np.isfinite(parsed_tq60_min):
+            parsed_tq60_min = 0.05
+        if not np.isfinite(parsed_tq20_min):
+            parsed_tq20_min = 0.0
+        parsed_tq60_min = max(0.0, min(parsed_tq60_min, 1.0))
+        parsed_tq20_min = max(0.0, min(parsed_tq20_min, 1.0))
         new_selected = sum(
             [
                 policy_supertrend is not None,

@@ -330,3 +330,55 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         "policy_price_below_ema50_break": False,
         "break_min_true": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_restart_stage_clamps_tq_thresholds_and_handles_invalid(monkeypatch):
+    from app.routes import pipeline as pipeline_module
+
+    class FakeCollection:
+        def __init__(self) -> None:
+            self.calls: list[tuple[dict, dict]] = []
+
+        async def update_one(self, selector: dict, update: dict) -> None:
+            self.calls.append((selector, update))
+
+    class FakePipeline:
+        async def run_stage(self, execution_id: str, from_stage: str) -> None:
+            return None
+
+    fake_collection = FakeCollection()
+
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: fake_collection)
+    monkeypatch.setattr(pipeline_module, "get_pipeline", lambda: FakePipeline())
+    monkeypatch.setattr(pipeline_module, "_fire", lambda coro: coro.close())
+
+    await pipeline_module.restart_stage(
+        qs_id="qs1",
+        execution_id="exec2",
+        stage="screening",
+        from_stage="screening",
+        policies_submitted="1",
+        policy_supertrend="on",
+        policy_ema20_rising="on",
+        policy_adx_above="on",
+        policy_adx_rising="on",
+        policy_price_above_ema50="on",
+        policy_tq60_above="on",
+        policy_tq20_above="on",
+        policy_tq60_min="9.9",
+        policy_tq20_min="invalid",
+        new_min_true="2",
+        policy_supertrend_break="on",
+        policy_ema20_falling_break="on",
+        policy_adx_below_break="on",
+        policy_adx_falling_break="on",
+        policy_price_below_ema50_break="on",
+        break_min_true="2",
+    )
+
+    _, update = fake_collection.calls[0]
+    screening_cfg = update["$set"]["config_overrides.screening"]
+
+    assert screening_cfg["policy_tq60_min"] == 1.0
+    assert screening_cfg["policy_tq20_min"] == 0.0
