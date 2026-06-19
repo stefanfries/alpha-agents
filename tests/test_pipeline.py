@@ -1,8 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 import numpy as np
+import pytest
 
 from app.agents.execution import TradeExecutionAgent
 from app.agents.portfolio import PortfolioConstructionAgent
@@ -257,3 +257,76 @@ def test_recent_new_downgrades_to_hold_when_current_bar_fails_selected_policy(mo
     )
 
     assert signal == "HOLD"
+
+
+@pytest.mark.asyncio
+async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
+    from app.routes import pipeline as pipeline_module
+
+    class FakeCollection:
+        def __init__(self) -> None:
+            self.calls: list[tuple[dict, dict]] = []
+
+        async def update_one(self, selector: dict, update: dict) -> None:
+            self.calls.append((selector, update))
+
+    class FakePipeline:
+        async def run_stage(self, execution_id: str, from_stage: str) -> None:
+            return None
+
+    fake_collection = FakeCollection()
+
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: fake_collection)
+    monkeypatch.setattr(pipeline_module, "get_pipeline", lambda: FakePipeline())
+    monkeypatch.setattr(pipeline_module, "_fire", lambda coro: coro.close())
+
+    response = await pipeline_module.restart_stage(
+        qs_id="qs1",
+        execution_id="exec1",
+        stage="screening",
+        from_stage="screening",
+        policies_submitted="1",
+        policy_supertrend="on",
+        policy_ema20_rising="on",
+        policy_adx_above=None,
+        policy_adx_rising="on",
+        policy_price_above_ema50="on",
+        policy_tq60_above="on",
+        policy_tq20_above=None,
+        policy_tq60_min="0.07",
+        policy_tq20_min="0.02",
+        new_min_true="99",
+        policy_supertrend_break="on",
+        policy_ema20_falling_break=None,
+        policy_adx_below_break="on",
+        policy_adx_falling_break=None,
+        policy_price_below_ema50_break=None,
+        break_min_true="0",
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/quant-systems/qs1/executions/exec1/stages/screening"
+
+    assert len(fake_collection.calls) == 1
+    selector, update = fake_collection.calls[0]
+    assert selector == {"execution_id": "exec1"}
+
+    screening_cfg = update["$set"]["config_overrides.screening"]
+    assert screening_cfg == {
+        "policy_supertrend": True,
+        "policy_ema20_rising": True,
+        "policy_adx_above": False,
+        "policy_adx_rising": True,
+        "policy_price_above_ema50": True,
+        "policy_tq60_above": True,
+        "policy_tq20_above": False,
+        "policy_tq60_min": 0.07,
+        "policy_tq20_min": 0.02,
+        "new_min_true": 5,
+        "policy_supertrend_break": True,
+        "policy_ema20_falling_break": False,
+        "policy_adx_below_break": True,
+        "policy_adx_falling_break": False,
+        "policy_price_below_ema50_break": False,
+        "break_min_true": 1,
+    }
