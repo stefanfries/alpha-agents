@@ -8,6 +8,12 @@ from app.config import ScreeningSettings
 from app.indicators import supertrend_bands
 from app.models.market import OHLCV
 from app.models.signals import ResearchResult, SelectionResult
+from app.policies.trend_detection import (
+    TrendDetectionPolicyConfig,
+    bar_indicator_values,
+    build_trend_indicator_series,
+    passes_rule_group,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,29 +27,52 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         cfg = settings or ScreeningSettings()
         self._top_n = cfg.top_n
         self._min_market_cap_eur = cfg.min_market_cap_eur
-        self._min_adx = cfg.min_adx
         self._lookback_regression = cfg.lookback_regression
         self._lookback_regression_short = cfg.lookback_regression_short
-        self._supertrend_period = cfg.supertrend_period
-        self._supertrend_multiplier = cfg.supertrend_multiplier
         self._tsi_fast = cfg.tsi_fast
         self._tsi_slow = cfg.tsi_slow
-        self._policy_supertrend = cfg.policy_supertrend
-        self._policy_ema20_rising = cfg.policy_ema20_rising
-        self._policy_adx_above = cfg.policy_adx_above
-        self._policy_adx_rising = cfg.policy_adx_rising
-        self._policy_price_above_ema50 = cfg.policy_price_above_ema50
-        self._policy_tq60_above = cfg.policy_tq60_above
-        self._policy_tq20_above = cfg.policy_tq20_above
-        self._policy_tq60_min = cfg.policy_tq60_min
-        self._policy_tq20_min = cfg.policy_tq20_min
-        self._policy_ema20_falling_break = cfg.policy_ema20_falling_break
-        self._policy_supertrend_break = cfg.policy_supertrend_break
-        self._policy_adx_below_break = cfg.policy_adx_below_break
-        self._policy_adx_falling_break = cfg.policy_adx_falling_break
-        self._policy_price_below_ema50_break = cfg.policy_price_below_ema50_break
-        self._new_min_true = cfg.new_min_true
-        self._break_min_true = cfg.break_min_true
+        self._trend_policy = TrendDetectionPolicyConfig(
+            min_adx=cfg.min_adx,
+            policy_supertrend=cfg.policy_supertrend,
+            policy_ema20_rising=cfg.policy_ema20_rising,
+            policy_adx_above=cfg.policy_adx_above,
+            policy_adx_rising=cfg.policy_adx_rising,
+            policy_price_above_ema50=cfg.policy_price_above_ema50,
+            policy_tq60_above=cfg.policy_tq60_above,
+            policy_tq20_above=cfg.policy_tq20_above,
+            policy_tq60_min=cfg.policy_tq60_min,
+            policy_tq20_min=cfg.policy_tq20_min,
+            new_min_true=cfg.new_min_true,
+            policy_supertrend_break=cfg.policy_supertrend_break,
+            policy_ema20_falling_break=cfg.policy_ema20_falling_break,
+            policy_adx_below_break=cfg.policy_adx_below_break,
+            policy_adx_falling_break=cfg.policy_adx_falling_break,
+            policy_price_below_ema50_break=cfg.policy_price_below_ema50_break,
+            break_min_true=cfg.break_min_true,
+            supertrend_period=cfg.supertrend_period,
+            supertrend_multiplier=cfg.supertrend_multiplier,
+        )
+
+        # Keep existing attributes for compatibility with logs/tests during transition.
+        self._min_adx = self._trend_policy.min_adx
+        self._supertrend_period = self._trend_policy.supertrend_period
+        self._supertrend_multiplier = self._trend_policy.supertrend_multiplier
+        self._policy_supertrend = self._trend_policy.policy_supertrend
+        self._policy_ema20_rising = self._trend_policy.policy_ema20_rising
+        self._policy_adx_above = self._trend_policy.policy_adx_above
+        self._policy_adx_rising = self._trend_policy.policy_adx_rising
+        self._policy_price_above_ema50 = self._trend_policy.policy_price_above_ema50
+        self._policy_tq60_above = self._trend_policy.policy_tq60_above
+        self._policy_tq20_above = self._trend_policy.policy_tq20_above
+        self._policy_tq60_min = self._trend_policy.policy_tq60_min
+        self._policy_tq20_min = self._trend_policy.policy_tq20_min
+        self._policy_ema20_falling_break = self._trend_policy.policy_ema20_falling_break
+        self._policy_supertrend_break = self._trend_policy.policy_supertrend_break
+        self._policy_adx_below_break = self._trend_policy.policy_adx_below_break
+        self._policy_adx_falling_break = self._trend_policy.policy_adx_falling_break
+        self._policy_price_below_ema50_break = self._trend_policy.policy_price_below_ema50_break
+        self._new_min_true = self._trend_policy.new_min_true
+        self._break_min_true = self._trend_policy.break_min_true
 
     async def run(self, input: ResearchResult) -> SelectionResult:
         scores: dict[str, float] = {}
@@ -82,22 +111,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             policies = self._evaluate_policies(bars)
             policy_results[symbol] = policies
 
-            new_enabled = {
-                "supertrend": self._policy_supertrend,
-                "ema20_rising": self._policy_ema20_rising,
-                "adx_above": self._policy_adx_above,
-                "adx_rising": self._policy_adx_rising,
-                "price_above_ema50": self._policy_price_above_ema50,
-                "tq60_above": self._policy_tq60_above,
-                "tq20_above": self._policy_tq20_above,
-            }
-            break_enabled = {
-                "supertrend_bearish": self._policy_supertrend_break,
-                "ema20_falling": self._policy_ema20_falling_break,
-                "adx_below": self._policy_adx_below_break,
-                "adx_falling": self._policy_adx_falling_break,
-                "price_below_ema50": self._policy_price_below_ema50_break,
-            }
+            new_enabled = self._trend_policy.entry_enabled_rules()
+            break_enabled = self._trend_policy.exit_enabled_rules()
             passes_new = self._passes_policy_group(
                 policies,
                 new_enabled,
@@ -225,63 +240,20 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         n = len(bars)
         if n < _MIN_BARS:
             return None
-
-        close = np.array([float(b.close) for b in bars])
-        high  = np.array([float(b.high)  for b in bars])
-        low   = np.array([float(b.low)   for b in bars])
-
-        ema20    = talib.EMA(close, timeperiod=20)
-        ema50    = talib.EMA(close, timeperiod=50)
-        adx_vals = talib.ADX(high, low, close, timeperiod=14)
-        atr20    = talib.ATR(high, low, close, timeperiod=20)
-        final_upper, final_lower = supertrend_bands(
-            high, low, close, self._supertrend_period, self._supertrend_multiplier
+        series = build_trend_indicator_series(
+            bars,
+            self._trend_policy,
+            supertrend_fn=supertrend_bands,
         )
 
-        st_bull = np.zeros(n, dtype=bool)
-        st_dir = 1
-        st_started = False
-        for i in range(n):
-            if np.isnan(final_upper[i]):
-                continue
-            if not st_started:
-                st_started = True
-            elif st_dir == 1 and close[i] < final_lower[i]:
-                st_dir = -1
-            elif st_dir == -1 and close[i] > final_upper[i]:
-                st_dir = 1
-            st_bull[i] = st_dir == 1
-
         def _bar_passes(i: int) -> tuple[bool, bool]:
-            seg = adx_vals[i - 4 : i + 1] if i >= 4 else np.array([np.nan])
-            if not np.any(np.isnan(seg)):
-                slope = float(np.polyfit(np.arange(5, dtype=float), seg, 1)[0])
-                adx_above  = float(adx_vals[i]) > self._min_adx
-                adx_rising = slope > 0
-            else:
-                adx_above = adx_rising = False
-            ema20_rising = (
-                bool(float(ema20[i]) > float(ema20[i - 5]))
-                if i >= 5 and not (np.isnan(ema20[i]) or np.isnan(ema20[i - 5]))
-                else False
+            c = bar_indicator_values(
+                idx=i,
+                series=series,
+                policy_cfg=self._trend_policy,
+                lookback_regression=self._lookback_regression,
+                lookback_regression_short=self._lookback_regression_short,
             )
-            price_above_ema50 = bool(not np.isnan(ema50[i]) and float(close[i]) > float(ema50[i]))
-            tq60 = self._trend_quality_at_index(close, atr20, i, self._lookback_regression)
-            tq20 = self._trend_quality_at_index(close, atr20, i, self._lookback_regression_short)
-            c = {
-                "supertrend": bool(st_bull[i]),
-                "supertrend_bearish": not bool(st_bull[i]),
-                "ema20_rising": ema20_rising,
-                "ema20_falling": not ema20_rising,
-                "adx_above": adx_above,
-                "adx_below": not adx_above,
-                "adx_rising": adx_rising,
-                "adx_falling": not adx_rising,
-                "price_above_ema50": price_above_ema50,
-                "price_below_ema50": not price_above_ema50,
-                "tq60_above": tq60 > self._policy_tq60_min,
-                "tq20_above": tq20 > self._policy_tq20_min,
-            }
             return (
                 self._passes_policy_group(c, new_enabled, new_min_true),
                 self._passes_policy_group(c, break_enabled, break_min_true),
@@ -315,65 +287,18 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         return None
 
     def _evaluate_policies(self, bars: list[OHLCV]) -> dict[str, bool]:
-        close = np.array([float(b.close) for b in bars])
-        high = np.array([float(b.high) for b in bars])
-        low = np.array([float(b.low) for b in bars])
-
-        # SuperTrend bullish (last bar)
-        final_upper, final_lower = supertrend_bands(high, low, close, self._supertrend_period, self._supertrend_multiplier)
-        st_dir = 1
-        st_started = False
-        for i in range(len(close)):
-            if np.isnan(final_upper[i]):
-                continue
-            if not st_started:
-                st_started = True
-            elif st_dir == 1 and close[i] < final_lower[i]:
-                st_dir = -1
-            elif st_dir == -1 and close[i] > final_upper[i]:
-                st_dir = 1
-        st_bull = st_dir == 1
-
-        # EMA20 rising (compare last bar to 5 bars ago)
-        ema20 = talib.EMA(close, timeperiod=20)
-        ema20_rising = (
-            bool(ema20[-1] > ema20[-6])
-            if not (np.isnan(ema20[-1]) or np.isnan(ema20[-6]))
-            else False
+        series = build_trend_indicator_series(
+            bars,
+            self._trend_policy,
+            supertrend_fn=supertrend_bands,
         )
-
-        # ADX above threshold and rising (slope of last 5 values > 0)
-        adx = talib.ADX(high, low, close, timeperiod=14)
-        adx_segment = adx[-5:]
-        if not np.any(np.isnan(adx_segment)):
-            adx_slope = float(np.polyfit(np.arange(5, dtype=float), adx_segment, 1)[0])
-            adx_above = float(adx[-1]) > self._min_adx
-            adx_rising = adx_slope > 0
-        else:
-            adx_above = False
-            adx_rising = False
-
-        # Price above EMA50
-        ema50 = talib.EMA(close, timeperiod=50)
-        price_above_ema50 = bool(not np.isnan(ema50[-1]) and float(close[-1]) > float(ema50[-1]))
-
-        tq60 = self._trend_quality(bars, self._lookback_regression)
-        tq20 = self._trend_quality(bars, self._lookback_regression_short)
-
-        return {
-            "supertrend": st_bull,
-            "supertrend_bearish": not st_bull,
-            "ema20_rising": ema20_rising,
-            "ema20_falling": not ema20_rising,
-            "adx_above": adx_above,
-            "adx_below": not adx_above,
-            "adx_rising": adx_rising,
-            "adx_falling": not adx_rising,
-            "price_above_ema50": price_above_ema50,
-            "price_below_ema50": not price_above_ema50,
-            "tq60_above": tq60 > self._policy_tq60_min,
-            "tq20_above": tq20 > self._policy_tq20_min,
-        }
+        return bar_indicator_values(
+            idx=len(bars) - 1,
+            series=series,
+            policy_cfg=self._trend_policy,
+            lookback_regression=self._lookback_regression,
+            lookback_regression_short=self._lookback_regression_short,
+        )
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
@@ -385,34 +310,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         enabled_policies: dict[str, bool],
         min_true: int | None,
     ) -> bool:
-        selected = [k for k, on in enabled_policies.items() if on]
-        if not selected:
-            return False
-        true_count = sum(1 for k in selected if policy_results.get(k, False))
-        required = min_true if min_true is not None else len(selected)
-        required = max(1, min(required, len(selected)))
-        return true_count >= required
-
-    def _trend_quality_at_index(
-        self,
-        close: np.ndarray,
-        atr20: np.ndarray,
-        idx: int,
-        lookback: int,
-    ) -> float:
-        if idx + 1 < lookback:
-            return 0.0
-        atr_val = float(atr20[idx])
-        if np.isnan(atr_val) or atr_val <= 0:
-            return 0.0
-        segment = close[idx - lookback + 1 : idx + 1]
-        x = np.arange(lookback, dtype=float)
-        slope, intercept = np.polyfit(x, segment, 1)
-        fitted = slope * x + intercept
-        ss_res = float(np.sum((segment - fitted) ** 2))
-        ss_tot = float(np.sum((segment - segment.mean()) ** 2))
-        r2 = max(0.0, 1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
-        return r2 * (slope / atr_val)
+        return passes_rule_group(policy_results, enabled_policies, min_true)
 
     def _rank_changes(
         self,
