@@ -180,8 +180,9 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   stocks are not scanned.
 - **`_run_warrant_selection`** — loads `warrant_availability.overrides_map()` and passes it
   to `WarrantSelectionAgent(isin_overrides=...)`. An override redirects warrant lookup to the
-  override ISIN, derives the strike band from that underlying's native-currency price (no FX),
-  and sets each warrant's `chart_symbol`; the ADR remains the analyzed instrument.
+  override ISIN, derives the strike band from that underlying's live native-currency quote
+  (falling back to bid/ask midprice when `/quotes` omits a last price, no FX), and sets each
+  warrant's `chart_symbol`; the ADR remains the analyzed instrument.
 
 ---
 

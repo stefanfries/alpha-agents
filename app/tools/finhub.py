@@ -50,6 +50,14 @@ class FinHubTool(Tool):
         r.raise_for_status()
         return r.json()
 
+    async def get_quote(self, identifier: str) -> dict[str, Any] | None:
+        """Returns current quote dict or None if not found."""
+        r = await self._http.get(f"/v1/quotes/{identifier}")
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.json()
+
     async def get_warrants(
         self,
         underlying: str,

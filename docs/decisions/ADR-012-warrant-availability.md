@@ -107,9 +107,11 @@ The override underlying is often denominated in a different currency than the AD
 ASML ADR trades in USD, but its EUR-listed stock carries EUR-strike warrants). Warrant
 selection therefore, when an override is active:
 
-- derives the **strike band** from the override underlying's own **native-currency price**
-  (read from a warrant's `reference_data.underlying_price`, same currency as `strike`) —
-  **never** the ADR's USD `currentPrice`, and **no FX conversion**; and
+- derives the **strike band** from the override underlying's live **native-currency quote**
+  fetched from the FinHub `/quotes` endpoint — **never** the ADR's USD `currentPrice`, and
+  **no FX conversion**. If the quote payload has no explicit last/current field, warrant
+  selection derives the band from the bid/ask midprice instead of leaving the search
+  unbounded; and
 - sets `SelectedWarrant.chart_symbol` to the override underlying's yfinance symbol
   (e.g. `ASML.AS`), so the warrant chart plots candles in the strike currency and the
   strike line aligns with the price.

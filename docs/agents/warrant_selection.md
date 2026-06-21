@@ -40,7 +40,8 @@ class WarrantSelectionResult(BaseModel):
 
 ## Tools used
 
-- `FinHubTool` — three FinHub API endpoints:
+- `FinHubTool` — four FinHub API endpoints:
+  - `GET /v1/quotes/{isin}` — live quote for override underlyings; used to anchor the strike band in the warrant's strike currency
   - `GET /v1/warrants` — warrant search filtered by underlying ISIN, type, maturity range, and strike band
   - `GET /v1/warrants/{isin}` — full reference data, live market data, and analytics (Greeks)
   - `GET /v1/instruments/{isin}` — resolves an override underlying's yfinance symbol (for the chart)
@@ -53,10 +54,11 @@ manual override (see ADR-012) redirects **warrant lookup only**. When an overrid
 for a ticker:
 
 - `get_warrants` / `get_warrant_detail` use the **override ISIN**, not the ADR's.
-- The strike band is derived from the **override underlying's own native-currency price**
-  (read from a warrant's `reference_data.underlying_price`, same currency as `strike`) —
-  **no FX conversion**. Using the ADR's `currentPrice` would be the wrong currency and
-  magnitude (USD vs EUR).
+- The strike band is derived from the **override underlying's live native-currency quote**
+  fetched from the FinHub `/quotes` endpoint — **no FX conversion**. The agent first uses a
+  direct last/current-price field (`currentPrice`, `price`, `lastPrice`, `last`, `close`), and
+  falls back to the bid/ask midprice when the quote payload only exposes `bid` and `ask`.
+  Using the ADR's `currentPrice` would be the wrong currency and magnitude (USD vs EUR).
 - `chart_symbol` is set to the override underlying's yfinance symbol (e.g. `ASML.AS`) so the
   warrant-selection chart plots candles in the same currency as the strike line.
 
@@ -66,11 +68,12 @@ name); only warrant sourcing and the strike chart follow the override.
 ## Behaviour
 
 1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × (1 ± atm_band)` (default ±2%)
-2. If the narrow band returns no candidates, retry with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
-3. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use the shared `retry_call()` helper (`app/tools/retry.py`: 1 retry, 2 s wait) for transient API errors.
-4. Score all successfully fetched details using the scoring model
-5. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
-6. Underlyings with no candidates (neither band) are recorded in `skipped` and excluded from portfolio construction
+2. For ADR overrides, the `current_price` comes from the FinHub `/quotes` endpoint for the override ISIN; if the quote has no explicit last/current field, the bid/ask midprice is used instead. Otherwise it comes from the research-stage current price map.
+3. If the narrow band returns no candidates, retry with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
+4. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use the shared `retry_call()` helper (`app/tools/retry.py`: 1 retry, 2 s wait) for transient API errors.
+5. Score all successfully fetched details using the scoring model
+6. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
+7. Underlyings with no candidates (neither band) are recorded in `skipped` and excluded from portfolio construction
 
 Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail fetches share a pool of 10 concurrent connections (`asyncio.Semaphore(10)`).
 

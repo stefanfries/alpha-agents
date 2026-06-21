@@ -104,10 +104,10 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         # The strike band must be expressed in the warrant's strike currency. For
         # an override the ADR's `currentPrice` is in the wrong currency (e.g. USD
         # ADR vs EUR-denominated underlying), so derive the band from the override
-        # underlying's own native-currency price instead — no FX conversion.
+        # underlying's live quote price instead — no FX conversion.
         chart_symbol: str | None = None
         if lookup_isin != ticker.isin:
-            price = await self._override_underlying_price(lookup_isin, maturity_from, maturity_to)
+            price = await self._override_underlying_price(lookup_isin)
             # Chart the override underlying (matching the strike currency) instead
             # of the ADR, so candles and the strike line share one currency.
             chart_symbol = await self._override_chart_symbol(lookup_isin)
@@ -195,35 +195,50 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             return None
         return (inst or {}).get("global_identifiers", {}).get("symbol_yfinance")
 
-    async def _override_underlying_price(
-        self, lookup_isin: str, maturity_from: str, maturity_to: str
-    ) -> float | None:
-        """Native-currency price of an override underlying for the strike band.
+    async def _override_underlying_price(self, lookup_isin: str) -> float | None:
+        """Live native-currency price of an override underlying for the strike band.
 
-        Read from a warrant's ``reference_data.underlying_price`` (same currency
-        as ``strike``), so the band needs no FX conversion. Returns None if no
-        warrant or price is available, in which case the band is left unbounded.
+        This uses the FinHub /quotes endpoint so the strike window is anchored to
+        the current underlying quote, not to a warrant detail snapshot.
         """
         try:
-            candidates = await self._finhub.get_warrants(
-                underlying=lookup_isin,
-                preselection="CALL",
-                maturity_from=maturity_from,
-                maturity_to=maturity_to,
-            )
+            quote = await self._finhub.get_quote(lookup_isin)
         except Exception:
-            logger.warning("override price: get_warrants failed for %s", lookup_isin)
+            logger.warning("override price: get_quote failed for %s", lookup_isin)
             return None
-        for c in candidates:
-            if not c.get("isin"):
-                continue
+        return self._extract_quote_price(quote)
+
+    @staticmethod
+    def _extract_quote_price(quote: dict[str, Any] | None) -> float | None:
+        if not quote:
+            return None
+        for key in ("currentPrice", "price", "lastPrice", "last", "close"):
+            value = quote.get(key)
+            if value is not None:
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+        bid = quote.get("bid")
+        ask = quote.get("ask")
+        if bid is not None and ask is not None:
             try:
-                detail = await self._finhub.get_warrant_detail(c["isin"])
-            except Exception:
-                continue
-            price = (detail or {}).get("reference_data", {}).get("underlying_price")
-            if price:
-                return float(price)
+                return (float(bid) + float(ask)) / 2.0
+            except (TypeError, ValueError):
+                return None
+        for key in ("bid", "ask"):
+            value = quote.get(key)
+            if value is not None:
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+        for key in ("data", "quote", "result"):
+            nested = quote.get(key)
+            if isinstance(nested, dict):
+                price = WarrantSelectionAgent._extract_quote_price(nested)
+                if price is not None:
+                    return price
         return None
 
     def _score(self, detail: dict, today: date) -> float:

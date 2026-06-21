@@ -8,6 +8,7 @@ from app.agents.execution import TradeExecutionAgent
 from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.risk import RiskAgent
 from app.agents.screening import SecuritySelectionAgent
+from app.agents.warrant_selection import WarrantSelectionAgent
 from app.models.market import OHLCV, Position, Ticker
 from app.models.signals import ResearchResult, SelectionResult
 
@@ -257,6 +258,21 @@ def test_recent_new_downgrades_to_hold_when_current_bar_fails_selected_policy(mo
     )
 
     assert signal == "HOLD"
+
+
+def test_warrant_selection_extracts_midprice_from_bid_ask_quote():
+    price = WarrantSelectionAgent._extract_quote_price(
+        {
+            "name": "ASML Holding",
+            "isin": "NL0010273215",
+            "bid": 1660.0,
+            "ask": 1661.2,
+            "spread_percent": 0.0722369371538674,
+            "currency": "EUR",
+        }
+    )
+
+    assert price == pytest.approx(1660.6)
 
 
 @pytest.mark.asyncio
