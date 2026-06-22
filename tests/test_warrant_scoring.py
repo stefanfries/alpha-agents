@@ -7,6 +7,7 @@ import pytest
 
 from app.policies.warrant_scoring import (
     WarrantScoringConfig,
+    build_warrant_rationale,
     compute_warrant_score,
     score_days_to_expiry,
     score_delta,
@@ -222,3 +223,122 @@ class TestConfigDefaults:
         assert config.delta_weight == 0.15
         assert config.delta_peak == 0.5
         assert config.delta_half_width == 0.5
+
+
+class TestBuildWarrantRationale:
+    """Test warrant rationale text generation."""
+
+    def test_all_fields_present(self):
+        """All non-None fields appear in rationale."""
+        today = date(2026, 6, 22)
+        maturity = (today + timedelta(days=100)).isoformat()
+        
+        rationale = build_warrant_rationale(
+            spread_pct=1.5,
+            leverage=5.0,
+            maturity_date=maturity,
+            delta=0.5,
+            today=today,
+        )
+        
+        assert "spread 1.5%" in rationale
+        assert "leverage 5.0×" in rationale
+        assert "100d to expiry" in rationale
+        assert "δ=0.50" in rationale
+
+    def test_all_fields_none(self):
+        """All None fields yields "—"."""
+        today = date(2026, 6, 22)
+        rationale = build_warrant_rationale(
+            spread_pct=None,
+            leverage=None,
+            maturity_date=None,
+            delta=None,
+            today=today,
+        )
+        assert rationale == "—"
+
+    def test_partial_fields(self):
+        """Only non-None fields included in rationale."""
+        today = date(2026, 6, 22)
+        rationale = build_warrant_rationale(
+            spread_pct=0.5,
+            leverage=None,
+            maturity_date=None,
+            delta=0.6,
+            today=today,
+        )
+        
+        assert rationale == "spread 0.5%, δ=0.60"
+
+    def test_invalid_maturity_date(self):
+        """Invalid maturity date is silently skipped."""
+        today = date(2026, 6, 22)
+        rationale = build_warrant_rationale(
+            spread_pct=1.0,
+            leverage=3.0,
+            maturity_date="invalid-date",
+            delta=0.5,
+            today=today,
+        )
+        
+        # Should skip the invalid date but include others
+        assert "spread 1.0%" in rationale
+        assert "leverage 3.0×" in rationale
+        assert "δ=0.50" in rationale
+        # Should not mention expiry since date was invalid
+        assert "to expiry" not in rationale
+
+    def test_past_maturity_date(self):
+        """Maturity date in past still calculates (negative days)."""
+        today = date(2026, 6, 22)
+        past = (today - timedelta(days=10)).isoformat()
+        
+        rationale = build_warrant_rationale(
+            spread_pct=None,
+            leverage=None,
+            maturity_date=past,
+            delta=None,
+            today=today,
+        )
+        
+        assert "-10d to expiry" in rationale
+
+    def test_spread_formatting_precision(self):
+        """Spread formatted to 1 decimal place."""
+        today = date(2026, 6, 22)
+        rationale = build_warrant_rationale(
+            spread_pct=1.234,
+            leverage=None,
+            maturity_date=None,
+            delta=None,
+            today=today,
+        )
+        
+        assert "spread 1.2%" in rationale
+
+    def test_leverage_formatting_precision(self):
+        """Leverage formatted to 1 decimal place."""
+        today = date(2026, 6, 22)
+        rationale = build_warrant_rationale(
+            spread_pct=None,
+            leverage=5.678,
+            maturity_date=None,
+            delta=None,
+            today=today,
+        )
+        
+        assert "leverage 5.7×" in rationale
+
+    def test_delta_formatting_precision(self):
+        """Delta formatted to 2 decimal places."""
+        today = date(2026, 6, 22)
+        rationale = build_warrant_rationale(
+            spread_pct=None,
+            leverage=None,
+            maturity_date=None,
+            delta=0.5678,
+            today=today,
+        )
+        
+        assert "δ=0.57" in rationale

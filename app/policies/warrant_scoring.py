@@ -133,3 +133,48 @@ def compute_warrant_score(
         + score_days_to_expiry(maturity_date, today, config)
         + score_delta(delta, config)
     )
+
+
+def build_warrant_rationale(
+    spread_pct: float | None,
+    leverage: float | None,
+    maturity_date: str | None,
+    delta: float | None,
+    today: date,
+) -> str:
+    """
+    Build a human-readable rationale string from warrant attributes.
+    
+    Formats each non-None field as a concise component description.
+    Joins with commas, or returns "—" if all fields are None.
+    
+    Args:
+        spread_pct: bid-ask spread as a percentage
+        leverage: warrant leverage as multiple
+        maturity_date: ISO date string (YYYY-MM-DD)
+        delta: option delta (0.0 to 1.0)
+        today: reference date for days-to-expiry calculation
+    
+    Returns:
+        Comma-separated component descriptions, or "—" if all fields are None.
+    """
+    parts = []
+    
+    if spread_pct is not None:
+        parts.append(f"spread {spread_pct:.1f}%")
+    
+    if leverage is not None:
+        parts.append(f"leverage {leverage:.1f}×")
+    
+    # Calculate days to expiry if maturity date is provided
+    if maturity_date is not None:
+        try:
+            days_to_expiry = (date.fromisoformat(str(maturity_date)) - today).days
+            parts.append(f"{days_to_expiry}d to expiry")
+        except (ValueError, TypeError):
+            pass
+    
+    if delta is not None:
+        parts.append(f"δ={delta:.2f}")
+    
+    return ", ".join(parts) if parts else "—"

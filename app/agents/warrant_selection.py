@@ -8,7 +8,7 @@ from app.agents.base import Agent
 from app.config import settings
 from app.models.market import Ticker
 from app.models.signals import SelectedWarrant, SelectionResult, WarrantSelectionResult
-from app.policies.warrant_scoring import WarrantScoringConfig, compute_warrant_score
+from app.policies.warrant_scoring import WarrantScoringConfig, build_warrant_rationale, compute_warrant_score
 from app.tools.finhub import FinHubTool
 from app.tools.retry import retry_call
 
@@ -269,23 +269,6 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         delta = an.get("delta")
         maturity_raw = rd.get("maturity_date")
 
-        days_to_expiry: int | None = None
-        if maturity_raw:
-            try:
-                days_to_expiry = (date.fromisoformat(str(maturity_raw)) - today).days
-            except (ValueError, TypeError):
-                pass
-
-        parts = []
-        if spread_pct is not None:
-            parts.append(f"spread {spread_pct:.1f}%")
-        if leverage is not None:
-            parts.append(f"leverage {leverage:.1f}×")
-        if days_to_expiry is not None:
-            parts.append(f"{days_to_expiry}d to expiry")
-        if delta is not None:
-            parts.append(f"δ={delta:.2f}")
-
         return SelectedWarrant(
             underlying=underlying,
             warrant_isin=detail.get("isin", ""),
@@ -298,7 +281,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             bid=md.get("bid"),
             ask=md.get("ask"),
             score=self._score(detail, today),
-            rationale=", ".join(parts) if parts else "—",
+            rationale=build_warrant_rationale(spread_pct, leverage, maturity_raw, delta, today),
             issuer_action=bool(rd.get("issuer_action")),
             issuer_no_fee_action=bool(rd.get("issuer_no_fee_action")),
             chart_symbol=chart_symbol,
