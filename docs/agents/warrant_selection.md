@@ -90,7 +90,11 @@ Each warrant receives a continuous composite score in `[0, 1]` from four criteri
 
 Final score = weighted sum. The warrant with the highest score per underlying becomes `selected[i]`.
 
-## Configuration (`WarrantSelectionSettings`)
+**Implementation:** Scoring logic is extracted to [app/policies/warrant_scoring.py](../../app/policies/warrant_scoring.py) with pure helper functions (`score_spread`, `score_leverage`, `score_days_to_expiry`, `score_delta`, `compute_warrant_score`, `build_warrant_rationale`) and a `WarrantScoringConfig` dataclass for centralized, reusable evaluation. See [Warrant Scoring Refactor Plan](../warrant-scoring-refactor-plan.md) for architecture and testing details.
+
+## Configuration
+
+**WarrantSelectionSettings** (selection filters):
 
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
@@ -98,6 +102,29 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `max_days_to_expiry` | `365` | Maximum remaining life (12 months) for maturity filter |
 | `atm_band` | `0.02` | Primary strike filter half-width (±2%) |
 | `atm_band_fallback` | `0.10` | Fallback strike filter half-width (±10%) |
+
+**WarrantScoringSettings** (scoring component weights & thresholds, runtime-tunable via `.env`):
+
+| Parameter | Default | Description |
+| --------- | ------- | ----------- |
+| `spread_weight` | `0.40` | Weight for spread component in composite score |
+| `spread_cutoff_pct` | `3.0` | Spread % at which linear falloff reaches zero |
+| `leverage_weight` | `0.25` | Weight for leverage component |
+| `leverage_mean` | `5.0` | Gaussian peak leverage (sweet spot) |
+| `leverage_sigma` | `3.0` | Gaussian standard deviation (range ~3–8×) |
+| `days_weight` | `0.20` | Weight for days-to-expiry component |
+| `days_mean` | `315` | Gaussian peak days (midpoint 9–12 months) |
+| `days_sigma` | `45.0` | Gaussian standard deviation (range ~270–360 days) |
+| `delta_weight` | `0.15` | Weight for delta component |
+| `delta_peak` | `0.5` | Linear peak delta (ATM calls) |
+| `delta_half_width` | `0.5` | Linear falloff half-width (range ~0–1) |
+
+**To tune scoring parameters without redeployment:** Edit `.env` with any of the above params prefixed with `WARRANT_SCORING__`, e.g.:
+```bash
+WARRANT_SCORING__SPREAD_WEIGHT=0.35
+WARRANT_SCORING__LEVERAGE_MEAN=6.0
+WARRANT_SCORING__DAYS_MEAN=330
+```
 
 ## Web UI
 
