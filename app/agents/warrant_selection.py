@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import math
 from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
 from typing import Any
@@ -8,6 +7,7 @@ from typing import Any
 from app.agents.base import Agent
 from app.models.market import Ticker
 from app.models.signals import SelectedWarrant, SelectionResult, WarrantSelectionResult
+from app.policies.warrant_scoring import WarrantScoringConfig, compute_warrant_score
 from app.tools.finhub import FinHubTool
 from app.tools.retry import retry_call
 
@@ -36,6 +36,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._atm_band_fallback = atm_band_fallback
         self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
+        self._scoring_config = WarrantScoringConfig()
 
     async def run(self, input: SelectionResult) -> WarrantSelectionResult:
         today = date.today()
@@ -246,34 +247,12 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         an = detail.get("analytics") or {}
         rd = detail.get("reference_data") or {}
 
-        score = 0.0
-
-        # Spread: lower is better; 0% → 1.0, 3% → 0.0
         spread_pct = md.get("spread_percent")
-        if spread_pct is not None:
-            score += 0.40 * max(0.0, 1.0 - spread_pct / 3.0)
-
-        # Leverage: sweet spot 3–8×; peak at 5×
         leverage = an.get("leverage")
-        if leverage is not None and leverage > 0:
-            score += 0.25 * math.exp(-0.5 * ((leverage - 5.0) / 3.0) ** 2)
-
-        # Days to expiry: peak at midpoint of the 9–12 month window (~315 days)
-        maturity_raw = rd.get("maturity_date")
-        if maturity_raw:
-            try:
-                days = (date.fromisoformat(str(maturity_raw)) - today).days
-                if days > 0:
-                    score += 0.20 * math.exp(-0.5 * ((days - 315) / 45.0) ** 2)
-            except (ValueError, TypeError):
-                pass
-
-        # Delta: ATM calls ideally around 0.5
+        maturity_date = rd.get("maturity_date")
         delta = an.get("delta")
-        if delta is not None:
-            score += 0.15 * max(0.0, 1.0 - abs(delta - 0.5) / 0.5)
 
-        return score
+        return compute_warrant_score(spread_pct, leverage, maturity_date, delta, today, self._scoring_config)
 
     def _build(
         self, underlying: Ticker, detail: dict, today: date, chart_symbol: str | None = None
