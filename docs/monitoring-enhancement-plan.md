@@ -15,7 +15,12 @@ Currently, the monitoring agent only sells a warrant when the underlying trigger
 - Maturity shortens → liquidity disappears, exercise risk rises
 - Delta drifts → warrant no longer tracks underlying efficiently
 
-**Solution:** Extend monitoring to score held warrants and enforce sells when quality drops below holding thresholds.
+**Solution:** Extend monitoring to score held warrants and enforce exits when quality drops below holding thresholds. When a warrant degrades but the underlying trend remains strong, **roll** the warrant: sell the degraded warrant and buy a new one with adjusted strike price and maturity date for the same underlying.
+
+**Three-state model:**
+- **HOLD** → Keep warrant (healthy, trend intact)
+- **SELL** → Exit position (warrant degraded AND trend broken)
+- **ROLL** → Replace warrant (warrant degraded BUT trend still strong) → sell old, buy new for same underlying
 
 ---
 
@@ -76,7 +81,8 @@ class MonitoringSettings(BaseModel):
 ```
 
 **Environment variables (`.env`):**
-```
+
+```text
 MONITORING__WARRANT_HEALTH__ENABLED=true
 MONITORING__WARRANT_HEALTH__SPREAD_MAX_PCT=2.5
 MONITORING__WARRANT_HEALTH__LEVERAGE_MIN=3.0
@@ -87,7 +93,7 @@ MONITORING__WARRANT_HEALTH__DELTA_MAX=0.7
 MONITORING__WARRANT_HEALTH__MIN_WARRANT_SCORE=0.5
 ```
 
-### 2. New Sell Reason: `warrant_degraded`
+### 2. Extended Action Types: HOLD, SELL, ROLL
 
 **File:** `app/models/signals.py`
 
@@ -97,8 +103,10 @@ class PositionReview(BaseModel):
     warrant_isin: str
     warrant_wkn: str
     held_since: date | None = None
-    sell_reason: Literal["exit_signal", "warrant_degraded", None] = None
-    degrade_details: str | None = None  # e.g., "spread_too_wide", "maturity_too_short"
+    action: Literal["hold", "sell", "roll"] = "hold"  # Monitoring recommendation
+    exit_reason: Literal["exit_signal", "warrant_degraded"] | None = None
+    degrade_details: str | None = None  # e.g., "spread_too_wide:2.8%", "maturity_too_short:45d"
+    roll_replacement: dict | None = None  # NEW: Suggested warrant replacement (isin, strike, maturity)
 ```
 
 ### 3. Extended MonitoringInput with Warrant Snapshots
@@ -199,15 +207,32 @@ review = PositionReview(
 
 # Decision tree:
 if is_degraded:
-    review.sell_reason = "warrant_degraded"
-    review.degrade_details = degrade_detail
-    positions_to_sell.append(review)
-    logger.info("Monitoring: warrant degraded %s (%s) → SELL", warrant_isin, degrade_detail)
+    if has_exit_signal and holding_days >= self._min_holding_days:
+        # Trend broken + warrant degraded → SELL (exit completely)
+        review.action = "sell"
+        review.exit_reason = "exit_signal"
+        review.degrade_details = degrade_detail
+        positions_to_sell.append(review)
+        logger.info("Monitoring: exit signal + degraded %s → SELL", underlying_sym)
+    else:
+        # Trend intact but warrant degraded → ROLL (replace warrant)
+        review.action = "roll"
+        review.exit_reason = "warrant_degraded"
+        review.degrade_details = degrade_detail
+        # NEW: Query Warrant Selection for replacement candidates
+        replacement = await self._find_roll_replacement(underlying_sym, current_warrant_specs)
+        review.roll_replacement = replacement
+        positions_to_roll.append(review)  # NEW list
+        logger.info("Monitoring: degraded but trend intact %s → ROLL", underlying_sym)
 elif has_exit_signal and holding_days >= self._min_holding_days:
-    review.sell_reason = "exit_signal"
+    # Warrant healthy but trend broken → SELL
+    review.action = "sell"
+    review.exit_reason = "exit_signal"
     positions_to_sell.append(review)
     logger.info("Monitoring: exit signal %s → SELL", underlying_sym)
 else:
+    # Warrant healthy, trend intact → HOLD
+    review.action = "hold"
     positions_to_keep.append(review)
     logger.debug("Monitoring: keeping %s", underlying_sym)
 ```
@@ -235,7 +260,7 @@ async def _run_monitoring(self, run: dict) -> MonitoringResult:
     )
 ```
 
-New helper method:
+New helper methods:
 ```python
 async def _fetch_warrant_snapshots(
     self,
@@ -246,6 +271,18 @@ async def _fetch_warrant_snapshots(
     # For each ISIN: parse bid, ask, expiry, underlying quote → compute spread %, leverage, etc.
     # Return dict of {isin → WarrantSnapshot}
     pass
+
+async def _find_roll_replacement(
+    self,
+    underlying_symbol: str,
+    current_warrant_specs: dict,  # {spread_pct, leverage, days_to_maturity, delta}
+) -> dict | None:
+    """Find a better warrant for the same underlying.
+    Query from WarrantSelectionAgent with refresh filters.
+    Return {isin, wkn, strike, maturity, projected_leverage, projected_spread} or None if none available.
+    """
+    # Delegate to WarrantSelectionAgent logic (wrapped as tool)
+    pass
 ```
 
 ---
@@ -253,47 +290,73 @@ async def _fetch_warrant_snapshots(
 ## Implementation Roadmap
 
 ### Phase M1.1: Configuration & Model Updates
+
 - [ ] Add `MonitoringWarrantHealthSettings` to `app/config.py`
 - [ ] Add `warrant_degraded` sell reason to `PositionReview` model
 - [ ] Add `WarrantSnapshot` input model to `MonitoringInput`
 - [ ] Update `.env` with new warrant health config params
 
 ### Phase M1.2: Agent Logic
+
 - [ ] Implement `_check_warrant_health()` method in `MonitoringAgent`
 - [ ] Integrate health checks into `run()` decision tree
 - [ ] Update logging to include degradation details
 
 ### Phase M1.3: Orchestrator Data Flow
+
 - [ ] Implement `_fetch_warrant_snapshots()` helper
 - [ ] Wire snapshots into `MonitoringInput` in `_run_monitoring()`
 - [ ] Handle missing/stale quote data gracefully
 
 ### Phase M1.4: Testing
+
 - [ ] Add unit tests for `_check_warrant_health()` — boundary cases (spread at threshold, maturity edge)
 - [ ] Add integration tests for combined decision logic (exit_signal vs. warrant_degraded priority)
 - [ ] Add regression tests to ensure non-degraded warrants are kept when no exit signal
 
-### Phase M1.5: UI & Documentation
-- [ ] Update [docs/agents/monitoring.md](docs/agents/monitoring.md) with warrant health check details
-- [ ] Extend monitoring results table to show degrade_details column
-- [ ] Add configuration guide to [docs/agents/monitoring.md](docs/agents/monitoring.md)
+### Phase M1.5: Warrant Replacement Logic (ROLL)
+
+- [ ] Implement `_find_roll_replacement()` helper to query WarrantSelectionAgent
+- [ ] Add `positions_to_roll` output list to `MonitoringResult`
+- [ ] Extend `PositionReview` with `roll_replacement` field (suggested warrant ISIN, strike, maturity)
+- [ ] Add decision tree logic for ROLL vs. SELL based on trend signal presence
+- [ ] Wire replacement warrant suggestions into monitoring result
+
+### Phase M1.6: UI & Documentation
+
+- [ ] Update [docs/agents/monitoring.md](docs/agents/monitoring.md) with three-state decision logic (HOLD, SELL, ROLL)
+- [ ] Update monitoring results template to show action column (HOLD | SELL | ROLL) with color coding
+- [ ] Add `roll_replacement` details panel (suggested ISIN, strike, maturity, projected improvement)
+- [ ] Add configuration guide with holding warrant thresholds
+- [ ] Document ROLL workflow and manual approval requirements
 
 ---
 
-## Decision Priority
+## Decision Priority (Three-State Model)
 
-**When both conditions are true:**
+**Evaluation order:**
 
-```
-if is_degraded:
-    → SELL (warrant_degraded)
-elif has_exit_signal AND holding_days >= min_holding_days:
-    → SELL (exit_signal)
-else:
-    → KEEP
-```
+1. **Warrant health first** — Is warrant degraded?
+   - YES + Exit signal (trend broken) → **SELL** (exit completely)
+   - YES + No exit signal (trend intact) → **ROLL** (replace warrant, stay in trade)
+   - NO + Exit signal + grace period met → **SELL** (exit on trend)
+   - NO + No exit signal → **HOLD** (keep position)
 
-**Rationale:** Warrant health is a hard floor (non-negotiable). Trend signal is softer (respects grace period).
+**Matrix:**
+
+| Warrant Degraded | Exit Signal | Grace Period | Action |
+| --- | --- | --- | --- |
+| ✓ | ✓ | ✓ | **SELL** (trend broken) |
+| ✓ | ✓ | ✗ | **ROLL** (wait grace period, but replace warrant) |
+| ✓ | ✗ | — | **ROLL** (trend intact, just swap warrant) |
+| ✗ | ✓ | ✓ | **SELL** (clean exit) |
+| ✗ | ✓ | ✗ | **HOLD** (await grace period) |
+| ✗ | ✗ | — | **HOLD** (no action) |
+
+**Rationale:** 
+- Warrant health is a **hard floor** (non-negotiable risk management)
+- Trend signal is **softer** (respects grace period)
+- ROLL preserves trend exposure while eliminating execution risk (spread, leverage, maturity)
 
 ---
 
@@ -305,6 +368,9 @@ else:
 | Partial snapshot (e.g., spread available but delta missing) | Check only available components |
 | Days to maturity = 0 (expired) | Immediate SELL (hard error, not soft threshold) |
 | Leverage or spread = None in tool response | Treat as "data unavailable", don't trigger sell |
+| No replacement warrant found for ROLL | Downgrade to SELL (preserve capital rather than stay in degraded warrant) |
+| Replacement warrant is worse than current | Keep current (HOLD) until health triggers again |
+| User rejects ROLL suggestion | Position moves to manual queue (requires override approval) |
 
 ---
 
@@ -321,7 +387,16 @@ else:
 
 - ✅ Held warrants are scored independently of entry thresholds
 - ✅ Degradation triggers are configurable per component
+- ✅ Three-state model (HOLD, SELL, ROLL) correctly routes decisions
+- ✅ ROLL replacements suggest better warrants for same underlying
 - ✅ Health checks don't break existing exit_signal logic
-- ✅ Dry-run mode allows testing without live trades
-- ✅ All 80 existing tests still pass; 10+ new tests added
-- ✅ Monitoring results display degrade_details for transparency
+- ✅ Dry-run mode allows testing ROLL suggestions without live trades
+- ✅ All 80 existing tests still pass; 15+ new tests added (health checks + ROLL logic)
+- ✅ Monitoring results display action (HOLD/SELL/ROLL) with degradation details and replacement suggestions
+- ✅ UI template shows three-state table with color coding (green=HOLD, red=SELL, blue=ROLL)
+
+## Terminology
+
+- **Roll** / **Rolling** — Replace an expiring or degraded warrant with a new one at extended maturity/adjusted strike for the same underlying (English: standard finance term; German: "rollen" or "durchrollen")
+- **Roll forward** — Extend position to later expiration date
+- **Warrant health** — Collective assessment of spread, leverage, maturity, delta against holding thresholds
