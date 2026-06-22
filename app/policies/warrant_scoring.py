@@ -9,6 +9,10 @@ structured input data.
 import math
 from dataclasses import dataclass
 from datetime import date
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.config import WarrantScoringSettings
 
 
 @dataclass
@@ -28,6 +32,23 @@ class WarrantScoringConfig:
     delta_weight: float = 0.15
     delta_peak: float = 0.5
     delta_half_width: float = 0.5
+
+    @classmethod
+    def from_settings(cls, settings: "WarrantScoringSettings") -> "WarrantScoringConfig":
+        """Construct config from pydantic settings object."""
+        return cls(
+            spread_weight=settings.spread_weight,
+            spread_cutoff_pct=settings.spread_cutoff_pct,
+            leverage_weight=settings.leverage_weight,
+            leverage_mean=settings.leverage_mean,
+            leverage_sigma=settings.leverage_sigma,
+            days_weight=settings.days_weight,
+            days_mean=settings.days_mean,
+            days_sigma=settings.days_sigma,
+            delta_weight=settings.delta_weight,
+            delta_peak=settings.delta_peak,
+            delta_half_width=settings.delta_half_width,
+        )
 
 
 def score_spread(spread_pct: float | None, config: WarrantScoringConfig) -> float:

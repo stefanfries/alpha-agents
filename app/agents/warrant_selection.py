@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.agents.base import Agent
+from app.config import settings
 from app.models.market import Ticker
 from app.models.signals import SelectedWarrant, SelectionResult, WarrantSelectionResult
 from app.policies.warrant_scoring import WarrantScoringConfig, compute_warrant_score
@@ -27,6 +28,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         atm_band_fallback: float = 0.10,
         isin_overrides: dict[str, str] | None = None,
         on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
+        scoring_config: WarrantScoringConfig | None = None,
     ) -> None:
         self._finhub = finhub
         self._prices = prices
@@ -36,7 +38,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._atm_band_fallback = atm_band_fallback
         self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
-        self._scoring_config = WarrantScoringConfig()
+        # Load scoring config from settings if not provided
+        self._scoring_config = scoring_config or WarrantScoringConfig.from_settings(settings.warrant_scoring)
 
     async def run(self, input: SelectionResult) -> WarrantSelectionResult:
         today = date.today()

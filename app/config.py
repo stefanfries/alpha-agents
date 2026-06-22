@@ -63,6 +63,24 @@ class WarrantSelectionSettings(BaseModel):
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
 
 
+class WarrantScoringSettings(BaseModel):
+    """Configuration for warrant scoring component weights and parameters."""
+    spread_weight: float = 0.40
+    spread_cutoff_pct: float = 3.0
+    
+    leverage_weight: float = 0.25
+    leverage_mean: float = 5.0
+    leverage_sigma: float = 3.0
+    
+    days_weight: float = 0.20
+    days_mean: float = 315  # ~midpoint of 9–12 month window
+    days_sigma: float = 45.0
+    
+    delta_weight: float = 0.15
+    delta_peak: float = 0.5
+    delta_half_width: float = 0.5
+
+
 class MonitoringSettings(BaseModel):
     min_holding_days: int = 5        # grace period before exit signal can trigger a sell
     re_entry_prevention_days: int = 10  # days after selling before same underlying can be re-entered
@@ -110,6 +128,7 @@ class Settings(BaseSettings):
     research: ResearchSettings = ResearchSettings()
     screening: ScreeningSettings = ScreeningSettings()
     warrant_selection: WarrantSelectionSettings = WarrantSelectionSettings()
+    warrant_scoring: WarrantScoringSettings = WarrantScoringSettings()
     monitoring: MonitoringSettings = MonitoringSettings()
     portfolio: PortfolioSettings = PortfolioSettings()
     risk: RiskSettings = RiskSettings()
