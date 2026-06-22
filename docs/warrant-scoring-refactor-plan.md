@@ -4,6 +4,7 @@
 
 **Session:** 2026-06-22  
 **Commits:**
+
 - de1964d: extract warrant scoring to reusable policy module (phase W1) + fix research template
 - 2b14827: move warrant scoring config to runtime settings (phase W2)
 - 8c9c764: extract warrant rationale formatting to policy helper (phase W3)
@@ -98,7 +99,7 @@ Success criteria met:
 1. ✅ Created WarrantScoringSettings in app/config.py with all 12 scoring params
 2. ✅ Added warrant_scoring field to master Settings class
 3. ✅ Added WarrantScoringConfig.from_settings() factory method
-4. ✅ Updated WarrantSelectionAgent.__init__ to load from settings.warrant_scoring
+4. ✅ Updated WarrantSelectionAgent. **init** to load from settings.warrant_scoring
 5. ✅ Added all params to .env file with documented defaults
 6. ✅ All 43 tests still pass (no regressions)
 
@@ -145,6 +146,7 @@ Success criteria met:
    - Component isolation verified
 
 Success criteria met:
+
 - ✅ Stable ranking in deterministic fixtures (5 iterations verified)
 - ✅ Missing fields never crash scoring
 - ✅ 77 total tests passing (18 existing + 59 new warrant scoring)
@@ -154,7 +156,7 @@ Success criteria met:
 All four phases delivered in one session (2026-06-22):
 
 | Phase | Focus | Commits | Tests | Status |
-|-------|-------|---------|-------|--------|
+| ----- | ----- | ------- | ----- | ------ |
 | W1 | Extract scoring logic | de1964d | +25 | ✅ |
 | W2 | Runtime config | 2b14827 | +0 | ✅ |
 | W3 | Rationale formatting | 8c9c764 | +8 | ✅ |
@@ -164,6 +166,7 @@ All four phases delivered in one session (2026-06-22):
 ## Next Steps
 
 **Phase W5** (optional, blocked on historical data):
+
 - Hyperparameter optimization against backtest Sharpe/Drawdown
 - Only viable once historical simulation data is available
 - Hold until ready to A/B test configs on real performance metrics

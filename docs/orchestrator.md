@@ -201,8 +201,8 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
    - Otherwise → `positions_to_keep`
 8. Calculates `free_positions = max(0, max_positions − len(current_holdings))` and filters entry candidates to capped list.
    - Positions whose underlying cannot be mapped are always kept (safe default).
-7. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
-8. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
+9. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
+10. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 
@@ -291,19 +291,22 @@ without human review.
 
 ## Bug fixes and corrections (2026-06-22)
 
-**Monitoring free slot calculation (Issue: incorrect free positions reported)**
+### Monitoring free slot calculation (Issue: incorrect free positions reported)
 
 Root causes:
+
 1. No-holdings path computed `free_positions = min(candidates, max_positions)` instead of capacity
 2. Holdings loader counted positions with quantity ≤ 0, inflating held count and reducing free slots
 3. Max positions was hardcoded to global settings, ignoring execution-level config overrides
 
 Fixes implemented:
+
 - Added `_portfolio_max_positions(run)` resolver to honor execution `config_overrides.portfolio.max_positions`
 - Modified `_fetch_holdings()` to skip all positions with quantity ≤ 0 (zero/negative quantities)
 - Fixed no-holdings monitoring path to return `free_positions = max_positions` (full capacity)
 
 Validation:
+
 - 3 new integration tests: one for each bug fix
 - Full test suite: 80 tests passing
 - Example: With max_positions=20, no holdings, zero-qty depot entries → now correctly reports free_positions=20 (before: varied incorrectly)

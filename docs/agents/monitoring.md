@@ -88,11 +88,13 @@ Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`
 **Issue:** Monitoring reported incorrect free slot counts and incorrectly counted zero-quantity positions as active holdings.
 
 **Root causes:**
+
 1. No-holdings path computed `free_positions = min(candidates, max_positions)` instead of `max_positions`
 2. Holdings loader included positions with quantity ≤ 0, inflating the held count
 3. Portfolio max positions was hardcoded to global settings, ignoring execution config overrides
 
 **Resolution:**
+
 - `_portfolio_max_positions()` resolver in orchestrator honors execution-level `config_overrides.portfolio.max_positions`
 - Holdings fetch skips all zero-quantity or negative-quantity positions
 - No-holdings case now correctly returns `free_positions = max_positions`
