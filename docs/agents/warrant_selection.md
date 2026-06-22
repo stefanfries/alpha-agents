@@ -120,6 +120,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `delta_half_width` | `0.5` | Linear falloff half-width (range ~0–1) |
 
 **To tune scoring parameters without redeployment:** Edit `.env` with any of the above params prefixed with `WARRANT_SCORING__`, e.g.:
+
 ```bash
 WARRANT_SCORING__SPREAD_WEIGHT=0.35
 WARRANT_SCORING__LEVERAGE_MEAN=6.0
