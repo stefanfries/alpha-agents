@@ -398,3 +398,106 @@ async def test_restart_stage_clamps_tq_thresholds_and_handles_invalid(monkeypatc
 
     assert screening_cfg["policy_tq60_min"] == 1.0
     assert screening_cfg["policy_tq20_min"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_monitoring_no_holdings_reports_full_free_slots_from_config_override(monkeypatch):
+    from app.orchestrator import Pipeline
+
+    pipeline = Pipeline()
+
+    async def fake_fetch_holdings(_run: dict) -> list[Position]:
+        return []
+
+    monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+
+    screening = SelectionResult(
+        selected=[Ticker(symbol="A"), Ticker(symbol="B"), Ticker(symbol="C")],
+        scores={"A": 1.0, "B": 0.9, "C": 0.8},
+        rationale={},
+    )
+    run = {
+        "stages": {"screening": {"result": screening.model_dump(mode="json")}},
+        "config_overrides": {"portfolio": {"max_positions": 20}},
+    }
+
+    result = await pipeline._run_monitoring(run)
+
+    assert result.free_positions == 20
+    assert len(result.entry_candidates) == 3
+    assert result.positions_to_keep == []
+    assert result.positions_to_sell == []
+
+
+@pytest.mark.asyncio
+async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(monkeypatch):
+    from app.orchestrator import Pipeline
+
+    pipeline = Pipeline()
+
+    async def fake_fetch_holdings(_run: dict) -> list[Position]:
+        return [
+            Position(
+                ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                quantity=Decimal("1"),
+                avg_cost=Decimal("0"),
+            )
+        ]
+
+    async def fake_warrant_underlying_map(_run: dict) -> dict[str, str]:
+        return {"ISIN1": "A"}
+
+    async def fake_held_since(_run: dict) -> dict[str, date]:
+        return {"WKN1": date.today() - timedelta(days=30)}
+
+    monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
+    monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
+
+    screening = SelectionResult(
+        selected=[Ticker(symbol="A"), Ticker(symbol="B"), Ticker(symbol="C")],
+        scores={"A": 1.0, "B": 0.9, "C": 0.8},
+        rationale={},
+        trend_signals={"A": "HOLD", "B": "NEW", "C": "NEW"},
+    )
+    run = {
+        "stages": {"screening": {"result": screening.model_dump(mode="json")}},
+        "config_overrides": {"portfolio": {"max_positions": 5}},
+    }
+
+    result = await pipeline._run_monitoring(run)
+
+    assert result.free_positions == 4
+    assert len(result.positions_to_keep) == 1
+    assert len(result.positions_to_sell) == 0
+    assert [t.symbol for t in result.entry_candidates] == ["B", "C"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_holdings_ignores_zero_quantity_positions(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, _query: dict) -> dict:
+            return {"depot_id": "d1", "depot_type": "virtual"}
+
+    class FakeSnapshotsCollection:
+        async def find_one(self, _query: dict, sort: list[tuple[str, int]]) -> dict:
+            return {
+                "positions": [
+                    {"isin": "X1", "wkn": "W1", "quantity": {"value": "0", "unit": "ST"}},
+                    {"isin": "X2", "wkn": "W2", "quantity": {"value": "0.0000", "unit": "ST"}},
+                    {"isin": "X3", "wkn": "W3", "quantity": {"value": "2", "unit": "ST"}},
+                ]
+            }
+
+    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+
+    pipeline = Pipeline()
+    holdings = await pipeline._fetch_holdings({"quant_system_id": "qs1"})
+
+    assert len(holdings) == 1
+    assert holdings[0].ticker.symbol == "W3"
+    assert holdings[0].quantity == Decimal("2")

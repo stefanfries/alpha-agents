@@ -190,14 +190,16 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 
 `_run_monitoring(run)` performs depot reconciliation between Screening and Warrant Selection:
 
-1. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem.
-2. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through).
-3. Calls `_fetch_warrant_underlying_map(run)` — queries the last execution for this QuantSystem where `stages.warrant_selection.status == "approved"`, deserialises its `WarrantSelectionResult`, and builds `{warrant_isin → underlying_symbol}`.
-4. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn → date}`.
-5. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-6. `MonitoringAgent.run()` evaluates each held position:
+1. Calls `_portfolio_max_positions(run)` — resolves the target position limit from execution `config_overrides.portfolio.max_positions`, or falls back to global `settings.portfolio.max_positions`.
+2. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries).
+3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through), with `free_positions = max_positions`.
+4. Calls `_fetch_warrant_underlying_map(run)` — queries the last execution for this QuantSystem where `stages.warrant_selection.status == "approved"`, deserialises its `WarrantSelectionResult`, and builds `{warrant_isin → underlying_symbol}`.
+5. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn → date}`.
+6. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
+7. `MonitoringAgent.run()` evaluates each held position:
    - If the underlying symbol maps to `trend_signals[symbol] == "BREAK"` and `holding_days >= min_holding_days` → `positions_to_sell`
    - Otherwise → `positions_to_keep`
+8. Calculates `free_positions = max(0, max_positions − len(current_holdings))` and filters entry candidates to capped list.
    - Positions whose underlying cannot be mapped are always kept (safe default).
 7. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
 8. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
@@ -284,3 +286,24 @@ runs. All stage results are still persisted to MongoDB for post-run review.
 The pipeline logs a warning at startup if `execution_dry_run=False` and
 `hitl_mode=False` simultaneously — this combination would result in live orders
 without human review.
+
+---
+
+## Bug fixes and corrections (2026-06-22)
+
+**Monitoring free slot calculation (Issue: incorrect free positions reported)**
+
+Root causes:
+1. No-holdings path computed `free_positions = min(candidates, max_positions)` instead of capacity
+2. Holdings loader counted positions with quantity ≤ 0, inflating held count and reducing free slots
+3. Max positions was hardcoded to global settings, ignoring execution-level config overrides
+
+Fixes implemented:
+- Added `_portfolio_max_positions(run)` resolver to honor execution `config_overrides.portfolio.max_positions`
+- Modified `_fetch_holdings()` to skip all positions with quantity ≤ 0 (zero/negative quantities)
+- Fixed no-holdings monitoring path to return `free_positions = max_positions` (full capacity)
+
+Validation:
+- 3 new integration tests: one for each bug fix
+- Full test suite: 80 tests passing
+- Example: With max_positions=20, no holdings, zero-qty depot entries → now correctly reports free_positions=20 (before: varied incorrectly)

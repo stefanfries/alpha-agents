@@ -42,6 +42,18 @@ logger = logging.getLogger(__name__)
 
 
 class Pipeline:
+    def _portfolio_max_positions(self, run: dict) -> int:
+        """Resolve max positions from execution config, fallback to global settings."""
+        portfolio_cfg = run.get("config_overrides", {}).get("portfolio", {})
+        raw = portfolio_cfg.get("max_positions")
+        if raw is None:
+            return settings.portfolio.max_positions
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return settings.portfolio.max_positions
+        return value if value > 0 else settings.portfolio.max_positions
+
     async def run_stage(self, execution_id: str, stage: str) -> None:
         coll = executions_collection()
         run = await coll.find_one({"execution_id": execution_id})
@@ -200,14 +212,15 @@ class Pipeline:
     async def _run_monitoring(self, run: dict) -> MonitoringResult:
         screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
         current_holdings = await self._fetch_holdings(run)
+        max_positions = self._portfolio_max_positions(run)
 
         # No holdings → pass all screening candidates through as entry candidates
         if not current_holdings:
-            free = min(len(screening.selected), settings.portfolio.max_positions)
+            free = max_positions
             return MonitoringResult(
                 positions_to_sell=[],
                 positions_to_keep=[],
-                entry_candidates=screening.selected[:free],
+                entry_candidates=screening.selected[:max_positions],
                 free_positions=free,
                 excluded_symbols=[],
             )
@@ -218,7 +231,7 @@ class Pipeline:
         mon_cfg = settings.monitoring.model_copy(update=overrides)
         return await MonitoringAgent(
             settings=mon_cfg,
-            max_positions=settings.portfolio.max_positions,
+            max_positions=max_positions,
         ).run(MonitoringInput(
             candidates=screening.selected,
             scores=screening.scores,
@@ -226,7 +239,7 @@ class Pipeline:
             current_holdings=current_holdings,
             warrant_underlying_map=warrant_underlying_map,
             held_since_map=held_since_map,
-            max_positions=settings.portfolio.max_positions,
+            max_positions=max_positions,
         ))
 
     async def _fetch_warrant_underlying_map(self, run: dict) -> dict[str, str]:
@@ -332,6 +345,8 @@ class Pipeline:
                 quantity = Decimal(str(qty)) if qty else Decimal("0")
             except Exception:
                 quantity = Decimal("0")
+            if quantity <= 0:
+                continue
             holdings.append(Position(
                 ticker=Ticker(symbol=wkn, isin=isin, name=pos.get("instrument_name")),
                 quantity=quantity,

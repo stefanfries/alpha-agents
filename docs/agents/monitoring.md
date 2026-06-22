@@ -13,18 +13,19 @@ class MonitoringInput(BaseModel):
     candidates: list[Ticker]               # from SelectionResult.selected (top-N ranked)
     scores: dict[str, float]               # underlying_symbol → TQ score
     trend_signals: dict[str, str | None]   # underlying_symbol → "NEW" | "HOLD" | "BREAK" | None
-    current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker)
+    current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
     warrant_underlying_map: dict[str, str] # warrant_isin → underlying_symbol
     held_since_map: dict[str, date]        # warrant_wkn → most recent BUY date
-    max_positions: int                     # from PortfolioSettings
+    max_positions: int                     # from execution config override or PortfolioSettings
 ```
 
 The orchestrator builds `MonitoringInput` from:
 
 - `SelectionResult` (stages.screening.result)
-- Current depot snapshot via `_fetch_holdings()`
+- Current depot snapshot via `_fetch_holdings()` — **excludes zero-quantity positions**
 - `warrant_underlying_map` from the last approved execution's `WarrantSelectionResult` via `_fetch_warrant_underlying_map()`
 - `held_since_map` from `virtual_depot_transactions` via `_fetch_held_since()`
+- `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
 
 ## Output
 
@@ -57,8 +58,11 @@ None — operates on data provided by the orchestrator.
 
 ### Entry candidate selection
 
+- **Max positions resolution**: `max_positions` is first resolved from execution `config_overrides.portfolio.max_positions` (if set); otherwise defaults to global `settings.portfolio.max_positions`. This allows per-execution tuning.
 - `free_positions = max(0, max_positions − len(current_holdings))`
-  Capital freed by sells is **not** recycled within the same run (deferred approach — prevents same-run whipsawing).
+  - When `current_holdings` is empty, `free_positions = max_positions` (full capacity available)
+  - Note: Holdings with quantity ≤ 0 are excluded from the count by `_fetch_holdings()`
+- Capital freed by sells is **not** recycled within the same run (deferred approach — prevents same-run whipsawing).
 - `excluded_symbols` = all held underlying symbols (kept + selling).
 - `entry_candidates` = `[t for t in candidates if t.symbol not in excluded_symbols][:free_positions]`
 
@@ -78,6 +82,21 @@ None — operates on data provided by the orchestrator.
 | `re_entry_prevention_days` | `10` | Intended for future re-entry prevention from transaction history (not yet implemented) |
 
 Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`.
+
+## Bug fixes (2026-06-22)
+
+**Issue:** Monitoring reported incorrect free slot counts and incorrectly counted zero-quantity positions as active holdings.
+
+**Root causes:**
+1. No-holdings path computed `free_positions = min(candidates, max_positions)` instead of `max_positions`
+2. Holdings loader included positions with quantity ≤ 0, inflating the held count
+3. Portfolio max positions was hardcoded to global settings, ignoring execution config overrides
+
+**Resolution:**
+- `_portfolio_max_positions()` resolver in orchestrator honors execution-level `config_overrides.portfolio.max_positions`
+- Holdings fetch skips all zero-quantity or negative-quantity positions
+- No-holdings case now correctly returns `free_positions = max_positions`
+- All 3 fixes validated by new integration tests
 
 ## Known limitations / TODO
 
