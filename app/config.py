@@ -61,7 +61,9 @@ class ScreeningSettings(BaseModel):
 class WarrantSelectionSettings(BaseModel):
     min_days_to_expiry: int = 270   # 9 months
     max_days_to_expiry: int = 450   # 15 months
-    atm_band: float = 0.02          # strike filter: current_price × (1 ± atm_band)
+    strike_min_factor: float = 0.95 # strike_min = current_price × factor
+    strike_max_factor: float = 1.00 # strike_max = current_price × factor
+    atm_band: float = 0.02          # legacy symmetric strike filter (migration fallback)
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
 
 
@@ -78,6 +80,21 @@ def resolve_warrant_selection_settings(overrides: dict[str, Any] | None = None) 
     ):
         normalized.pop("min_days_to_expiry", None)
         normalized.pop("max_days_to_expiry", None)
+
+    # Migrate legacy symmetric strike filter to explicit min/max factors.
+    if (
+        "strike_min_factor" not in normalized
+        and "strike_max_factor" not in normalized
+        and "atm_band" in normalized
+    ):
+        try:
+            legacy_band = float(normalized["atm_band"])
+        except (TypeError, ValueError):
+            legacy_band = None
+        if legacy_band is not None:
+            normalized["strike_min_factor"] = max(0.0, 1.0 - legacy_band)
+            normalized["strike_max_factor"] = max(0.0, 1.0 + legacy_band)
+
     return settings.warrant_selection.model_copy(update=normalized)
 
 

@@ -67,9 +67,9 @@ name); only warrant sourcing and the strike chart follow the override.
 
 ## Behaviour
 
-1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × (1 ± atm_band)` (default ±2%)
+1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × strike_min_factor .. current_price × strike_max_factor` (default `0.95 .. 1.00`)
 2. For ADR overrides, the `current_price` comes from the FinHub `/quotes` endpoint for the override ISIN; if the quote has no explicit last/current field, the bid/ask midprice is used instead. Otherwise it comes from the research-stage current price map.
-3. If the narrow band returns no candidates, retry with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
+3. If the primary range returns no candidates, retry with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
 4. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use the shared `retry_call()` helper (`app/tools/retry.py`: 1 retry, 2 s wait) for transient API errors.
 5. Score all successfully fetched details using the scoring model
 6. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
@@ -100,7 +100,9 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | --------- | ------- | ----------- |
 | `min_days_to_expiry` | `270` | Minimum remaining life (9 months) for maturity filter |
 | `max_days_to_expiry` | `450` | Maximum remaining life (15 months) for maturity filter |
-| `atm_band` | `0.02` | Primary strike filter half-width (±2%) |
+| `strike_min_factor` | `0.95` | Primary strike lower bound factor (`strike_min = current_price × factor`) |
+| `strike_max_factor` | `1.00` | Primary strike upper bound factor (`strike_max = current_price × factor`) |
+| `atm_band` | `0.02` | Legacy symmetric strike half-width (used for migration fallback only) |
 | `atm_band_fallback` | `0.10` | Fallback strike filter half-width (±10%) |
 
 **WarrantScoringSettings** (scoring component weights & thresholds, runtime-tunable via `.env`):
@@ -136,4 +138,5 @@ The warrant selection stage page shows:
 - **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score. Clicking a row loads the top-3 detail panel.
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
+- **Strike controls** (below table): configurable strike min/max factors plus a read-only target strike factor field showing the midpoint of the selected strike range.
 - **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.

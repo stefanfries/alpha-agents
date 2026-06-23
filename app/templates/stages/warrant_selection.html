@@ -158,26 +158,60 @@
 
     <div class="flex-shrink-0 mt-3 pt-3 border-top">
       <form method="post" action="/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}/stages/warrant_selection/restart"
-            class="d-flex align-items-end gap-3 flex-wrap">
+        class="d-flex flex-column gap-3"
+        style="max-width:55%">
         <input type="hidden" name="from_stage" value="warrant_selection">
         <input type="hidden" name="maturity_range_submitted" value="1">
-        <div>
-          <label class="form-label small mb-1" for="ws_min_months">Min maturity (months)</label>
-          <input class="form-control form-control-sm" type="number" min="1" max="36" step="1"
-                 id="ws_min_months" name="ws_min_months" value="{{ ws_cfg.min_months }}" style="width:110px">
+        <div class="d-flex align-items-stretch gap-3 flex-wrap">
+          <fieldset class="border rounded p-3" style="min-width:240px;flex:1 1 240px">
+            <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Maturity (months)</legend>
+            <div class="d-flex align-items-end gap-3 flex-wrap">
+              <div>
+                <label class="form-label small mb-1" for="ws_min_months">Min</label>
+                <input class="form-control form-control-sm" type="number" min="1" max="36" step="1"
+                       id="ws_min_months" name="ws_min_months" value="{{ ws_cfg.min_months }}" style="width:110px">
+              </div>
+              <div>
+                <label class="form-label small mb-1" for="ws_max_months">Max</label>
+                <input class="form-control form-control-sm" type="number" min="1" max="36" step="1"
+                       id="ws_max_months" name="ws_max_months" value="{{ ws_cfg.max_months }}" style="width:110px">
+              </div>
+              <div>
+                <label class="form-label small mb-1" for="ws_target_months">Target</label>
+                <input class="form-control form-control-sm" type="text"
+                       id="ws_target_months" value="{{ '%.1f' | format((ws_cfg.min_months + ws_cfg.max_months) / 2) }}"
+                       readonly style="width:130px">
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="border rounded p-3" style="min-width:240px;flex:1 1 240px">
+            <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Strike factor</legend>
+            <div class="d-flex align-items-end gap-3 flex-wrap">
+              <div>
+                <label class="form-label small mb-1" for="ws_strike_min_factor">Min</label>
+                <input class="form-control form-control-sm" type="number" min="0.10" max="2.00" step="0.01"
+                       id="ws_strike_min_factor" name="ws_strike_min_factor"
+                       value="{{ '%.2f' | format(ws_cfg.strike_min_factor) }}" style="width:130px">
+              </div>
+              <div>
+                <label class="form-label small mb-1" for="ws_strike_max_factor">Max</label>
+                <input class="form-control form-control-sm" type="number" min="0.10" max="2.00" step="0.01"
+                       id="ws_strike_max_factor" name="ws_strike_max_factor"
+                       value="{{ '%.2f' | format(ws_cfg.strike_max_factor) }}" style="width:130px">
+              </div>
+              <div>
+                <label class="form-label small mb-1" for="ws_target_strike_factor">Target</label>
+                <input class="form-control form-control-sm" type="text"
+                       id="ws_target_strike_factor" value="{{ '%.3f' | format((ws_cfg.strike_min_factor + ws_cfg.strike_max_factor) / 2) }}"
+                       readonly style="width:130px">
+              </div>
+            </div>
+          </fieldset>
         </div>
         <div>
-          <label class="form-label small mb-1" for="ws_max_months">Max maturity (months)</label>
-          <input class="form-control form-control-sm" type="number" min="1" max="36" step="1"
-                 id="ws_max_months" name="ws_max_months" value="{{ ws_cfg.max_months }}" style="width:110px">
+          <button type="submit" class="btn btn-sm btn-outline-primary">Apply &amp; Re-run</button>
         </div>
-        <div>
-          <label class="form-label small mb-1" for="ws_target_months">Target maturity (months)</label>
-          <input class="form-control form-control-sm" type="text"
-                 id="ws_target_months" value="{{ '%.1f' | format((ws_cfg.min_months + ws_cfg.max_months) / 2) }}"
-                 readonly style="width:130px">
-        </div>
-        <button type="submit" class="btn btn-sm btn-outline-primary">Apply &amp; Re-run</button>
       </form>
     </div>
 
@@ -207,8 +241,27 @@ function syncWarrantTargetMaturity() {
   targetInput.value = ((minMonths + maxMonths) / 2).toFixed(1);
 }
 
+function syncWarrantTargetStrike() {
+  const minInput = document.getElementById('ws_strike_min_factor');
+  const maxInput = document.getElementById('ws_strike_max_factor');
+  const targetInput = document.getElementById('ws_target_strike_factor');
+  if (!minInput || !maxInput || !targetInput) return;
+
+  const minFactor = Number(minInput.value);
+  const maxFactor = Number(maxInput.value);
+  if (!Number.isFinite(minFactor) || !Number.isFinite(maxFactor)) {
+    targetInput.value = '';
+    return;
+  }
+
+  targetInput.value = ((minFactor + maxFactor) / 2).toFixed(3);
+}
+
 document.getElementById('ws_min_months')?.addEventListener('input', syncWarrantTargetMaturity);
 document.getElementById('ws_max_months')?.addEventListener('input', syncWarrantTargetMaturity);
+document.getElementById('ws_strike_min_factor')?.addEventListener('input', syncWarrantTargetStrike);
+document.getElementById('ws_strike_max_factor')?.addEventListener('input', syncWarrantTargetStrike);
 syncWarrantTargetMaturity();
+syncWarrantTargetStrike();
 </script>
 {% endblock %}

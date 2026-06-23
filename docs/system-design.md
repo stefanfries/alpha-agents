@@ -51,7 +51,7 @@ Universe Res.  Screen. Monitor. Warrant Portfolio Risk  Execution
 3. **Research Agent**: Fetches OHLCV candles for every ticker in the universe; resolves yfinance symbols via the **instrument master** (see ADR-007)
 4. **Stock Selection Agent**: Scores every pre-filtered ticker with three metrics (Trend Quality TQ, short-window TQ-20, and TSI), evaluates configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50), and selects the top-N candidates by TQ; emits `trend_signals` (NEW / HOLD / BREAK) for every scored ticker
 5. **Monitoring Agent**: Reconciles the screening results with the current depot. For each open position, checks whether the underlying has a BREAK trend signal and whether the minimum holding period has elapsed; marks positions for SELL or KEEP. Derives the number of free slots and filters the entry candidate list to exclude already-held underlyings. Downstream stages operate only on `entry_candidates`, not the full screening shortlist. (See ADR-011.)
-6. **Warrant Selection Agent**: For each entry candidate, fetches available Call Warrants from the **FinHub API**; scores each warrant using the optionsschein scoring model (spread 40%, leverage 25%, days-to-expiry 20%, delta 15%); returns the best warrant plus a top-3 shortlist per underlying
+6. **Warrant Selection Agent**: For each entry candidate, fetches available Call Warrants from the **FinHub API** using configurable maturity and strike-factor filters; scores each warrant using the optionsschein scoring model (spread 40%, leverage 25%, days-to-expiry 20%, delta 15%); returns the best warrant plus a top-3 shortlist per underlying
 7. **Portfolio Construction Agent**: Allocates weights across the warrant shortlist (one warrant per underlying); compares proposed positions against **current holdings read from MongoDB Atlas** (synced there by the `comdirect_api` sibling project) to identify new trades. Incumbent positions marked KEEP by Monitoring are excluded from `close_positions`.
 8. **Risk Agent**: Validates the proposed portfolio against risk limits; may reject positions
 9. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
@@ -89,7 +89,7 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 | OHLCV data (warrants) | FinHub API `/history` | yfinance does not carry warrant price history; venue selected via `id_notation` |
 | Index membership | FastAPI `/v1/indices/{index_name}` → Wikipedia fallback | See ADR-004 |
 | Instrument master / identifiers | FinHub API `/v1/instruments/{identifier}` | WKN, ISIN, CUSIP, FIGI, `symbol_yfinance`, `name_openfigi`; OpenFIGI-enriched (see ADR-007) |
-| Warrant search | FinHub API `/v1/warrants` | Finder by underlying WKN/ISIN with type and maturity filters |
+| Warrant search | FinHub API `/v1/warrants` | Finder by underlying WKN/ISIN with type, maturity, and strike-factor filters |
 | Warrant detail | FinHub API `/v1/warrants/{identifier}` | Full reference data, market data, and analytics (Greeks) |
 | Current holdings | MongoDB Atlas `finance` DB | Read-only; synced from Comdirect by `comdirect_api` sibling project (`finance.depot_snapshots`, `finance.account_balances`) |
 | Persistence | MongoDB Atlas `alpha_agents` DB | `quant_systems`, `executions`, `virtual_depots`, `virtual_depot_snapshots`, `warrant_availability` (see ADR-010, ADR-012) |

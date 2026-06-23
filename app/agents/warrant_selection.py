@@ -51,7 +51,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         prices: dict[str, float],
         min_days_to_expiry: int = 270,
         max_days_to_expiry: int = 450,
-        atm_band: float = 0.02,
+        strike_min_factor: float = 0.95,
+        strike_max_factor: float = 1.00,
         atm_band_fallback: float = 0.10,
         isin_overrides: dict[str, str] | None = None,
         on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
@@ -61,7 +62,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._prices = prices
         self._min_days = min_days_to_expiry
         self._max_days = max_days_to_expiry
-        self._atm_band = atm_band
+        self._strike_min_factor = strike_min_factor
+        self._strike_max_factor = strike_max_factor
         self._atm_band_fallback = atm_band_fallback
         self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
@@ -149,8 +151,14 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             chart_symbol = await self._override_chart_symbol(lookup_isin)
         else:
             price = self._prices.get(ticker.symbol)
-        strike_min = round(price * (1 - self._atm_band), 4) if price else None
-        strike_max = round(price * (1 + self._atm_band), 4) if price else None
+        strike_min = round(price * self._strike_min_factor, 4) if price else None
+        strike_max = round(price * self._strike_max_factor, 4) if price else None
+        if (
+            strike_min is not None
+            and strike_max is not None
+            and strike_min > strike_max
+        ):
+            strike_min, strike_max = strike_max, strike_min
 
         async def fetch_warrants(s_min: float | None, s_max: float | None) -> list[dict[str, Any]] | None:
             try:
@@ -175,8 +183,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             wide_min = round(price * (1 - self._atm_band_fallback), 4)
             wide_max = round(price * (1 + self._atm_band_fallback), 4)
             logger.info(
-                "%s: no warrants at ±%.0f%% — widening to ±%.0f%% (%.2f–%.2f)",
-                ticker.symbol, self._atm_band * 100, self._atm_band_fallback * 100,
+                "%s: no warrants in strike-factor range %.3f–%.3f — widening to ±%.0f%% (%.2f–%.2f)",
+                ticker.symbol, self._strike_min_factor, self._strike_max_factor, self._atm_band_fallback * 100,
                 wide_min, wide_max,
             )
             candidates = await fetch_warrants(wide_min, wide_max)

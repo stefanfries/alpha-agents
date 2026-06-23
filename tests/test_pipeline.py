@@ -430,6 +430,8 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
         maturity_range_submitted="1",
         ws_min_months="9",
         ws_max_months="15",
+        ws_strike_min_factor="0.95",
+        ws_strike_max_factor="1.00",
     )
 
     _, update = fake_collection.calls[0]
@@ -438,6 +440,8 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
     assert ws_cfg == {
         "min_days_to_expiry": 270,
         "max_days_to_expiry": 450,
+        "strike_min_factor": 0.95,
+        "strike_max_factor": 1.0,
     }
 
 
@@ -445,12 +449,14 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
 async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
     from app import orchestrator as orchestrator_module
 
-    captured: dict[str, int] = {}
+    captured: dict[str, float] = {}
 
     class FakeAgent:
         def __init__(self, **kwargs):
             captured["min_days"] = kwargs["min_days_to_expiry"]
             captured["max_days"] = kwargs["max_days_to_expiry"]
+            captured["strike_min_factor"] = kwargs["strike_min_factor"]
+            captured["strike_max_factor"] = kwargs["strike_max_factor"]
 
         async def run(self, _input: SelectionResult) -> WarrantSelectionResult:
             return WarrantSelectionResult(selected=[], skipped=[])
@@ -481,6 +487,8 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
             "warrant_selection": {
                 "min_days_to_expiry": 300,
                 "max_days_to_expiry": 540,
+                "strike_min_factor": 0.96,
+                "strike_max_factor": 1.01,
             }
         },
         "stages": {
@@ -503,7 +511,12 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
 
     await pipeline._run_warrant_selection(run)
 
-    assert captured == {"min_days": 300, "max_days": 540}
+    assert captured == {
+        "min_days": 300,
+        "max_days": 540,
+        "strike_min_factor": 0.96,
+        "strike_max_factor": 1.01,
+    }
 
 
 def test_resolve_warrant_selection_settings_migrates_legacy_default_pair():
@@ -513,6 +526,13 @@ def test_resolve_warrant_selection_settings_migrates_legacy_default_pair():
 
     assert cfg.min_days_to_expiry == 270
     assert cfg.max_days_to_expiry == 450
+
+
+def test_resolve_warrant_selection_settings_migrates_legacy_atm_band_to_strike_factors():
+    cfg = resolve_warrant_selection_settings({"atm_band": 0.02})
+
+    assert cfg.strike_min_factor == pytest.approx(0.98)
+    assert cfg.strike_max_factor == pytest.approx(1.02)
 
 
 def test_warrant_selection_scoring_tracks_active_maturity_range():

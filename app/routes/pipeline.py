@@ -224,6 +224,8 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
         ctx["warrant_selection_cfg"] = {
             "min_months": max(1, int(round(ws_cfg.min_days_to_expiry / 30))),
             "max_months": max(1, int(round(ws_cfg.max_days_to_expiry / 30))),
+            "strike_min_factor": ws_cfg.strike_min_factor,
+            "strike_max_factor": ws_cfg.strike_max_factor,
         }
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 
@@ -291,6 +293,8 @@ async def restart_stage(
     maturity_range_submitted: Annotated[str | None, Form()] = None,
     ws_min_months: Annotated[str | None, Form()] = None,
     ws_max_months: Annotated[str | None, Form()] = None,
+    ws_strike_min_factor: Annotated[str | None, Form()] = None,
+    ws_strike_max_factor: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(from_stage)
     updates: dict = {}
@@ -389,9 +393,33 @@ async def restart_stage(
         if safe_max_months < safe_min_months:
             safe_max_months = safe_min_months
 
+        try:
+            parsed_strike_min_factor = (
+                float(ws_strike_min_factor)
+                if ws_strike_min_factor not in (None, "")
+                else 0.95
+            )
+        except ValueError:
+            parsed_strike_min_factor = 0.95
+        try:
+            parsed_strike_max_factor = (
+                float(ws_strike_max_factor)
+                if ws_strike_max_factor not in (None, "")
+                else 1.00
+            )
+        except ValueError:
+            parsed_strike_max_factor = 1.00
+
+        safe_strike_min_factor = max(0.1, min(parsed_strike_min_factor, 2.0))
+        safe_strike_max_factor = max(0.1, min(parsed_strike_max_factor, 2.0))
+        if safe_strike_max_factor < safe_strike_min_factor:
+            safe_strike_max_factor = safe_strike_min_factor
+
         updates["config_overrides.warrant_selection"] = {
             "min_days_to_expiry": safe_min_months * 30,
             "max_days_to_expiry": safe_max_months * 30,
+            "strike_min_factor": safe_strike_min_factor,
+            "strike_max_factor": safe_strike_max_factor,
         }
 
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})
