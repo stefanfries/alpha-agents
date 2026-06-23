@@ -73,6 +73,14 @@
       </div>
     </div>
 
+    <!-- Portfolio -->
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Max positions</label>
+      <input type="number" class="form-control" name="max_positions"
+             value="{{ qs.get('config_overrides', {}).get('portfolio', {}).get('max_positions', 15) }}"
+             min="1" max="100" step="1">
+    </div>
+
     <!-- Status -->
     <div class="mb-4">
       <label class="form-label fw-semibold">Status</label>

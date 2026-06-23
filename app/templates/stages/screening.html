@@ -196,7 +196,7 @@
                   </div>
                   <div class="form-check form-check-inline mb-0" style="display:flex;align-items:center;gap:0.5rem">
                     <input class="form-check-input new-policy-checkbox" type="checkbox" name="policy_tq60_above" id="pol_tq60"
-                           {% if pol_cfg.get("policy_tq60_above", false) %}checked{% endif %}>
+                          {% if pol_cfg.get("policy_tq60_above", true) %}checked{% endif %}>
                     <label class="form-check-label small" for="pol_tq60">TQ-60 &gt;</label>
                     <input class="form-control form-control-sm" type="number" step="0.01" min="0" max="1"
                            name="policy_tq60_min" id="policy_tq60_min"
@@ -204,7 +204,7 @@
                   </div>
                   <div class="form-check form-check-inline mb-0" style="display:flex;align-items:center;gap:0.5rem">
                     <input class="form-check-input new-policy-checkbox" type="checkbox" name="policy_tq20_above" id="pol_tq20"
-                           {% if pol_cfg.get("policy_tq20_above", false) %}checked{% endif %}>
+                          {% if pol_cfg.get("policy_tq20_above", true) %}checked{% endif %}>
                     <label class="form-check-label small" for="pol_tq20">TQ-20 &gt;</label>
                     <input class="form-control form-control-sm" type="number" step="0.01" min="0" max="1"
                            name="policy_tq20_min" id="policy_tq20_min"
@@ -239,7 +239,7 @@
                   </div>
                   <div class="form-check form-check-inline mb-0">
                     <input class="form-check-input break-policy-checkbox" type="checkbox" name="policy_adx_falling_break" id="pol_adx_falling_brk"
-                           {% if pol_cfg.get("policy_adx_falling_break", true) %}checked{% endif %}>
+                           {% if pol_cfg.get("policy_adx_falling_break", false) %}checked{% endif %}>
                     <label class="form-check-label small" for="pol_adx_falling_brk">ADX falling</label>
                   </div>
                   <div class="form-check form-check-inline mb-0">
@@ -251,7 +251,7 @@
                       <label class="small text-muted mb-0" for="break_min_true">Minimum of selected</label>
                              <input class="form-control form-control-sm w-auto" type="number" min="1" max="5"
                            name="break_min_true" id="break_min_true"
-                        value="{{ pol_cfg.get('break_min_true', '') }}" placeholder="all">
+                        value="{{ pol_cfg.get('break_min_true', 1) }}" placeholder="1">
                   </div>
                 </div>
               </fieldset>

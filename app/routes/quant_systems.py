@@ -73,9 +73,11 @@ async def create_quant_system(
     depot_type: Annotated[str, Form()],
     indices: Annotated[list[str], Form()],
     capital_eur: Annotated[float, Form()],
+    max_positions: Annotated[int, Form()] = 15,
 ) -> RedirectResponse:
     now = datetime.now(timezone.utc)
     qs_id = uuid.uuid4().hex[:6]
+    safe_max_positions = max(1, min(max_positions, 100))
     await quant_systems_collection().insert_one({
         "quant_system_id": qs_id,
         "name": name.strip(),
@@ -84,7 +86,11 @@ async def create_quant_system(
         "indices": indices,
         "capital_eur": capital_eur,
         "status": "draft",
-        "config_overrides": {},
+        "config_overrides": {
+            "portfolio": {
+                "max_positions": safe_max_positions,
+            },
+        },
         "created_at": now,
         "updated_at": now,
     })
@@ -180,8 +186,10 @@ async def save_quant_system(
     depot_type: Annotated[str, Form()],
     indices: Annotated[list[str], Form()],
     capital_eur: Annotated[float, Form()],
+    max_positions: Annotated[int, Form()] = 15,
     status: Annotated[str, Form()] = "draft",
 ) -> RedirectResponse:
+    safe_max_positions = max(1, min(max_positions, 100))
     await quant_systems_collection().update_one(
         {"quant_system_id": qs_id},
         {"$set": {
@@ -190,6 +198,7 @@ async def save_quant_system(
             "depot_type": depot_type,
             "indices": indices,
             "capital_eur": capital_eur,
+            "config_overrides.portfolio.max_positions": safe_max_positions,
             "status": status,
             "updated_at": datetime.now(timezone.utc),
         }},

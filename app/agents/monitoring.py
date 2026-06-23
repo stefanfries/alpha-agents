@@ -18,13 +18,13 @@ class MonitoringInput(BaseModel):
     current_holdings: list[Position]           # depot warrant positions (isin+wkn in ticker)
     warrant_underlying_map: dict[str, str]     # warrant_isin → underlying_symbol
     held_since_map: dict[str, date]            # warrant_wkn → most recent BUY date
-    max_positions: int = 20
+    max_positions: int = 15
 
 
 class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
     name = "monitoring"
 
-    def __init__(self, settings: MonitoringSettings, max_positions: int = 20) -> None:
+    def __init__(self, settings: MonitoringSettings, max_positions: int = 15) -> None:
         self._min_holding_days = settings.min_holding_days
         self._max_positions = max_positions
 

@@ -40,8 +40,8 @@ class ScreeningSettings(BaseModel):
     policy_adx_above: bool = True
     policy_adx_rising: bool = True
     policy_price_above_ema50: bool = True
-    policy_tq60_above: bool = False
-    policy_tq20_above: bool = False
+    policy_tq60_above: bool = True
+    policy_tq20_above: bool = True
     policy_tq60_min: float = 0.05
     policy_tq20_min: float = 0.0
     # Threshold for NEW pass: at least k selected NEW policies true.
@@ -51,11 +51,11 @@ class ScreeningSettings(BaseModel):
     policy_supertrend_break: bool = True
     policy_ema20_falling_break: bool = True
     policy_adx_below_break: bool = True
-    policy_adx_falling_break: bool = True
+    policy_adx_falling_break: bool = False
     policy_price_below_ema50_break: bool = True
     # Threshold for BREAK pass: at least k selected BREAK policies true.
     # None means all selected BREAK policies must pass.
-    break_min_true: int | None = None
+    break_min_true: int | None = 1
 
 
 class WarrantSelectionSettings(BaseModel):
@@ -125,7 +125,7 @@ class PortfolioSettings(BaseModel):
     capital_eur: float = 100_000.0
     sizing_method: str = "equal"       # "equal" | "score_weighted" | "trend_weighted"
     max_position_weight: float = 0.10
-    max_positions: int = 20
+    max_positions: int = 15
 
 
 class RiskSettings(BaseModel):
