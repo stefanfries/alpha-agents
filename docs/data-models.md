@@ -242,7 +242,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `rationale` | `dict[str, str]` | Human-readable summary per ticker |
 | `tq_short` | `dict[str, float]` | TQ-20 short-window score per ticker |
 | `tsi` | `dict[str, float]` | True Strength Index value per ticker |
-| `policy_results` | `dict[str, dict[str, bool]]` | Per-ticker pass/fail for each policy (`supertrend`, `ema20_rising`, `adx`, `price_above_ema50`) |
+| `policy_results` | `dict[str, dict[str, bool]]` | Per-ticker indicator booleans used by NEW/BREAK policy groups: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above` |
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below) |

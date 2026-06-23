@@ -73,22 +73,46 @@ With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillat
 
 ---
 
-### Phase 2 — Select by policies (AND logic)
+### Phase 2 — Select by grouped NEW/BREAK policies
 
-Four boolean policies are evaluated independently. A ticker is a **candidate** only if all *enabled* policies pass. The top-N candidates by TQ are then selected into `SelectionResult.selected`.
+Policies are evaluated as indicator booleans per ticker, then grouped into two rule sets:
+
+1. **NEW group (entry detection)** controls whether a ticker becomes a candidate for `SelectionResult.selected`.
+2. **BREAK group (exit detection)** is used by the trend-signal state machine to emit `BREAK` transitions.
+
+Rules are evaluated with k-of-n semantics via `passes_rule_group`:
+
+- Active rules = enabled rules in the group
+- If `min_true` is set, at least `min_true` active rules must be true
+- If `min_true` is empty, all active rules must be true
+
+If the NEW group passes on the latest bar, the ticker is a candidate. Candidates are sorted by TQ descending; top `top_n` are selected.
+
+NEW group rules:
 
 | Policy key | Condition | Default |
 | ---------- | --------- | ------- |
-| `policy_supertrend` | SuperTrend bullish on the last bar (SuperTrend period=10, multiplier=3) | on |
-| `policy_ema20_rising` | EMA20[-1] > EMA20[-6] (5-bar slope > 0) | on |
-| `policy_adx` | ADX[-1] > `min_adx` AND regression slope of ADX[-5:] > 0 (rising trend) | on |
+| `policy_supertrend` | SuperTrend bullish on last bar | on |
+| `policy_ema20_rising` | EMA20[-1] > EMA20[-6] | on |
+| `policy_adx_above` | ADX[-1] > `min_adx` | on |
+| `policy_adx_rising` | Slope of ADX[-5:] > 0 | on |
 | `policy_price_above_ema50` | Close[-1] > EMA50[-1] | on |
+| `policy_tq60_above` | TQ-60 > `policy_tq60_min` | off |
+| `policy_tq20_above` | TQ-20 > `policy_tq20_min` | off |
+| `new_min_true` | Required true count among active NEW rules (`None` = all) | `None` |
 
-> **ADX rising**: uses `np.polyfit` over the last 5 ADX bars rather than a simple point-to-point comparison, so a single-day dip in an otherwise rising ADX does not fail the policy.
+BREAK group rules:
 
-If all policies pass for a ticker -> it is a candidate. Candidates are sorted by TQ descending; the top `top_n` (default 20) are selected.
+| Policy key | Condition | Default |
+| ---------- | --------- | ------- |
+| `policy_supertrend_break` | SuperTrend bearish on last bar | on |
+| `policy_ema20_falling_break` | EMA20 not rising | on |
+| `policy_adx_below_break` | ADX[-1] <= `min_adx` | on |
+| `policy_adx_falling_break` | ADX[-5:] slope <= 0 | on |
+| `policy_price_below_ema50_break` | Close[-1] <= EMA50[-1] | on |
+| `break_min_true` | Required true count among active BREAK rules (`None` = all) | `None` |
 
-If zero candidates result (all tickers fail at least one policy), the user can uncheck a policy in the HITL UI and re-run screening without creating a new run.
+If zero candidates result, the user can relax NEW rules in HITL and re-run screening without creating a new run.
 
 ### Trend signal
 
@@ -128,5 +152,17 @@ The agent compares the current TQ ranking against prior rankings stored in the d
 | `tsi_slow` | `25` | TSI slow EMA period |
 | `policy_supertrend` | `True` | Enable SuperTrend policy |
 | `policy_ema20_rising` | `True` | Enable EMA20 rising policy |
-| `policy_adx` | `True` | Enable ADX rising policy |
+| `policy_adx_above` | `True` | Enable ADX-above-threshold NEW rule |
+| `policy_adx_rising` | `True` | Enable ADX-rising NEW rule |
 | `policy_price_above_ema50` | `True` | Enable price-above-EMA50 policy |
+| `policy_tq60_above` | `False` | Enable TQ-60 threshold NEW rule |
+| `policy_tq20_above` | `False` | Enable TQ-20 threshold NEW rule |
+| `policy_tq60_min` | `0.05` | TQ-60 threshold when `policy_tq60_above` is enabled |
+| `policy_tq20_min` | `0.0` | TQ-20 threshold when `policy_tq20_above` is enabled |
+| `new_min_true` | `None` | Required true NEW rules (`None` = all active NEW rules) |
+| `policy_supertrend_break` | `True` | Enable SuperTrend bearish BREAK rule |
+| `policy_ema20_falling_break` | `True` | Enable EMA20 falling BREAK rule |
+| `policy_adx_below_break` | `True` | Enable ADX-below-threshold BREAK rule |
+| `policy_adx_falling_break` | `True` | Enable ADX-falling BREAK rule |
+| `policy_price_below_ema50_break` | `True` | Enable price-below-EMA50 BREAK rule |
+| `break_min_true` | `None` | Required true BREAK rules (`None` = all active BREAK rules) |
