@@ -9,8 +9,9 @@ from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.risk import RiskAgent
 from app.agents.screening import SecuritySelectionAgent
 from app.agents.warrant_selection import WarrantSelectionAgent
+from app.config import resolve_warrant_selection_settings
 from app.models.market import OHLCV, Position, Ticker
-from app.models.signals import ResearchResult, SelectionResult
+from app.models.signals import ResearchResult, SelectionResult, WarrantSelectionResult
 
 
 @pytest.mark.asyncio
@@ -398,6 +399,150 @@ async def test_restart_stage_clamps_tq_thresholds_and_handles_invalid(monkeypatc
 
     assert screening_cfg["policy_tq60_min"] == 1.0
     assert screening_cfg["policy_tq20_min"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
+    from app.routes import pipeline as pipeline_module
+
+    class FakeCollection:
+        def __init__(self) -> None:
+            self.calls: list[tuple[dict, dict]] = []
+
+        async def update_one(self, selector: dict, update: dict) -> None:
+            self.calls.append((selector, update))
+
+    class FakePipeline:
+        async def run_stage(self, execution_id: str, from_stage: str) -> None:
+            return None
+
+    fake_collection = FakeCollection()
+
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: fake_collection)
+    monkeypatch.setattr(pipeline_module, "get_pipeline", lambda: FakePipeline())
+    monkeypatch.setattr(pipeline_module, "_fire", lambda coro: coro.close())
+
+    await pipeline_module.restart_stage(
+        qs_id="qs1",
+        execution_id="exec3",
+        stage="warrant_selection",
+        from_stage="warrant_selection",
+        maturity_range_submitted="1",
+        ws_min_months="9",
+        ws_max_months="15",
+    )
+
+    _, update = fake_collection.calls[0]
+    ws_cfg = update["$set"]["config_overrides.warrant_selection"]
+
+    assert ws_cfg == {
+        "min_days_to_expiry": 270,
+        "max_days_to_expiry": 450,
+    }
+
+
+@pytest.mark.asyncio
+async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
+    from app import orchestrator as orchestrator_module
+
+    captured: dict[str, int] = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            captured["min_days"] = kwargs["min_days_to_expiry"]
+            captured["max_days"] = kwargs["max_days_to_expiry"]
+
+        async def run(self, _input: SelectionResult) -> WarrantSelectionResult:
+            return WarrantSelectionResult(selected=[], skipped=[])
+
+    class FakeFinHub:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    pipeline = orchestrator_module.Pipeline()
+
+    async def fake_wake(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_overrides_map() -> dict[str, str]:
+        return {}
+
+    monkeypatch.setattr(orchestrator_module, "WarrantSelectionAgent", FakeAgent)
+    monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHub)
+    monkeypatch.setattr(orchestrator_module.warrant_availability, "overrides_map", fake_overrides_map)
+    monkeypatch.setattr(pipeline, "_wake_finhub", fake_wake)
+
+    run = {
+        "execution_id": "exec4",
+        "config_overrides": {
+            "warrant_selection": {
+                "min_days_to_expiry": 300,
+                "max_days_to_expiry": 540,
+            }
+        },
+        "stages": {
+            "screening": {
+                "result": SelectionResult(
+                    selected=[Ticker(symbol="A")],
+                    scores={"A": 1.0},
+                    rationale={},
+                ).model_dump(mode="json")
+            },
+            "research": {
+                "result": ResearchResult(
+                    tickers=[Ticker(symbol="A")],
+                    bars={},
+                    fundamentals={"A": {"currentPrice": 123.0}},
+                ).model_dump(mode="json")
+            },
+        },
+    }
+
+    await pipeline._run_warrant_selection(run)
+
+    assert captured == {"min_days": 300, "max_days": 540}
+
+
+def test_resolve_warrant_selection_settings_migrates_legacy_default_pair():
+    cfg = resolve_warrant_selection_settings(
+        {"min_days_to_expiry": 270, "max_days_to_expiry": 365}
+    )
+
+    assert cfg.min_days_to_expiry == 270
+    assert cfg.max_days_to_expiry == 450
+
+
+def test_warrant_selection_scoring_tracks_active_maturity_range():
+    today = date.today()
+    near_mid = {
+        "market_data": {"spread_percent": 1.0},
+        "analytics": {"leverage": 5.0, "delta": 0.5},
+        "reference_data": {"maturity_date": (today + timedelta(days=330)).isoformat()},
+    }
+    longer = {
+        "market_data": {"spread_percent": 1.0},
+        "analytics": {"leverage": 5.0, "delta": 0.5},
+        "reference_data": {"maturity_date": (today + timedelta(days=450)).isoformat()},
+    }
+
+    shorter_window_agent = WarrantSelectionAgent(
+        finhub=None,
+        prices={},
+        min_days_to_expiry=270,
+        max_days_to_expiry=450,
+    )
+    wider_window_agent = WarrantSelectionAgent(
+        finhub=None,
+        prices={},
+        min_days_to_expiry=270,
+        max_days_to_expiry=540,
+    )
+
+    assert shorter_window_agent._score(near_mid, today) > shorter_window_agent._score(longer, today)
+    assert wider_window_agent._score(longer, today) > wider_window_agent._score(near_mid, today)
 
 
 @pytest.mark.asyncio

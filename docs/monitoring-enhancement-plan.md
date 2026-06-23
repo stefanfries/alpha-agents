@@ -18,6 +18,7 @@ Currently, the monitoring agent only sells a warrant when the underlying trigger
 **Solution:** Extend monitoring to score held warrants and enforce exits when quality drops below holding thresholds. When a warrant degrades but the underlying trend remains strong, **roll** the warrant: sell the degraded warrant and buy a new one with adjusted strike price and maturity date for the same underlying.
 
 **Three-state model:**
+
 - **HOLD** → Keep warrant (healthy, trend intact)
 - **SELL** → Exit position (warrant degraded AND trend broken)
 - **ROLL** → Replace warrant (warrant degraded BUT trend still strong) → sell old, buy new for same underlying
@@ -32,7 +33,7 @@ Entry selection (Warrant Selection stage) and holding evaluation (Monitoring sta
 | --------- | --------------- | ------------------ |
 | Spread | 0%–3% acceptable | > 2.5% triggers SELL |
 | Leverage | Peak at 5x (Gaussian) | < 3x or > 8x triggers SELL |
-| Days to Maturity | 9–12 months ideal | < 60 days triggers SELL |
+| Days to Maturity | 9–15 months ideal (target = midpoint of selected range) | < 60 days triggers SELL |
 | Delta | Peak at 0.5 (linear) | < 0.3 or > 0.7 triggers SELL |
 
 **Rationale:** Entry is selective (filter 100 candidates → 20); holding is defensive (keep alive positions → sell only if degraded).
@@ -261,6 +262,7 @@ async def _run_monitoring(self, run: dict) -> MonitoringResult:
 ```
 
 New helper methods:
+
 ```python
 async def _fetch_warrant_snapshots(
     self,
@@ -353,7 +355,8 @@ async def _find_roll_replacement(
 | ✗ | ✓ | ✗ | **HOLD** (await grace period) |
 | ✗ | ✗ | — | **HOLD** (no action) |
 
-**Rationale:** 
+**Rationale:**
+
 - Warrant health is a **hard floor** (non-negotiable risk management)
 - Trend signal is **softer** (respects grace period)
 - ROLL preserves trend exposure while eliminating execution risk (spread, leverage, maturity)

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -58,9 +60,25 @@ class ScreeningSettings(BaseModel):
 
 class WarrantSelectionSettings(BaseModel):
     min_days_to_expiry: int = 270   # 9 months
-    max_days_to_expiry: int = 365   # 12 months
+    max_days_to_expiry: int = 450   # 15 months
     atm_band: float = 0.02          # strike filter: current_price × (1 ± atm_band)
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
+
+
+def resolve_warrant_selection_settings(overrides: dict[str, Any] | None = None) -> WarrantSelectionSettings:
+    """Resolve warrant selection settings while migrating the legacy 9-12 month default.
+
+    Earlier runs persisted the old default as 270/365 days. Treat that exact pair as
+    unset so existing executions pick up the new 9-15 month default automatically.
+    """
+    normalized = dict(overrides or {})
+    if (
+        normalized.get("min_days_to_expiry") == 270
+        and normalized.get("max_days_to_expiry") == 365
+    ):
+        normalized.pop("min_days_to_expiry", None)
+        normalized.pop("max_days_to_expiry", None)
+    return settings.warrant_selection.model_copy(update=normalized)
 
 
 class WarrantScoringSettings(BaseModel):

@@ -76,7 +76,7 @@ older than **30 days** are re-queried. Progress is surfaced on the universe stag
 
 **Availability definition:** at least one **uncapped** CALL warrant exists. The full FinHub
 maturity range (`Range_NOW` … `Range_ENDLESS`) is used — availability does not depend on the
-narrower 9–12 month maturity window applied later in Warrant Selection. (A maturity range
+narrower 9–15 month maturity window applied later in Warrant Selection. (A maturity range
 must be supplied because FinHub `/v1/warrants` returns no results without one.) Any strike is
 accepted. The capped flag only appears in warrant *detail*, so the scan lists CALL candidates
 and inspects up to **K = 10** details; available if ≥ 1 is uncapped.

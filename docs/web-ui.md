@@ -264,6 +264,13 @@ Right side — two vertically stacked panels:
 - Time range selector: 3M / 6M / 1Y (default) / 3Y
 - Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings (ADRs), `chart_symbol` plots the override underlying in its native currency so candles and the strike line share one currency (no FX); the strike filter itself is anchored to the override quote's last/current price or, if absent, the bid/ask midprice. Otherwise the underlying symbol is charted.
 
+Below the split panel — **maturity controls**:
+
+- Min maturity (months), Max maturity (months), and a read-only Target maturity field
+- Default filter window: **9–15 months**
+- Target maturity shown in UI equals midpoint `(min + max) / 2` and matches the days-to-expiry scoring target used during selection
+- Clicking **Apply & Re-run** restarts from warrant selection with the updated maturity window
+
 **User actions at approve:** all selected warrants advance to portfolio construction.
 
 ---

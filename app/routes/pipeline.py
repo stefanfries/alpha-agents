@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import warrant_availability
+from app.config import resolve_warrant_selection_settings, settings
 from app.db import executions_collection, quant_systems_collection
 from app.indicators import supertrend_bands
 from app.models.market import Ticker
@@ -217,6 +218,13 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
     if stage == "universe" and ctx.get("stage_result"):
         adr_isins = ctx["stage_result"].get("adr_isins", [])
         ctx["availability"] = await warrant_availability.availability_map(adr_isins)
+    if stage == "warrant_selection":
+        ws_overrides = execution.get("config_overrides", {}).get("warrant_selection", {}) if execution else {}
+        ws_cfg = resolve_warrant_selection_settings(ws_overrides)
+        ctx["warrant_selection_cfg"] = {
+            "min_months": max(1, int(round(ws_cfg.min_days_to_expiry / 30))),
+            "max_months": max(1, int(round(ws_cfg.max_days_to_expiry / 30))),
+        }
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 
 
@@ -280,6 +288,9 @@ async def restart_stage(
     policy_adx_falling_break: Annotated[str | None, Form()] = None,
     policy_price_below_ema50_break: Annotated[str | None, Form()] = None,
     break_min_true: Annotated[str | None, Form()] = None,
+    maturity_range_submitted: Annotated[str | None, Form()] = None,
+    ws_min_months: Annotated[str | None, Form()] = None,
+    ws_max_months: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(from_stage)
     updates: dict = {}
@@ -361,6 +372,26 @@ async def restart_stage(
             "policy_adx_falling_break": policy_adx_falling_break is not None,
             "policy_price_below_ema50_break": policy_price_below_ema50_break is not None,
             "break_min_true": safe_break_min,
+        }
+
+    if maturity_range_submitted is not None:
+        try:
+            parsed_min_months = int(ws_min_months) if ws_min_months not in (None, "") else 9
+        except ValueError:
+            parsed_min_months = 9
+        try:
+            parsed_max_months = int(ws_max_months) if ws_max_months not in (None, "") else 15
+        except ValueError:
+            parsed_max_months = 15
+
+        safe_min_months = max(1, min(parsed_min_months, 36))
+        safe_max_months = max(1, min(parsed_max_months, 36))
+        if safe_max_months < safe_min_months:
+            safe_max_months = safe_min_months
+
+        updates["config_overrides.warrant_selection"] = {
+            "min_days_to_expiry": safe_min_months * 30,
+            "max_days_to_expiry": safe_max_months * 30,
         }
 
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})

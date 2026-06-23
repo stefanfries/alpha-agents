@@ -14,7 +14,7 @@ from app.agents.risk import RiskAgent
 from app.agents.screening import SecuritySelectionAgent
 from app.agents.universe import UniverseAgent, UniverseInput
 from app.agents.warrant_selection import WarrantSelectionAgent
-from app.config import settings
+from app.config import resolve_warrant_selection_settings, settings
 from app.db import (
     executions_collection,
     finance_db,
@@ -196,15 +196,17 @@ class Pipeline:
             await update_stage_progress(execution_id, "warrant_selection", {"done": done, "total": total, "active": active})
 
         overrides = await warrant_availability.overrides_map()
+        ws_overrides = run.get("config_overrides", {}).get("warrant_selection", {})
+        ws_cfg = resolve_warrant_selection_settings(ws_overrides)
         async with FinHubTool() as finhub:
             await self._wake_finhub(execution_id, finhub, "warrant_selection")
             return await WarrantSelectionAgent(
                 finhub=finhub,
                 prices=prices,
-                min_days_to_expiry=settings.warrant_selection.min_days_to_expiry,
-                max_days_to_expiry=settings.warrant_selection.max_days_to_expiry,
-                atm_band=settings.warrant_selection.atm_band,
-                atm_band_fallback=settings.warrant_selection.atm_band_fallback,
+                min_days_to_expiry=ws_cfg.min_days_to_expiry,
+                max_days_to_expiry=ws_cfg.max_days_to_expiry,
+                atm_band=ws_cfg.atm_band,
+                atm_band_fallback=ws_cfg.atm_band_fallback,
                 isin_overrides=overrides,
                 on_progress=on_progress,
             ).run(SelectionResult(selected=candidates, scores={t.symbol: 1.0 for t in candidates}, rationale={}))

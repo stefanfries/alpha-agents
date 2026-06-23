@@ -8,7 +8,11 @@ from app.agents.base import Agent
 from app.config import settings
 from app.models.market import Ticker
 from app.models.signals import SelectedWarrant, SelectionResult, WarrantSelectionResult
-from app.policies.warrant_scoring import WarrantScoringConfig, build_warrant_rationale, compute_warrant_score
+from app.policies.warrant_scoring import (
+    WarrantScoringConfig,
+    build_warrant_rationale,
+    compute_warrant_score,
+)
 from app.tools.finhub import FinHubTool
 from app.tools.retry import retry_call
 
@@ -18,12 +22,35 @@ logger = logging.getLogger(__name__)
 class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
     name = "warrant_selection"
 
+    @staticmethod
+    def _range_adjusted_scoring_config(
+        base_config: WarrantScoringConfig,
+        min_days_to_expiry: int,
+        max_days_to_expiry: int,
+    ) -> WarrantScoringConfig:
+        if max_days_to_expiry <= min_days_to_expiry:
+            return base_config
+
+        return WarrantScoringConfig(
+            spread_weight=base_config.spread_weight,
+            spread_cutoff_pct=base_config.spread_cutoff_pct,
+            leverage_weight=base_config.leverage_weight,
+            leverage_mean=base_config.leverage_mean,
+            leverage_sigma=base_config.leverage_sigma,
+            days_weight=base_config.days_weight,
+            days_mean=(min_days_to_expiry + max_days_to_expiry) / 2.0,
+            days_sigma=max(base_config.days_sigma, (max_days_to_expiry - min_days_to_expiry) / 4.0),
+            delta_weight=base_config.delta_weight,
+            delta_peak=base_config.delta_peak,
+            delta_half_width=base_config.delta_half_width,
+        )
+
     def __init__(
         self,
         finhub: FinHubTool,
         prices: dict[str, float],
         min_days_to_expiry: int = 270,
-        max_days_to_expiry: int = 456,
+        max_days_to_expiry: int = 450,
         atm_band: float = 0.02,
         atm_band_fallback: float = 0.10,
         isin_overrides: dict[str, str] | None = None,
@@ -38,8 +65,13 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._atm_band_fallback = atm_band_fallback
         self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
-        # Load scoring config from settings if not provided
-        self._scoring_config = scoring_config or WarrantScoringConfig.from_settings(settings.warrant_scoring)
+        # Keep the scoring peak aligned with the active maturity search window.
+        base_scoring_config = scoring_config or WarrantScoringConfig.from_settings(settings.warrant_scoring)
+        self._scoring_config = self._range_adjusted_scoring_config(
+            base_scoring_config,
+            min_days_to_expiry,
+            max_days_to_expiry,
+        )
 
     async def run(self, input: SelectionResult) -> WarrantSelectionResult:
         today = date.today()

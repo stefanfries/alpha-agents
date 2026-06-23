@@ -85,7 +85,7 @@ Each warrant receives a continuous composite score in `[0, 1]` from four criteri
 | - | --------- | ------ | -------- |
 | 1 | **Bid-ask spread** | 40% | Linear: 0% -> 1.0, 3% -> 0.0; clamped at 0 |
 | 2 | **Leverage** | 25% | Gaussian peak at 5x, sigma=3 (sweet spot 3–8x) |
-| 3 | **Days to expiry** | 20% | Gaussian peak at 315 days (midpoint of 9–12 month window), sigma=45 |
+| 3 | **Days to expiry** | 20% | Gaussian peak at midpoint of active maturity window (default 360 days for 9–15 months), sigma adapts with range width |
 | 4 | **Delta** | 15% | Linear: peak at delta=0.5; penalty proportional to abs(delta - 0.5) |
 
 Final score = weighted sum. The warrant with the highest score per underlying becomes `selected[i]`.
@@ -99,7 +99,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
 | `min_days_to_expiry` | `270` | Minimum remaining life (9 months) for maturity filter |
-| `max_days_to_expiry` | `365` | Maximum remaining life (12 months) for maturity filter |
+| `max_days_to_expiry` | `450` | Maximum remaining life (15 months) for maturity filter |
 | `atm_band` | `0.02` | Primary strike filter half-width (±2%) |
 | `atm_band_fallback` | `0.10` | Fallback strike filter half-width (±10%) |
 
@@ -113,8 +113,8 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `leverage_mean` | `5.0` | Gaussian peak leverage (sweet spot) |
 | `leverage_sigma` | `3.0` | Gaussian standard deviation (range ~3–8×) |
 | `days_weight` | `0.20` | Weight for days-to-expiry component |
-| `days_mean` | `315` | Gaussian peak days (midpoint 9–12 months) |
-| `days_sigma` | `45.0` | Gaussian standard deviation (range ~270–360 days) |
+| `days_mean` | `360` | Base/fallback Gaussian peak days; warrant selection runtime aligns target to midpoint of selected min/max maturity |
+| `days_sigma` | `45.0` | Base/fallback Gaussian sigma; warrant selection runtime widens sigma for wider maturity windows |
 | `delta_weight` | `0.15` | Weight for delta component |
 | `delta_peak` | `0.5` | Linear peak delta (ATM calls) |
 | `delta_half_width` | `0.5` | Linear falloff half-width (range ~0–1) |
@@ -124,8 +124,10 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 ```bash
 WARRANT_SCORING__SPREAD_WEIGHT=0.35
 WARRANT_SCORING__LEVERAGE_MEAN=6.0
-WARRANT_SCORING__DAYS_MEAN=330
+WARRANT_SCORING__DAYS_MEAN=360
 ```
+
+Note: in warrant selection, the effective maturity target is derived from the selected maturity window shown in the UI (`target = (min + max) / 2`) and therefore adjusts automatically when the user changes min/max months.
 
 ## Web UI
 
@@ -133,4 +135,5 @@ The warrant selection stage page shows:
 
 - **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score. Clicking a row loads the top-3 detail panel.
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
+- **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
 - **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.

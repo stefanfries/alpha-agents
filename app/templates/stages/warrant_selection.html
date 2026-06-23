@@ -64,6 +64,7 @@
   </div>
 
 {% elif stage_status == "awaiting_review" %}
+  {% set ws_cfg = warrant_selection_cfg if warrant_selection_cfg is defined else {'min_months': 9, 'max_months': 15} %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
     {% if stage_result %}
       {% set r = stage_result %}
@@ -154,6 +155,32 @@
     {% else %}
       <div class="alert alert-warning flex-shrink-0">Result data unavailable — use Restart to re-run this stage.</div>
     {% endif %}
+
+    <div class="flex-shrink-0 mt-3 pt-3 border-top">
+      <form method="post" action="/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}/stages/warrant_selection/restart"
+            class="d-flex align-items-end gap-3 flex-wrap">
+        <input type="hidden" name="from_stage" value="warrant_selection">
+        <input type="hidden" name="maturity_range_submitted" value="1">
+        <div>
+          <label class="form-label small mb-1" for="ws_min_months">Min maturity (months)</label>
+          <input class="form-control form-control-sm" type="number" min="1" max="36" step="1"
+                 id="ws_min_months" name="ws_min_months" value="{{ ws_cfg.min_months }}" style="width:110px">
+        </div>
+        <div>
+          <label class="form-label small mb-1" for="ws_max_months">Max maturity (months)</label>
+          <input class="form-control form-control-sm" type="number" min="1" max="36" step="1"
+                 id="ws_max_months" name="ws_max_months" value="{{ ws_cfg.max_months }}" style="width:110px">
+        </div>
+        <div>
+          <label class="form-label small mb-1" for="ws_target_months">Target maturity (months)</label>
+          <input class="form-control form-control-sm" type="text"
+                 id="ws_target_months" value="{{ '%.1f' | format((ws_cfg.min_months + ws_cfg.max_months) / 2) }}"
+                 readonly style="width:130px">
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-primary">Apply &amp; Re-run</button>
+      </form>
+    </div>
+
     <div class="flex-shrink-0">
       {% include "partials/action_bar.html" %}
     </div>
@@ -162,4 +189,26 @@
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for Screening stage.</div>
 {% endif %}
+
+<script>
+function syncWarrantTargetMaturity() {
+  const minInput = document.getElementById('ws_min_months');
+  const maxInput = document.getElementById('ws_max_months');
+  const targetInput = document.getElementById('ws_target_months');
+  if (!minInput || !maxInput || !targetInput) return;
+
+  const minMonths = Number(minInput.value);
+  const maxMonths = Number(maxInput.value);
+  if (!Number.isFinite(minMonths) || !Number.isFinite(maxMonths)) {
+    targetInput.value = '';
+    return;
+  }
+
+  targetInput.value = ((minMonths + maxMonths) / 2).toFixed(1);
+}
+
+document.getElementById('ws_min_months')?.addEventListener('input', syncWarrantTargetMaturity);
+document.getElementById('ws_max_months')?.addEventListener('input', syncWarrantTargetMaturity);
+syncWarrantTargetMaturity();
+</script>
 {% endblock %}
