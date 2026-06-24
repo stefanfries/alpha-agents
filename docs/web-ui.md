@@ -165,7 +165,7 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 
 Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
 
-**Signal filter** (above the table): checkboxes to show/hide rows by trend signal — All / NEW / HOLD / BREAK / — (no signal). All are checked by default. Unchecking "All" activates per-signal filtering.
+**Signal filter** (above the table): checkboxes to show/hide rows by trend signal — All / NEW / HOLD / BREAK / — (no signal). All are checked by default. If **All** is checked, all individual signal checkboxes are automatically checked. If any individual signal checkbox is unchecked, **All** is automatically unchecked.
 
 **Stock chart** (loaded on demand, powered by Lightweight Charts v4):
 

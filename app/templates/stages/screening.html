@@ -50,23 +50,23 @@
       <div class="d-flex align-items-center gap-2">
         <span class="text-muted small">Show:</span>
         <div class="form-check form-check-inline mb-0">
-          <input class="form-check-input" type="checkbox" id="filter-all" checked onchange="applySignalFilter()">
+          <input class="form-check-input" type="checkbox" id="filter-all" checked onchange="applySignalFilter('all')">
           <label class="form-check-label small" for="filter-all">All</label>
         </div>
         <div class="form-check form-check-inline mb-0">
-          <input class="form-check-input" type="checkbox" id="filter-new" checked onchange="applySignalFilter()">
+          <input class="form-check-input" type="checkbox" id="filter-new" checked onchange="applySignalFilter('new')">
           <label class="form-check-label small text-success fw-semibold" for="filter-new">NEW</label>
         </div>
         <div class="form-check form-check-inline mb-0">
-          <input class="form-check-input" type="checkbox" id="filter-hold" checked onchange="applySignalFilter()">
+          <input class="form-check-input" type="checkbox" id="filter-hold" checked onchange="applySignalFilter('hold')">
           <label class="form-check-label small text-warning fw-semibold" for="filter-hold">HOLD</label>
         </div>
         <div class="form-check form-check-inline mb-0">
-          <input class="form-check-input" type="checkbox" id="filter-break" checked onchange="applySignalFilter()">
+          <input class="form-check-input" type="checkbox" id="filter-break" checked onchange="applySignalFilter('break')">
           <label class="form-check-label small text-danger fw-semibold" for="filter-break">BREAK</label>
         </div>
         <div class="form-check form-check-inline mb-0">
-          <input class="form-check-input" type="checkbox" id="filter-none" checked onchange="applySignalFilter()">
+          <input class="form-check-input" type="checkbox" id="filter-none" checked onchange="applySignalFilter('none')">
           <label class="form-check-label small text-secondary" for="filter-none">—</label>
         </div>
       </div>
@@ -282,12 +282,32 @@
 {% endif %}
 
 <script>
-function applySignalFilter() {
-  const showAll   = document.getElementById('filter-all').checked;
-  const showNew   = document.getElementById('filter-new').checked;
-  const showHold  = document.getElementById('filter-hold').checked;
-  const showBreak = document.getElementById('filter-break').checked;
-  const showNone  = document.getElementById('filter-none').checked;
+function applySignalFilter(changed = null) {
+  const allEl = document.getElementById('filter-all');
+  const newEl = document.getElementById('filter-new');
+  const holdEl = document.getElementById('filter-hold');
+  const breakEl = document.getElementById('filter-break');
+  const noneEl = document.getElementById('filter-none');
+
+  if (changed === 'all' && allEl.checked) {
+    newEl.checked = true;
+    holdEl.checked = true;
+    breakEl.checked = true;
+    noneEl.checked = true;
+  }
+
+  if (changed && changed !== 'all') {
+    const changedEl = document.getElementById(`filter-${changed}`);
+    if (changedEl && !changedEl.checked) {
+      allEl.checked = false;
+    }
+  }
+
+  const showAll   = allEl.checked;
+  const showNew   = newEl.checked;
+  const showHold  = holdEl.checked;
+  const showBreak = breakEl.checked;
+  const showNone  = noneEl.checked;
   document.querySelectorAll('tbody tr').forEach(row => {
     if (showAll) { row.style.display = ''; return; }
     const sig = row.querySelector('td[data-signal]')?.dataset.signal ?? '';
