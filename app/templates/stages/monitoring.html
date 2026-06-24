@@ -25,7 +25,14 @@
 
     {# --- Summary cards --- #}
     <div class="flex-shrink-0 mb-3">
+      {% set max_positions = execution.get('config_overrides', {}).get('portfolio', {}).get('max_positions', 15) %}
       <div class="row g-3">
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm border-secondary">
+            <div class="fs-3 fw-bold text-secondary">{{ max_positions }}</div>
+            <div class="text-muted small">Max. positions</div>
+          </div>
+        </div>
         <div class="col-auto">
           <div class="card text-center px-4 py-3 shadow-sm border-danger">
             <div class="fs-3 fw-bold text-danger">{{ r.positions_to_sell | length }}</div>

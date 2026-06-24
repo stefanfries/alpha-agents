@@ -190,7 +190,9 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 
 #### 4.4 Monitoring — `/stages/monitoring`
 
-**Summary**: `{keep} positions kept, {sell} positions to sell. {free} free slots. {n} entry candidates.`
+**Summary cards** (left to right): `Max. positions`, `Sell`, `Keep`, `Free slots`, `Entry candidates`.
+
+**Summary**: `{keep} positions kept, {sell} positions to sell. max_positions = {max}. {free} free slots. {n} entry candidates.`
 
 **Three-section layout:**
 
