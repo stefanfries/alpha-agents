@@ -190,39 +190,52 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 
 #### 4.4 Monitoring — `/stages/monitoring`
 
-**Summary cards** (left to right): `Max. positions`, `Sell`, `Keep`, `Free slots`, `Entry candidates`.
+**Summary cards** (left to right): `Max. positions`, `Current positions`, `Sell`, `Keep`, `Free now`, `Free after sells`, `Entry candidates`.
 
-**Summary**: `{keep} positions kept, {sell} positions to sell. max_positions = {max}. {free} free slots. {n} entry candidates.`
+**Summary intent:**
+
+- `Free now` reflects current run capacity (`max_positions − current_holdings`)
+- `Free after sells` is projected capacity (`free_now + sell_count`) for user orientation
+- Capital recycling remains deferred for the current run; entry candidates are still capped by `Free now`
+
+**Unresolved mapping warning:**
+
+- If held warrants cannot be mapped to an underlying, a warning block is shown with unresolved WKNs.
+- Those rows are kept as a safe default and BREAK evaluation is skipped.
 
 **Three-section layout:**
 
-1. **Positions to keep** table: incumbent holdings with no exit trigger.
+1. **Exit signals** table: positions where a BREAK signal was detected and the minimum holding period has elapsed.
 
 | Column | Description |
 | ------ | ----------- |
-| Underlying | Symbol mapped from last run's warrant selection |
+| Symbol | Underlying symbol |
+| Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
 | Warrant WKN | Held warrant |
 | Held since | Most recent BUY date (from virtual depot transactions) |
-| Signal | Trend signal (`HOLD` / `NEW` / `—`) |
+| Reason | `exit_signal` |
 
-2. **Positions to sell** table: positions where a BREAK signal was detected and the minimum holding period has elapsed.
+2. **Incumbent positions (keep)** table: incumbent holdings with no exit trigger.
 
 | Column | Description |
 | ------ | ----------- |
-| Underlying | Symbol |
+| Symbol | Underlying symbol |
+| Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
 | Warrant WKN | Held warrant |
 | Held since | Date |
-| Days held | Calendar days since most recent BUY |
-| Reason | `exit_signal` |
+| Reason | `—` |
 
 3. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
 
 | Column | Description |
 | ------ | ----------- |
-| # | Rank from Screening |
 | Symbol | Underlying ticker |
-| TQ | Trend Quality score |
-| Signal | `NEW` / `HOLD` |
+| Underlying name | Name from screening universe |
+| Warrant WKN | `—` (no warrant selected yet) |
+| Held since | `—` |
+| Reason | `—` |
+
+All three tables share aligned column headers and widths for visual consistency.
 
 **User actions at approve:** entry candidates advance to warrant selection.
 

@@ -21,16 +21,38 @@
 {% elif stage_status == "awaiting_review" %}
   {% if stage_result %}
   {% set r = stage_result %}
+  {% set unresolved = r.positions_to_keep | selectattr('underlying_symbol', 'equalto', '') | list %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+
+    {% if unresolved %}
+    <div class="alert alert-warning small mb-3">
+      <strong>{{ unresolved | length }}</strong> holding(s) could not be mapped to an underlying symbol.
+      Exit-signal evaluation is skipped for these rows until mapping is resolved.
+      <div class="mt-1 text-muted">
+        Unresolved WKNs:
+        {% for p in unresolved %}
+          <code>{{ p.warrant_wkn }}</code>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     {# --- Summary cards --- #}
     <div class="flex-shrink-0 mb-3">
       {% set max_positions = execution.get('config_overrides', {}).get('portfolio', {}).get('max_positions', 15) %}
+      {% set current_positions = (r.positions_to_keep | default([], true) | length) + (r.positions_to_sell | default([], true) | length) %}
+      {% set free_after_sells = r.free_positions + (r.positions_to_sell | length) %}
       <div class="row g-3">
         <div class="col-auto">
           <div class="card text-center px-4 py-3 shadow-sm border-secondary">
             <div class="fs-3 fw-bold text-secondary">{{ max_positions }}</div>
             <div class="text-muted small">Max. positions</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm border-secondary">
+            <div class="fs-3 fw-bold text-secondary">{{ current_positions }}</div>
+            <div class="text-muted small">Current positions</div>
           </div>
         </div>
         <div class="col-auto">
@@ -48,7 +70,13 @@
         <div class="col-auto">
           <div class="card text-center px-4 py-3 shadow-sm border-primary">
             <div class="fs-3 fw-bold text-primary">{{ r.free_positions }}</div>
-            <div class="text-muted small">Free slots</div>
+            <div class="text-muted small">Free now</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm border-info">
+            <div class="fs-3 fw-bold text-info">{{ free_after_sells }}</div>
+            <div class="text-muted small">Free after sells</div>
           </div>
         </div>
         <div class="col-auto">
@@ -61,20 +89,28 @@
     </div>
 
     <div class="flex-grow-1 overflow-auto" style="min-height:0">
-      <div class="row g-3">
+      <div class="d-flex flex-column gap-3">
 
         {# --- Exits --- #}
         {% if r.positions_to_sell %}
-        <div class="col-lg-6">
+        <div>
           <h6 class="text-danger mb-2">Exit signals</h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%">
+            <colgroup>
+              <col style="width:14%">
+              <col style="width:44%">
+              <col style="width:14%">
+              <col style="width:14%">
+              <col style="width:14%">
+            </colgroup>
             <thead class="table-light">
-              <tr><th>Underlying</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_sell %}
               <tr>
                 <td><code>{{ p.underlying_symbol }}</code></td>
+                <td>{{ p.underlying_name or "—" }}</td>
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
                 <td><span class="badge bg-danger bg-opacity-10 text-danger">{{ p.sell_reason }}</span></td>
@@ -87,18 +123,27 @@
 
         {# --- Keeps --- #}
         {% if r.positions_to_keep %}
-        <div class="col-lg-6">
+        <div>
           <h6 class="text-success mb-2">Incumbent positions (keep)</h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%">
+            <colgroup>
+              <col style="width:14%">
+              <col style="width:44%">
+              <col style="width:14%">
+              <col style="width:14%">
+              <col style="width:14%">
+            </colgroup>
             <thead class="table-light">
-              <tr><th>Underlying</th><th>Warrant WKN</th><th>Held since</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
               <tr>
                 <td><code>{{ p.underlying_symbol or "?" }}</code></td>
+                <td>{{ p.underlying_name or "—" }}</td>
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td class="text-muted">—</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -108,18 +153,27 @@
 
         {# --- Entry candidates --- #}
         {% if r.entry_candidates %}
-        <div class="col-12">
+        <div>
           <h6 class="mb-2">Entry candidates <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ r.entry_candidates | length }} / {{ r.free_positions }} slots</span></h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%">
+            <colgroup>
+              <col style="width:14%">
+              <col style="width:44%">
+              <col style="width:14%">
+              <col style="width:14%">
+              <col style="width:14%">
+            </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Name</th><th>ISIN</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
             </thead>
             <tbody>
               {% for t in r.entry_candidates %}
               <tr>
                 <td><code>{{ t.symbol }}</code></td>
                 <td>{{ t.name or "—" }}</td>
-                <td><code class="text-muted">{{ t.isin or "—" }}</code></td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">—</td>
+                <td class="text-muted">—</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -129,7 +183,7 @@
 
         {# --- Excluded symbols --- #}
         {% if r.excluded_symbols %}
-        <div class="col-12">
+        <div>
           <p class="text-muted small mb-1">Excluded from entry (already held):</p>
           <div class="d-flex flex-wrap gap-1">
             {% for sym in r.excluded_symbols %}

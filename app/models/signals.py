@@ -69,6 +69,7 @@ class WarrantSelectionResult(BaseModel):
 
 class PositionReview(BaseModel):
     underlying_symbol: str
+    underlying_name: str | None = None
     warrant_isin: str
     warrant_wkn: str
     held_since: date | None = None

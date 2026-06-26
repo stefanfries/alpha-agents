@@ -609,7 +609,7 @@ async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(mo
             )
         ]
 
-    async def fake_warrant_underlying_map(_run: dict) -> dict[str, str]:
+    async def fake_warrant_underlying_map(_run: dict, _current_holdings: list[Position] | None = None) -> dict[str, str]:
         return {"ISIN1": "A"}
 
     async def fake_held_since(_run: dict) -> dict[str, date]:
@@ -636,6 +636,49 @@ async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(mo
     assert len(result.positions_to_keep) == 1
     assert len(result.positions_to_sell) == 0
     assert [t.symbol for t in result.entry_candidates] == ["B", "C"]
+
+
+@pytest.mark.asyncio
+async def test_monitoring_resolves_underlying_via_wkn_fallback_and_sells_on_break(monkeypatch):
+    from app.orchestrator import Pipeline
+
+    pipeline = Pipeline()
+
+    async def fake_fetch_holdings(_run: dict) -> list[Position]:
+        return [
+            Position(
+                ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                quantity=Decimal("1"),
+                avg_cost=Decimal("0"),
+            )
+        ]
+
+    async def fake_warrant_underlying_map(_run: dict, _current_holdings: list[Position] | None = None) -> dict[str, str]:
+        return {"WKN1": "A"}
+
+    async def fake_held_since(_run: dict) -> dict[str, date]:
+        return {"WKN1": date.today() - timedelta(days=30)}
+
+    monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
+    monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
+
+    screening = SelectionResult(
+        selected=[Ticker(symbol="A"), Ticker(symbol="B")],
+        scores={"A": 1.0, "B": 0.9},
+        rationale={},
+        trend_signals={"A": "BREAK", "B": "NEW"},
+    )
+    run = {
+        "stages": {"screening": {"result": screening.model_dump(mode="json")}},
+        "config_overrides": {"portfolio": {"max_positions": 5}},
+    }
+
+    result = await pipeline._run_monitoring(run)
+
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].underlying_symbol == "A"
+    assert result.positions_to_sell[0].sell_reason == "exit_signal"
 
 
 @pytest.mark.asyncio

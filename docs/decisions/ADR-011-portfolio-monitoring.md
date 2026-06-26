@@ -23,7 +23,7 @@ The user additionally wants entry and exit criteria to be asymmetric (entry requ
 
 Insert a **Monitoring** stage between Screening and Portfolio Construction (or between Risk and Execution — TBD during implementation based on where depot state is most naturally available).
 
-The stage reads the depot, audits every open position against warrant and underlying criteria, derives how many free slots are available, and passes a structured recommendation to downstream stages.
+The stage reads the depot, audits every open position against warrant and underlying criteria, derives `Free now` capacity, and passes a structured recommendation to downstream stages.
 
 ---
 

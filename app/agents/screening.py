@@ -141,7 +141,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         ranked_set = set(ranked_symbols)
         selected = [t for t in input.tickers if t.symbol in ranked_set]
 
-        rank_changes, history_labels = self._rank_changes(input, scores, ranked_set)
+        rank_changes, history_labels = self._rank_changes(input, scores)
 
         logger.info(
             "Screening complete: %d/%d selected "
@@ -316,19 +316,21 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         self,
         input: ResearchResult,
         current_scores: dict[str, float],
-        ranked_set: set[str],
     ) -> tuple[dict[str, list[int | None]], list[str]]:
+        # Deterministic tie-breaker keeps rank movements stable for equal TQ values.
+        def rank_items(score_map: dict[str, float]) -> list[tuple[str, float]]:
+            return sorted(score_map.items(), key=lambda x: (-x[1], x[0]))
         current_ranks = {
             sym: i + 1
             for i, (sym, _) in enumerate(
-                sorted(current_scores.items(), key=lambda x: x[1], reverse=True)
+                rank_items(current_scores)
             )
         }
         hist_ranks_list: list[dict[str, int]] = []
         valid_labels: list[str] = []
         for offset, label in [(5, "1W"), (10, "2W"), (20, "4W")]:
             hist_scores: dict[str, float] = {}
-            for sym in ranked_set:
+            for sym in current_scores:
                 bars = input.bars.get(sym, [])
                 if len(bars) > offset + _MIN_BARS:
                     hist_scores[sym] = self._trend_quality(bars[: len(bars) - offset], self._lookback_regression)
@@ -337,7 +339,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             hist_ranks = {
                 sym: i + 1
                 for i, (sym, _) in enumerate(
-                    sorted(hist_scores.items(), key=lambda x: x[1], reverse=True)
+                    rank_items(hist_scores)
                 )
             }
             hist_ranks_list.append(hist_ranks)

@@ -15,6 +15,7 @@ class MonitoringInput(BaseModel):
     candidates: list[Ticker]                   # from SelectionResult.selected (top-N ranked)
     scores: dict[str, float]                   # underlying_symbol → score
     trend_signals: dict[str, str | None]       # underlying_symbol → "NEW"|"HOLD"|"BREAK"|None
+    underlying_names: dict[str, str] = {}      # underlying_symbol → display name
     current_holdings: list[Position]           # depot warrant positions (isin+wkn in ticker)
     warrant_underlying_map: dict[str, str]     # warrant_isin → underlying_symbol
     held_since_map: dict[str, date]            # warrant_wkn → most recent BUY date
@@ -39,12 +40,14 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             warrant_isin = pos.ticker.isin or ""
             warrant_wkn = pos.ticker.symbol or ""
 
-            # Resolve underlying symbol from last run's warrant selection mapping
-            underlying_sym = input.warrant_underlying_map.get(warrant_isin)
+            # Resolve underlying symbol from mapping cache (ISIN first, WKN fallback).
+            underlying_sym = input.warrant_underlying_map.get(warrant_isin) or input.warrant_underlying_map.get(warrant_wkn)
+            underlying_name = input.underlying_names.get(underlying_sym) if underlying_sym else None
             if underlying_sym is None:
                 # Can't map to underlying — keep as-is (safe default)
                 positions_to_keep.append(PositionReview(
                     underlying_symbol="",
+                    underlying_name=None,
                     warrant_isin=warrant_isin,
                     warrant_wkn=warrant_wkn,
                     held_since=input.held_since_map.get(warrant_wkn),
@@ -65,6 +68,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
 
             review = PositionReview(
                 underlying_symbol=underlying_sym,
+                underlying_name=underlying_name,
                 warrant_isin=warrant_isin,
                 warrant_wkn=warrant_wkn,
                 held_since=held_since,

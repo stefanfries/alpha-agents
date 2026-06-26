@@ -1,6 +1,6 @@
 # Monitoring Agent Enhancement Plan — Warrant Degradation Health Checks
 
-**Status:** Planned for Phase M1 (next session)  
+**Status:** M0 implemented; M1 planned  
 **Date Created:** 2026-06-22  
 **Priority:** High (risk management for trend-following strategy)
 
@@ -41,6 +41,61 @@ Entry selection (Warrant Selection stage) and holding evaluation (Monitoring sta
 ---
 
 ## Architecture
+
+### 0. First-Run Mapping Robustness (Prerequisite) — Implemented
+
+Before health checks/ROLL logic can work reliably, monitoring must resolve held
+warrants to underlying symbols even when no prior approved warrant-selection
+run exists.
+
+**Problem addressed:** Monitoring previously relied on a prebuilt map from the last approved
+`warrant_selection` stage. On first run (or when holdings missed ISIN), underlyings
+could remain unresolved and BREAK/SELL could not be applied to those holdings.
+
+**Implemented fallback chain (layered):**
+
+1. Use prebuilt map from last approved warrant selection (existing behavior)
+2. Use persisted cache map (`warrant_underlying_map` collection)
+3. Resolve missing rows via FinHub `GET /v1/instruments/{identifier}`
+     - identifier preference: `isin` -> `wkn`
+     - if instrument is a warrant and underlying metadata is present, extract underlying symbol
+4. Persist resolved mapping for subsequent runs (ISIN and WKN keys)
+
+**Data model (new collection):**
+
+```json
+{
+    "_id": "<warrant_isin_or_wkn>",
+    "warrant_isin": "DE000...",
+    "warrant_wkn": "PM3ZQF",
+    "underlying_symbol": "WDC",
+    "underlying_isin": "US9581021055",
+    "underlying_name": "Western Digital",
+    "source": "finhub_instruments_fallback",
+    "resolved_from": "isin|wkn",
+    "checked_at": "2026-06-26T...Z"
+}
+```
+
+**Monitoring behavior for unresolved rows:**
+
+- Keep safe default (do not force SELL without resolved underlying)
+- Show explicit warning block in monitoring UI:
+    - unresolved count
+    - identifiers (WKN/ISIN)
+    - note that BREAK/SELL evaluation was skipped
+
+**Name resolution implemented for monitoring UI:**
+
+- Resolve held-warrant underlying ISIN via FinHub `/instruments`
+- Prefer shorter universe names by matching underlying ISIN to screening universe
+- Fallback to cached warrant-derived `underlying_name` only when universe name is unavailable
+
+**Rationale:**
+
+- Ensures first-run monitoring can still resolve holdings and apply trend exits
+- Avoids silent false negatives in SELL detection
+- Reduces API calls after first resolution via persisted cache
 
 ### 1. New Config Class: `MonitoringWarrantHealthSettings`
 
@@ -290,6 +345,21 @@ async def _find_roll_replacement(
 ---
 
 ## Implementation Roadmap
+
+### Phase M0: Mapping Fallback & Persistence (must ship first)
+
+- [ ] Add persistent `warrant_underlying_map` collection + index in `app/db.py`
+- [ ] Extend orchestrator mapping fetch to merge:
+    - prior approved run map
+    - persisted cache map
+    - FinHub `/instruments` fallback for unresolved holdings
+- [ ] Resolve by both identifiers when available (`isin`, `wkn`)
+- [ ] Persist resolved mappings with `checked_at`, `source`, `resolved_from`
+- [ ] Add monitoring UI warning panel for unresolved holdings
+- [ ] Add tests:
+    - no prior approved warrant-selection run -> fallback resolves
+    - missing ISIN but valid WKN -> fallback resolves
+    - unresolved after fallback -> shown in UI and excluded from SELL logic
 
 ### Phase M1.1: Configuration & Model Updates
 

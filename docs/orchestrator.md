@@ -103,16 +103,16 @@ class Pipeline:
     ) -> str:
         """Create a run document in MongoDB and trigger the first stage. Returns run_id."""
 
-    async def approve(
-        self,
-        run_id: str,
+  async def approve(
+    self,
+    run_id: str,
         stage: str,
         selection_override: list[str] | None = None,
-    ) -> None:
+  ) -> None:
         """
-        Mark stage as approved and trigger the next stage.
-        selection_override: tickers or ISINs the user kept checked (screening / warrant stages).
-        """
+    Mark stage as approved and trigger the next stage.
+    selection_override: tickers or ISINs the user kept checked (screening / warrant stages).
+    """
 
     async def restart(
         self,
@@ -193,16 +193,23 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 1. Calls `_portfolio_max_positions(run)` — resolves the target position limit from execution `config_overrides.portfolio.max_positions`, or falls back to global `settings.portfolio.max_positions`.
 2. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries).
 3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through), with `free_positions = max_positions`.
-4. Calls `_fetch_warrant_underlying_map(run)` — queries the last execution for this QuantSystem where `stages.warrant_selection.status == "approved"`, deserialises its `WarrantSelectionResult`, and builds `{warrant_isin → underlying_symbol}`.
-5. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn → date}`.
-6. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-7. `MonitoringAgent.run()` evaluates each held position:
+4. Builds initial underlying names from screening universe (`SelectionResult.all_tickers` fallback `selected`): `{symbol -> name}`.
+5. Calls `_fetch_warrant_underlying_map(run, holdings)` — layered resolver:
+  - last approved warrant-selection map
+  - persisted `warrant_underlying_map` cache
+  - FinHub `/v1/instruments/{identifier}` fallback (`isin` first, then `wkn`)
+  The result can contain both key types (`warrant_isin` and `warrant_wkn`) mapped to `underlying_symbol`.
+6. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
+7. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
+8. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
+9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
+10. `MonitoringAgent.run()` evaluates each held position:
    - If the underlying symbol maps to `trend_signals[symbol] == "BREAK"` and `holding_days >= min_holding_days` → `positions_to_sell`
    - Otherwise → `positions_to_keep`
-8. Calculates `free_positions = max(0, max_positions − len(current_holdings))` and filters entry candidates to capped list.
+11. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list.
    - Positions whose underlying cannot be mapped are always kept (safe default).
-9. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
-10. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
+12. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
+13. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 
@@ -291,12 +298,12 @@ without human review.
 
 ## Bug fixes and corrections (2026-06-22)
 
-### Monitoring free slot calculation (Issue: incorrect free positions reported)
+### Monitoring free-capacity calculation (Issue: incorrect free positions reported)
 
 Root causes:
 
 1. No-holdings path computed `free_positions = min(candidates, max_positions)` instead of capacity
-2. Holdings loader counted positions with quantity ≤ 0, inflating held count and reducing free slots
+2. Holdings loader counted positions with quantity ≤ 0, inflating held count and reducing `Free now`
 3. Max positions was hardcoded to global settings, ignoring execution-level config overrides
 
 Fixes implemented:

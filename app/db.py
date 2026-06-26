@@ -100,6 +100,12 @@ def warrant_availability_collection() -> AsyncIOMotorCollection:
     return _client[settings.db.db_name]["warrant_availability"]
 
 
+def warrant_underlying_map_collection() -> AsyncIOMotorCollection:
+    if _client is None:
+        raise RuntimeError("MongoDB client not initialised — set DB__MONGODB_URI in .env")
+    return _client[settings.db.db_name]["warrant_underlying_map"]
+
+
 def finance_db():  # type: ignore[return]
     """Read-only access to the finance database (written by comdirect_api)."""
     if _client is None:
@@ -125,3 +131,6 @@ async def _ensure_indexes() -> None:
     await virtual_depot_transactions_collection().create_index([("depot_id", 1), ("booking_date", -1)])
 
     await warrant_availability_collection().create_index("override_isin", sparse=True)
+    await warrant_underlying_map_collection().create_index("warrant_isin", sparse=True)
+    await warrant_underlying_map_collection().create_index("warrant_wkn", sparse=True)
+    await warrant_underlying_map_collection().create_index("checked_at")

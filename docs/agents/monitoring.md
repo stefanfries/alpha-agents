@@ -13,8 +13,9 @@ class MonitoringInput(BaseModel):
     candidates: list[Ticker]               # from SelectionResult.selected (top-N ranked)
     scores: dict[str, float]               # underlying_symbol → TQ score
     trend_signals: dict[str, str | None]   # underlying_symbol → "NEW" | "HOLD" | "BREAK" | None
+  underlying_names: dict[str, str]       # underlying_symbol -> display name
     current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
-    warrant_underlying_map: dict[str, str] # warrant_isin → underlying_symbol
+  warrant_underlying_map: dict[str, str] # warrant_isin / warrant_wkn -> underlying_symbol
     held_since_map: dict[str, date]        # warrant_wkn → most recent BUY date
     max_positions: int                     # from execution config override or PortfolioSettings
 ```
@@ -22,8 +23,12 @@ class MonitoringInput(BaseModel):
 The orchestrator builds `MonitoringInput` from:
 
 - `SelectionResult` (stages.screening.result)
+- `underlying_names` from screening universe (`all_tickers` fallback `selected`), then enriched for held rows
 - Current depot snapshot via `_fetch_holdings()` — **excludes zero-quantity positions**
-- `warrant_underlying_map` from the last approved execution's `WarrantSelectionResult` via `_fetch_warrant_underlying_map()`
+- `warrant_underlying_map` from layered resolver via `_fetch_warrant_underlying_map()`:
+  - last approved `WarrantSelectionResult`
+  - persisted `warrant_underlying_map` cache
+  - FinHub `/v1/instruments` fallback resolution (ISIN first, WKN fallback)
 - `held_since_map` from `virtual_depot_transactions` via `_fetch_held_since()`
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
 
@@ -38,7 +43,7 @@ class MonitoringResult(BaseModel):
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
 ```
 
-`PositionReview` fields: `underlying_symbol`, `warrant_isin`, `warrant_wkn`, `held_since`, `sell_reason` (`"exit_signal"` or `None`).
+`PositionReview` fields: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`, `held_since`, `sell_reason` (`"exit_signal"` or `None`).
 
 ## Tools used
 
@@ -48,11 +53,15 @@ None — operates on data provided by the orchestrator.
 
 ### For each held position
 
-1. **Resolve underlying symbol** from `warrant_underlying_map[warrant_isin]`.
+1. **Resolve underlying symbol** from `warrant_underlying_map[warrant_isin]`, fallback `warrant_underlying_map[warrant_wkn]`.
    - If not found (no mapping available): mark as KEEP with `underlying_symbol=""` (safe default).
-2. **Check holding period**: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
-3. **Check exit signal**: `trend_signals[underlying_symbol] == "BREAK"`.
-4. Decision:
+2. **Resolve underlying display name** from `underlying_names[underlying_symbol]` when available.
+  - Name precedence is enforced by orchestrator:
+    - universe name via underlying ISIN
+    - cached fallback name
+3. **Check holding period**: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
+4. **Check exit signal**: `trend_signals[underlying_symbol] == "BREAK"`.
+5. Decision:
    - `has_exit_signal AND holding_days >= min_holding_days` → **SELL** (`sell_reason="exit_signal"`)
    - Otherwise → **KEEP**
 

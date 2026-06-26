@@ -265,6 +265,7 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | `underlying_symbol` | `str` | yfinance symbol of the underlying stock; empty string if mapping is unavailable |
+| `underlying_name` | `str \| None` | Display name for the underlying (preferred universe name; fallback cached warrant-derived name) |
 | `warrant_isin` | `str` | ISIN of the held warrant |
 | `warrant_wkn` | `str` | WKN of the held warrant (key in depot transactions) |
 | `held_since` | `date \| None` | Date of most recent BUY transaction for this WKN; `None` if unavailable |
@@ -279,7 +280,7 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 | `positions_to_sell` | `list[PositionReview]` | Positions where the underlying has a confirmed BREAK signal and the minimum holding period has elapsed |
 | `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger — carry forward |
 | `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |
-| `free_positions` | `int` | `max_positions − len(current_holdings)` (capital recycling deferred) |
+| `free_positions` | `int` | `max_positions − len(current_holdings)` (`Free now`; capital recycling deferred) |
 | `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling); blocked from entry in this run |
 
 ### `PortfolioProposal`
