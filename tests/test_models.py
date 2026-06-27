@@ -5,7 +5,9 @@ from app.config import MonitoringSettings
 from app.models.market import Order, Ticker
 from app.models.signals import (
     ExecutionPlan,
+    MonitoringResult,
     PositionReview,
+    RollReplacement,
     SelectionResult,
 )
 
@@ -68,6 +70,35 @@ def test_position_review_accepts_warrant_degraded_sell_reason():
     )
 
     assert review.sell_reason == "warrant_degraded"
+
+
+def test_position_review_accepts_roll_replacement():
+    review = PositionReview(
+        underlying_symbol="AAPL",
+        warrant_isin="DE000TEST123",
+        warrant_wkn="TEST12",
+        roll_replacement=RollReplacement(
+            warrant_isin="DE000TEST456",
+            warrant_wkn="TEST34",
+            strike=200.0,
+            maturity_date=None,
+        ),
+    )
+
+    assert review.roll_replacement is not None
+    assert review.roll_replacement.warrant_isin == "DE000TEST456"
+
+
+def test_monitoring_result_defaults_positions_to_roll():
+    result = MonitoringResult(
+        positions_to_sell=[],
+        positions_to_keep=[],
+        entry_candidates=[],
+        free_positions=0,
+        excluded_symbols=[],
+    )
+
+    assert result.positions_to_roll == []
 
 
 def test_monitoring_input_accepts_warrant_snapshots():

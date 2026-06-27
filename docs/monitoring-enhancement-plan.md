@@ -388,11 +388,11 @@ async def _find_roll_replacement(
 
 ### Phase M1.5: Warrant Replacement Logic (ROLL)
 
-- [ ] Implement `_find_roll_replacement()` helper to query WarrantSelectionAgent
-- [ ] Add `positions_to_roll` output list to `MonitoringResult`
-- [ ] Extend `PositionReview` with `roll_replacement` field (suggested warrant ISIN, strike, maturity)
-- [ ] Add decision tree logic for ROLL vs. SELL based on trend signal presence
-- [ ] Wire replacement warrant suggestions into monitoring result
+- [x] Implement `_find_roll_replacement()` helper to query WarrantSelectionAgent
+- [x] Add `positions_to_roll` output list to `MonitoringResult`
+- [x] Extend `PositionReview` with `roll_replacement` field (suggested warrant ISIN, strike, maturity)
+- [x] Add decision tree logic for ROLL vs. SELL based on trend signal presence
+- [x] Wire replacement warrant suggestions into monitoring result
 
 ### Phase M1.6: UI & Documentation
 

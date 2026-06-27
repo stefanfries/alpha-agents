@@ -2,7 +2,7 @@ from datetime import date
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.market import OHLCV, Order, Position, Ticker
 
@@ -69,6 +69,18 @@ class WarrantSelectionResult(BaseModel):
     analyzed_count: dict[str, int] = {}               # symbol → total candidates evaluated
 
 
+class RollReplacement(BaseModel):
+    warrant_isin: str
+    warrant_wkn: str
+    strike: float | None = None
+    maturity_date: date | None = None
+    spread_pct: float | None = None
+    leverage: float | None = None
+    delta: float | None = None
+    score: float | None = None
+    rationale: str | None = None
+
+
 class PositionReview(BaseModel):
     underlying_symbol: str
     underlying_name: str | None = None
@@ -76,11 +88,13 @@ class PositionReview(BaseModel):
     warrant_wkn: str
     held_since: date | None = None
     sell_reason: Literal["exit_signal", "warrant_degraded"] | None = None  # None = keep
+    roll_replacement: RollReplacement | None = None
 
 
 class MonitoringResult(BaseModel):
     positions_to_sell: list[PositionReview]
     positions_to_keep: list[PositionReview]
+    positions_to_roll: list[PositionReview] = Field(default_factory=list)
     entry_candidates: list[Ticker]   # filtered and capped to free_positions
     free_positions: int
     excluded_symbols: list[str]      # already held (kept or selling) → blocked from entry

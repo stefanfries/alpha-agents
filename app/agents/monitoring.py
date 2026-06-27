@@ -1,5 +1,6 @@
 import logging
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -81,10 +82,49 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             logger.info("Monitoring: degraded warrant %s (%s)", warrant_isin, detail)
         return is_degraded, detail
 
+    @staticmethod
+    def _decide_action(
+        *,
+        has_exit_signal: bool,
+        exit_triggered: bool,
+        is_degraded: bool,
+    ) -> tuple[Literal["sell", "roll", "keep"], Literal["warrant_degraded", "exit_signal"] | None]:
+        """Resolve action for one holding from precomputed signal flags."""
+        if has_exit_signal and (is_degraded or exit_triggered):
+            sell_reason: Literal["warrant_degraded", "exit_signal"]
+            sell_reason = "warrant_degraded" if is_degraded else "exit_signal"
+            return "sell", sell_reason
+        if is_degraded:
+            return "roll", None
+        return "keep", None
+
+    @staticmethod
+    def _log_sell_decision(
+        *,
+        underlying_symbol: str,
+        is_degraded: bool,
+        holding_days: int,
+        trend_signal: str | None,
+        is_break_confirmed: bool,
+        degrade_detail: str | None,
+        warrant_wkn: str,
+    ) -> None:
+        logger.info(
+            "Monitoring: exit for %s (degraded=%s, held=%d days, signal=%s, confirmed=%s, detail=%s) -> SELL %s",
+            underlying_symbol,
+            is_degraded,
+            holding_days,
+            trend_signal,
+            is_break_confirmed,
+            degrade_detail,
+            warrant_wkn,
+        )
+
     async def run(self, input: MonitoringInput) -> MonitoringResult:
         today = date.today()
         positions_to_sell: list[PositionReview] = []
         positions_to_keep: list[PositionReview] = []
+        positions_to_roll: list[PositionReview] = []
         # Track all held underlyings (sell + keep) to block from entry
         all_held_underlyings: set[str] = set()
 
@@ -118,6 +158,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             trend_signal = input.trend_signals.get(underlying_sym)
             has_exit_signal = trend_signal == "BREAK"
             is_break_confirmed = underlying_sym in input.break_confirmed_symbols
+            exit_triggered = has_exit_signal and (
+                holding_days >= self._min_holding_days or is_break_confirmed
+            )
 
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
             is_degraded, degrade_detail = False, None
@@ -132,28 +175,43 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 held_since=held_since,
             )
 
-            if is_degraded:
-                review.sell_reason = "warrant_degraded"
-                positions_to_sell.append(review)
-                logger.info(
-                    "Monitoring: warrant degraded for %s (detail=%s) -> SELL %s",
-                    underlying_sym,
-                    degrade_detail,
-                    warrant_wkn,
-                )
-            elif has_exit_signal and (holding_days >= self._min_holding_days or is_break_confirmed):
-                review.sell_reason = "exit_signal"
-                positions_to_sell.append(review)
-                logger.info(
-                    "Monitoring: exit signal for %s (held %d days, signal=%s, confirmed=%s) -> SELL %s",
-                    underlying_sym, holding_days, trend_signal, is_break_confirmed, warrant_wkn,
-                )
-            else:
-                positions_to_keep.append(review)
-                logger.debug(
-                    "Monitoring: keeping %s (held %d days, signal=%s)",
-                    underlying_sym, holding_days, trend_signal,
-                )
+            action, sell_reason = self._decide_action(
+                has_exit_signal=has_exit_signal,
+                exit_triggered=exit_triggered,
+                is_degraded=is_degraded,
+            )
+
+            match action:
+                case "sell":
+                    review.sell_reason = sell_reason
+                    positions_to_sell.append(review)
+                    self._log_sell_decision(
+                        underlying_symbol=underlying_sym,
+                        is_degraded=is_degraded,
+                        holding_days=holding_days,
+                        trend_signal=trend_signal,
+                        is_break_confirmed=is_break_confirmed,
+                        degrade_detail=degrade_detail,
+                        warrant_wkn=warrant_wkn,
+                    )
+                case "roll":
+                    positions_to_roll.append(review)
+                    logger.info(
+                        "Monitoring: warrant degraded for %s (detail=%s) -> ROLL %s",
+                        underlying_sym,
+                        degrade_detail,
+                        warrant_wkn,
+                    )
+                case "keep":
+                    positions_to_keep.append(review)
+                    logger.debug(
+                        "Monitoring: keeping %s (held %d days, signal=%s)",
+                        underlying_sym,
+                        holding_days,
+                        trend_signal,
+                    )
+                case _:
+                    raise ValueError(f"Unknown monitoring action: {action}")
 
         # Free slots: capital is NOT recycled within the same run (deferred approach)
         # Positions being sold don't free up slots until the next run
@@ -168,12 +226,13 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         ][:free_positions]
 
         logger.info(
-            "Monitoring complete: %d keep, %d sell, %d free slots, %d entry candidates",
-            len(positions_to_keep), len(positions_to_sell), free_positions, len(entry_candidates),
+            "Monitoring complete: %d keep, %d roll, %d sell, %d free slots, %d entry candidates",
+            len(positions_to_keep), len(positions_to_roll), len(positions_to_sell), free_positions, len(entry_candidates),
         )
         return MonitoringResult(
             positions_to_sell=positions_to_sell,
             positions_to_keep=positions_to_keep,
+            positions_to_roll=positions_to_roll,
             entry_candidates=entry_candidates,
             free_positions=free_positions,
             excluded_symbols=excluded_symbols,

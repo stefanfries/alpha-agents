@@ -30,8 +30,11 @@ from app.models.signals import (
     ExecutionPlan,
     MonitoringResult,
     PortfolioProposal,
+    PositionReview,
     ResearchResult,
     RiskAssessment,
+    RollReplacement,
+    SelectedWarrant,
     SelectionResult,
     UniverseResult,
     WarrantSelectionResult,
@@ -228,6 +231,7 @@ class Pipeline:
             return MonitoringResult(
                 positions_to_sell=[],
                 positions_to_keep=[],
+                positions_to_roll=[],
                 entry_candidates=screening.selected[:max_positions],
                 free_positions=free,
                 excluded_symbols=[],
@@ -252,7 +256,7 @@ class Pipeline:
         break_confirmed_symbols = await self._break_confirmed_symbols(run, screening)
         overrides = run.get("config_overrides", {}).get("monitoring", {})
         mon_cfg = settings.monitoring.model_copy(update=overrides)
-        return await MonitoringAgent(
+        result = await MonitoringAgent(
             settings=mon_cfg,
             max_positions=max_positions,
         ).run(MonitoringInput(
@@ -267,6 +271,48 @@ class Pipeline:
             break_confirmed_symbols=break_confirmed_symbols,
             max_positions=max_positions,
         ))
+
+        if result.positions_to_roll:
+            resolved_rolls: list[PositionReview] = []
+            for review in result.positions_to_roll:
+                current_snapshot = warrant_snapshots.get(review.warrant_isin)
+                replacement = await self._find_roll_replacement(
+                    run=run,
+                    screening=screening,
+                    underlying_symbol=review.underlying_symbol,
+                )
+
+                if replacement is None:
+                    review.sell_reason = "warrant_degraded"
+                    result.positions_to_sell.append(review)
+                    logger.info(
+                        "Monitoring roll: no replacement for %s -> SELL %s",
+                        review.underlying_symbol,
+                        review.warrant_wkn,
+                    )
+                    continue
+
+                if self._is_roll_replacement_worse(replacement, current_snapshot):
+                    result.positions_to_keep.append(review)
+                    logger.info(
+                        "Monitoring roll: replacement worse for %s -> HOLD %s",
+                        review.underlying_symbol,
+                        review.warrant_wkn,
+                    )
+                    continue
+
+                review.roll_replacement = replacement
+                resolved_rolls.append(review)
+                logger.info(
+                    "Monitoring roll: replacement for %s -> ROLL %s => %s",
+                    review.underlying_symbol,
+                    review.warrant_wkn,
+                    replacement.warrant_wkn or replacement.warrant_isin,
+                )
+
+            result.positions_to_roll = resolved_rolls
+
+        return result
 
     async def _break_confirmed_symbols(self, run: dict, screening: SelectionResult) -> set[str]:
         """Confirm BREAK on two consecutive closed candles (same-day reruns don't count)."""
@@ -387,6 +433,90 @@ class Pipeline:
         else:
             return None
         return (maturity_date - today).days
+
+    async def _find_roll_replacement(
+        self,
+        run: dict,
+        screening: SelectionResult,
+        underlying_symbol: str,
+    ) -> RollReplacement | None:
+        candidate_ticker = next(
+            (t for t in (screening.all_tickers or screening.selected) if t.symbol == underlying_symbol),
+            None,
+        )
+        if not candidate_ticker:
+            return None
+
+        research_data = run.get("stages", {}).get("research", {}).get("result")
+        fundamentals = (research_data or {}).get("fundamentals", {})
+        price = fundamentals.get(underlying_symbol, {}).get("currentPrice")
+        prices = {underlying_symbol: float(price)} if price is not None else {}
+
+        ws_overrides = run.get("config_overrides", {}).get("warrant_selection", {})
+        ws_cfg = resolve_warrant_selection_settings(ws_overrides)
+        overrides = await warrant_availability.overrides_map()
+
+        try:
+            async with FinHubTool() as finhub:
+                result = await WarrantSelectionAgent(
+                    finhub=finhub,
+                    prices=prices,
+                    min_days_to_expiry=ws_cfg.min_days_to_expiry,
+                    max_days_to_expiry=ws_cfg.max_days_to_expiry,
+                    strike_min_factor=ws_cfg.strike_min_factor,
+                    strike_max_factor=ws_cfg.strike_max_factor,
+                    atm_band_fallback=ws_cfg.atm_band_fallback,
+                    isin_overrides=overrides,
+                ).run(
+                    SelectionResult(
+                        selected=[candidate_ticker],
+                        scores={underlying_symbol: screening.scores.get(underlying_symbol, 1.0)},
+                        rationale={},
+                    )
+                )
+        except Exception:
+            logger.warning("Monitoring roll: replacement lookup failed for %s", underlying_symbol)
+            return None
+
+        if not result.selected:
+            return None
+        return self._to_roll_replacement(result.selected[0])
+
+    @staticmethod
+    def _to_roll_replacement(warrant: SelectedWarrant) -> RollReplacement:
+        return RollReplacement(
+            warrant_isin=warrant.warrant_isin,
+            warrant_wkn=warrant.warrant_wkn,
+            strike=warrant.strike,
+            maturity_date=warrant.maturity_date,
+            spread_pct=warrant.spread_pct,
+            leverage=warrant.leverage,
+            delta=warrant.delta,
+            score=warrant.score,
+            rationale=warrant.rationale,
+        )
+
+    @staticmethod
+    def _is_roll_replacement_worse(
+        replacement: RollReplacement,
+        current_snapshot: WarrantSnapshot | None,
+    ) -> bool:
+        if current_snapshot is None:
+            return False
+
+        if (
+            replacement.spread_pct is not None
+            and current_snapshot.spread_pct is not None
+            and replacement.spread_pct > current_snapshot.spread_pct
+        ):
+            return True
+
+        if replacement.maturity_date is not None and current_snapshot.days_to_maturity is not None:
+            replacement_days = (replacement.maturity_date - date.today()).days
+            if replacement_days <= current_snapshot.days_to_maturity:
+                return True
+
+        return False
 
     async def _fetch_warrant_underlying_map(self, run: dict, holdings: list[Position]) -> dict[str, str]:
         """Resolve map for held warrants using: previous run -> cache -> FinHub fallback.
@@ -690,6 +820,7 @@ class Pipeline:
         if monitoring_data:
             monitoring = MonitoringResult.model_validate(monitoring_data)
             kept_warrant_isins = {p.warrant_isin for p in monitoring.positions_to_keep if p.warrant_isin}
+            kept_warrant_isins.update(p.warrant_isin for p in monitoring.positions_to_roll if p.warrant_isin)
         return await PortfolioConstructionAgent(
             capital_eur=run.get("capital_eur", settings.portfolio.capital_eur),
             current_holdings=current_holdings,
