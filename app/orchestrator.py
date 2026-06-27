@@ -8,7 +8,7 @@ from typing import Any
 
 from app import warrant_availability
 from app.agents.execution import TradeExecutionAgent
-from app.agents.monitoring import MonitoringAgent, MonitoringInput
+from app.agents.monitoring import MonitoringAgent, MonitoringInput, WarrantSnapshot
 from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.research import ResearchAgent, ResearchInput
 from app.agents.risk import RiskAgent
@@ -234,6 +234,8 @@ class Pipeline:
             )
 
         warrant_underlying_map = await self._fetch_warrant_underlying_map(run, current_holdings)
+        warrant_isins = [pos.ticker.isin for pos in current_holdings if pos.ticker.isin]
+        warrant_snapshots = await self._fetch_warrant_snapshots(warrant_isins)
         # Prefer canonical universe names by resolving each held warrant to underlying ISIN via /instruments.
         names_from_universe = await self._resolve_underlying_names_from_universe(
             holdings=current_holdings,
@@ -261,6 +263,7 @@ class Pipeline:
             current_holdings=current_holdings,
             warrant_underlying_map=warrant_underlying_map,
             held_since_map=held_since_map,
+            warrant_snapshots=warrant_snapshots,
             break_confirmed_symbols=break_confirmed_symbols,
             max_positions=max_positions,
         ))
@@ -301,6 +304,89 @@ class Pipeline:
             for symbol, candle_date in previous_screening.latest_candle_dates.items()
             if previous_screening.trend_signals.get(symbol) == "BREAK"
         }
+
+    async def _fetch_warrant_snapshots(self, warrant_isins: list[str]) -> dict[str, WarrantSnapshot]:
+        """Fetch current warrant snapshot data for monitoring health checks."""
+        if not warrant_isins:
+            return {}
+
+        unique_isins = list(dict.fromkeys(x for x in warrant_isins if x))
+        snapshots: dict[str, WarrantSnapshot] = {}
+        today = date.today()
+
+        async with FinHubTool() as finhub:
+            for isin in unique_isins:
+                try:
+                    detail = await finhub.get_warrant_detail(isin)
+                except Exception:
+                    logger.warning("Monitoring snapshots: detail fetch failed for %s", isin)
+                    continue
+                if not detail:
+                    logger.warning("Monitoring snapshots: no detail for %s", isin)
+                    continue
+
+                md = detail.get("market_data") or {}
+                an = detail.get("analytics") or {}
+                rd = detail.get("reference_data") or {}
+
+                spread_pct = self._as_float(md.get("spread_percent"))
+                leverage = self._as_float(an.get("leverage"))
+                delta = self._as_float(an.get("delta"))
+                days_to_maturity = self._days_to_maturity(rd.get("maturity_date"), today)
+
+                bid = self._as_float(md.get("bid"))
+                ask = self._as_float(md.get("ask"))
+                bid_ask_midprice = (bid + ask) / 2.0 if bid is not None and ask is not None else None
+
+                if all(
+                    value is None
+                    for value in (spread_pct, leverage, delta, days_to_maturity, bid_ask_midprice)
+                ):
+                    logger.warning("Monitoring snapshots: empty metrics for %s", isin)
+                    continue
+
+                snapshots[isin] = WarrantSnapshot(
+                    warrant_isin=isin,
+                    spread_pct=spread_pct,
+                    leverage=leverage,
+                    days_to_maturity=days_to_maturity,
+                    delta=delta,
+                    bid_ask_midprice=bid_ask_midprice,
+                )
+
+        return snapshots
+
+    @staticmethod
+    def _as_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _days_to_maturity(value: Any, today: date) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, date):
+            maturity_date = value
+        elif isinstance(value, datetime):
+            maturity_date = value.date()
+        elif isinstance(value, str):
+            raw = value.strip()
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            try:
+                maturity_date = datetime.fromisoformat(raw).date()
+            except ValueError:
+                try:
+                    maturity_date = date.fromisoformat(raw)
+                except ValueError:
+                    return None
+        else:
+            return None
+        return (maturity_date - today).days
 
     async def _fetch_warrant_underlying_map(self, run: dict, holdings: list[Position]) -> dict[str, str]:
         """Resolve map for held warrants using: previous run -> cache -> FinHub fallback.

@@ -376,15 +376,15 @@ async def _find_roll_replacement(
 
 ### Phase M1.3: Orchestrator Data Flow
 
-- [ ] Implement `_fetch_warrant_snapshots()` helper
-- [ ] Wire snapshots into `MonitoringInput` in `_run_monitoring()`
-- [ ] Handle missing/stale quote data gracefully
+- [x] Implement `_fetch_warrant_snapshots()` helper
+- [x] Wire snapshots into `MonitoringInput` in `_run_monitoring()`
+- [x] Handle missing/stale quote data gracefully
 
 ### Phase M1.4: Testing
 
-- [ ] Add unit tests for `_check_warrant_health()` — boundary cases (spread at threshold, maturity edge)
-- [ ] Add integration tests for combined decision logic (exit_signal vs. warrant_degraded priority)
-- [ ] Add regression tests to ensure non-degraded warrants are kept when no exit signal
+- [x] Add unit tests for `_check_warrant_health()` — boundary cases (spread at threshold, maturity edge)
+- [x] Add integration tests for combined decision logic (exit_signal vs. warrant_degraded priority)
+- [x] Add regression tests to ensure non-degraded warrants are kept when no exit signal
 
 ### Phase M1.5: Warrant Replacement Logic (ROLL)
 
@@ -412,15 +412,15 @@ async def _find_roll_replacement(
    - YES + Exit signal (trend broken) → **SELL** (exit completely)
    - YES + No exit signal (trend intact) → **ROLL** (replace warrant, stay in trade)
    - NO + Exit signal + grace period met → **SELL** (exit on trend)
-    - NO + Exit signal + grace period not met → **HOLD** unless BREAK is candle-confirmed on two consecutive closed candles
-    - NO + No exit signal → **HOLD** (keep position)
+   - NO + Exit signal + grace period not met → **HOLD** unless BREAK is candle-confirmed on two consecutive closed candles
+   - NO + No exit signal → **HOLD** (keep position)
 
 **Matrix:**
 
 | Warrant Degraded | Exit Signal | Grace Period | Action |
 | --- | --- | --- | --- |
 | ✓ | ✓ | ✓ | **SELL** (trend broken) |
-| ✓ | ✓ | ✗ | **ROLL** (wait grace period, but replace warrant) |
+| ✓ | ✓ | ✗ | **SELL** (trend broken; do not preserve exposure) |
 | ✓ | ✗ | — | **ROLL** (trend intact, just swap warrant) |
 | ✗ | ✓ | ✓ | **SELL** (clean exit) |
 | ✗ | ✓ | ✗ | **HOLD** (await grace period, unless candle-confirmed BREAK) |

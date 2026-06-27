@@ -734,6 +734,36 @@ def test_monitoring_warrant_health_check_flags_threshold_breaches():
     assert "delta_too_high" in detail
 
 
+def test_monitoring_warrant_health_check_keeps_exact_threshold_values():
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+
+    degraded, detail = agent._check_warrant_health(
+        warrant_isin="DE000TEST123",
+        snapshot=WarrantSnapshot(
+            warrant_isin="DE000TEST123",
+            spread_pct=2.5,
+            leverage=3.0,
+            days_to_maturity=60,
+            delta=0.3,
+        ),
+    )
+    assert degraded is False
+    assert detail is None
+
+    degraded, detail = agent._check_warrant_health(
+        warrant_isin="DE000TEST123",
+        snapshot=WarrantSnapshot(
+            warrant_isin="DE000TEST123",
+            spread_pct=2.5,
+            leverage=8.0,
+            days_to_maturity=60,
+            delta=0.7,
+        ),
+    )
+    assert degraded is False
+    assert detail is None
+
+
 @pytest.mark.asyncio
 async def test_monitoring_sells_degraded_warrant_without_break_signal():
     agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
@@ -766,6 +796,42 @@ async def test_monitoring_sells_degraded_warrant_without_break_signal():
     assert len(result.positions_to_sell) == 1
     assert result.positions_to_sell[0].sell_reason == "warrant_degraded"
     assert len(result.positions_to_keep) == 0
+
+
+@pytest.mark.asyncio
+async def test_monitoring_keeps_non_degraded_without_exit_signal():
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"A": "HOLD"},
+            underlying_names={"A": "Alpha Corp"},
+            current_holdings=[
+                Position(
+                    ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                    quantity=Decimal("1"),
+                    avg_cost=Decimal("0"),
+                )
+            ],
+            warrant_underlying_map={"ISIN1": "A"},
+            held_since_map={"WKN1": date.today() - timedelta(days=1)},
+            warrant_snapshots={
+                "ISIN1": WarrantSnapshot(
+                    warrant_isin="ISIN1",
+                    spread_pct=2.0,
+                    leverage=4.5,
+                    days_to_maturity=120,
+                    delta=0.5,
+                )
+            },
+            max_positions=5,
+        )
+    )
+
+    assert len(result.positions_to_keep) == 1
+    assert len(result.positions_to_sell) == 0
 
 
 @pytest.mark.asyncio
@@ -855,3 +921,100 @@ async def test_monitoring_sells_break_during_grace_with_candle_confirmation():
 
     assert len(result.positions_to_sell) == 1
     assert result.positions_to_sell[0].sell_reason == "exit_signal"
+
+
+@pytest.mark.asyncio
+async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    today = date.today()
+
+    class FakeFinHubTool:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get_warrant_detail(self, isin: str) -> dict | None:
+            if isin == "ISIN1":
+                return {
+                    "market_data": {"spread_percent": 1.8, "bid": 1.9, "ask": 2.1},
+                    "analytics": {"leverage": 4.2, "delta": 0.44},
+                    "reference_data": {"maturity_date": (today + timedelta(days=120)).isoformat()},
+                }
+            if isin == "ISIN2":
+                return {"market_data": {}, "analytics": {}, "reference_data": {}}
+            return None
+
+    monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHubTool)
+
+    pipeline = Pipeline()
+    snapshots = await pipeline._fetch_warrant_snapshots(["ISIN1", "ISIN2", "ISIN3"])
+
+    assert set(snapshots.keys()) == {"ISIN1"}
+    snap = snapshots["ISIN1"]
+    assert snap.spread_pct == 1.8
+    assert snap.leverage == 4.2
+    assert snap.delta == 0.44
+    assert snap.days_to_maturity == 120
+    assert snap.bid_ask_midprice == 2.0
+
+
+@pytest.mark.asyncio
+async def test_run_monitoring_wires_warrant_snapshots_and_sells_degraded(monkeypatch):
+    from app.orchestrator import Pipeline
+
+    pipeline = Pipeline()
+    calls: list[list[str]] = []
+
+    async def fake_fetch_holdings(_run: dict) -> list[Position]:
+        return [
+            Position(
+                ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                quantity=Decimal("1"),
+                avg_cost=Decimal("0"),
+            )
+        ]
+
+    async def fake_warrant_underlying_map(_run: dict, _current_holdings: list[Position] | None = None) -> dict[str, str]:
+        return {"ISIN1": "A"}
+
+    async def fake_held_since(_run: dict) -> dict[str, date]:
+        return {"WKN1": date.today() - timedelta(days=1)}
+
+    async def fake_break_confirmed(_run: dict, _screening: SelectionResult) -> set[str]:
+        return set()
+
+    async def fake_snapshots(isins: list[str]):
+        calls.append(list(isins))
+        return {
+            "ISIN1": WarrantSnapshot(
+                warrant_isin="ISIN1",
+                spread_pct=3.5,
+            )
+        }
+
+    monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
+    monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
+    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
+
+    screening = SelectionResult(
+        selected=[Ticker(symbol="A")],
+        scores={"A": 1.0},
+        rationale={},
+        trend_signals={"A": "HOLD"},
+    )
+    run = {
+        "stages": {"screening": {"result": screening.model_dump(mode="json")}},
+        "config_overrides": {"portfolio": {"max_positions": 5}},
+    }
+
+    result = await pipeline._run_monitoring(run)
+
+    assert calls == [["ISIN1"]]
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].sell_reason == "warrant_degraded"
