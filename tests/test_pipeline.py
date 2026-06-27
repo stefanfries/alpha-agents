@@ -5,11 +5,12 @@ import numpy as np
 import pytest
 
 from app.agents.execution import TradeExecutionAgent
+from app.agents.monitoring import MonitoringAgent, MonitoringInput, WarrantSnapshot
 from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.risk import RiskAgent
 from app.agents.screening import SecuritySelectionAgent
 from app.agents.warrant_selection import WarrantSelectionAgent
-from app.config import resolve_warrant_selection_settings
+from app.config import MonitoringSettings, resolve_warrant_selection_settings
 from app.models.market import OHLCV, Position, Ticker
 from app.models.signals import ResearchResult, SelectionResult, WarrantSelectionResult
 
@@ -709,3 +710,92 @@ async def test_fetch_holdings_ignores_zero_quantity_positions(monkeypatch):
     assert len(holdings) == 1
     assert holdings[0].ticker.symbol == "W3"
     assert holdings[0].quantity == Decimal("2")
+
+
+def test_monitoring_warrant_health_check_flags_threshold_breaches():
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+
+    degraded, detail = agent._check_warrant_health(
+        warrant_isin="DE000TEST123",
+        snapshot=WarrantSnapshot(
+            warrant_isin="DE000TEST123",
+            spread_pct=2.6,
+            leverage=2.5,
+            days_to_maturity=59,
+            delta=0.75,
+        ),
+    )
+
+    assert degraded is True
+    assert detail is not None
+    assert "spread_too_wide" in detail
+    assert "leverage_too_low" in detail
+    assert "maturity_too_short" in detail
+    assert "delta_too_high" in detail
+
+
+@pytest.mark.asyncio
+async def test_monitoring_sells_degraded_warrant_without_break_signal():
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"A": "HOLD"},
+            underlying_names={"A": "Alpha Corp"},
+            current_holdings=[
+                Position(
+                    ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                    quantity=Decimal("1"),
+                    avg_cost=Decimal("0"),
+                )
+            ],
+            warrant_underlying_map={"ISIN1": "A"},
+            held_since_map={"WKN1": date.today() - timedelta(days=1)},
+            warrant_snapshots={
+                "ISIN1": WarrantSnapshot(
+                    warrant_isin="ISIN1",
+                    spread_pct=3.1,
+                )
+            },
+            max_positions=5,
+        )
+    )
+
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].sell_reason == "warrant_degraded"
+    assert len(result.positions_to_keep) == 0
+
+
+@pytest.mark.asyncio
+async def test_monitoring_prefers_warrant_degraded_over_exit_signal():
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"A": "BREAK"},
+            underlying_names={"A": "Alpha Corp"},
+            current_holdings=[
+                Position(
+                    ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                    quantity=Decimal("1"),
+                    avg_cost=Decimal("0"),
+                )
+            ],
+            warrant_underlying_map={"ISIN1": "A"},
+            held_since_map={"WKN1": date.today() - timedelta(days=30)},
+            warrant_snapshots={
+                "ISIN1": WarrantSnapshot(
+                    warrant_isin="ISIN1",
+                    spread_pct=3.1,
+                )
+            },
+            max_positions=5,
+        )
+    )
+
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].sell_reason == "warrant_degraded"

@@ -39,7 +39,46 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
 
     def __init__(self, settings: MonitoringSettings, max_positions: int = 15) -> None:
         self._min_holding_days = settings.min_holding_days
+        self._warrant_health = settings.warrant_health
         self._max_positions = max_positions
+
+    def _check_warrant_health(
+        self,
+        warrant_isin: str,
+        snapshot: WarrantSnapshot,
+    ) -> tuple[bool, str | None]:
+        """Evaluate held warrant against health thresholds."""
+        if not self._warrant_health.enabled:
+            return False, None
+
+        reasons: list[str] = []
+
+        if snapshot.spread_pct is not None and snapshot.spread_pct > self._warrant_health.spread_max_pct:
+            reasons.append(f"spread_too_wide:{snapshot.spread_pct:.2f}%")
+
+        if snapshot.leverage is not None:
+            if snapshot.leverage < self._warrant_health.leverage_min:
+                reasons.append(f"leverage_too_low:{snapshot.leverage:.2f}x")
+            elif snapshot.leverage > self._warrant_health.leverage_max:
+                reasons.append(f"leverage_too_high:{snapshot.leverage:.2f}x")
+
+        if (
+            snapshot.days_to_maturity is not None
+            and snapshot.days_to_maturity < self._warrant_health.min_days_to_maturity
+        ):
+            reasons.append(f"maturity_too_short:{snapshot.days_to_maturity}d")
+
+        if snapshot.delta is not None:
+            if snapshot.delta < self._warrant_health.delta_min:
+                reasons.append(f"delta_too_low:{snapshot.delta:.3f}")
+            elif snapshot.delta > self._warrant_health.delta_max:
+                reasons.append(f"delta_too_high:{snapshot.delta:.3f}")
+
+        is_degraded = len(reasons) > 0
+        detail = " | ".join(reasons) if reasons else None
+        if is_degraded:
+            logger.info("Monitoring: degraded warrant %s (%s)", warrant_isin, detail)
+        return is_degraded, detail
 
     async def run(self, input: MonitoringInput) -> MonitoringResult:
         today = date.today()
@@ -78,6 +117,11 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             trend_signal = input.trend_signals.get(underlying_sym)
             has_exit_signal = trend_signal == "BREAK"
 
+            warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
+            is_degraded, degrade_detail = False, None
+            if warrant_snapshot:
+                is_degraded, degrade_detail = self._check_warrant_health(warrant_isin, warrant_snapshot)
+
             review = PositionReview(
                 underlying_symbol=underlying_sym,
                 underlying_name=underlying_name,
@@ -86,7 +130,16 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 held_since=held_since,
             )
 
-            if has_exit_signal and holding_days >= self._min_holding_days:
+            if is_degraded:
+                review.sell_reason = "warrant_degraded"
+                positions_to_sell.append(review)
+                logger.info(
+                    "Monitoring: warrant degraded for %s (detail=%s) -> SELL %s",
+                    underlying_sym,
+                    degrade_detail,
+                    warrant_wkn,
+                )
+            elif has_exit_signal and holding_days >= self._min_holding_days:
                 review.sell_reason = "exit_signal"
                 positions_to_sell.append(review)
                 logger.info(

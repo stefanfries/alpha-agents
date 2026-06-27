@@ -370,9 +370,9 @@ async def _find_roll_replacement(
 
 ### Phase M1.2: Agent Logic
 
-- [ ] Implement `_check_warrant_health()` method in `MonitoringAgent`
-- [ ] Integrate health checks into `run()` decision tree
-- [ ] Update logging to include degradation details
+- [x] Implement `_check_warrant_health()` method in `MonitoringAgent`
+- [x] Integrate health checks into `run()` decision tree
+- [x] Update logging to include degradation details
 
 ### Phase M1.3: Orchestrator Data Flow
 
