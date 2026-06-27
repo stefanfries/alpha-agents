@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Reconcile the current depot state with the latest screening results before any new warrant is selected or bought. Determine which held positions should be kept, which should be sold, and which screening candidates are eligible for new entry. This is the fourth pipeline stage.
+Reconcile current depot holdings with screening signals and warrant health before new entries are selected. Determine which held positions should be kept, sold, or rolled, and which screening candidates are eligible for entry. This is the fourth pipeline stage.
 
 ## Input
 
@@ -11,12 +11,14 @@ Reconcile the current depot state with the latest screening results before any n
 ```python
 class MonitoringInput(BaseModel):
     candidates: list[Ticker]               # from SelectionResult.selected (top-N ranked)
-    scores: dict[str, float]               # underlying_symbol → TQ score
+    scores: dict[str, float]               # underlying_symbol → score
     trend_signals: dict[str, str | None]   # underlying_symbol → "NEW" | "HOLD" | "BREAK" | None
-  underlying_names: dict[str, str]       # underlying_symbol -> display name
+    underlying_names: dict[str, str]       # underlying_symbol -> display name
     current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
-  warrant_underlying_map: dict[str, str] # warrant_isin / warrant_wkn -> underlying_symbol
+    warrant_underlying_map: dict[str, str] # warrant_isin / warrant_wkn -> underlying_symbol
     held_since_map: dict[str, date]        # warrant_wkn → most recent BUY date
+    warrant_snapshots: dict[str, WarrantSnapshot]  # held warrant health snapshots
+    break_confirmed_symbols: set[str]      # symbols with candle-confirmed BREAK
     max_positions: int                     # from execution config override or PortfolioSettings
 ```
 
@@ -30,40 +32,52 @@ The orchestrator builds `MonitoringInput` from:
   - persisted `warrant_underlying_map` cache
   - FinHub `/v1/instruments` fallback resolution (ISIN first, WKN fallback)
 - `held_since_map` from `virtual_depot_transactions` via `_fetch_held_since()`
+- `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()`
+- `break_confirmed_symbols` via `_break_confirmed_symbols()` comparing prior run/candle context
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
 
 ## Output
 
 ```python
 class MonitoringResult(BaseModel):
-    positions_to_sell: list[PositionReview]  # exit signal confirmed → SELL
-    positions_to_keep: list[PositionReview]  # no exit trigger → KEEP
+  positions_to_sell: list[PositionReview]  # SELL decisions
+  positions_to_keep: list[PositionReview]  # HOLD decisions
+  positions_to_roll: list[PositionReview]  # ROLL decisions with replacement suggestion
     entry_candidates: list[Ticker]           # filtered and capped to free_positions
     free_positions: int                      # max_positions − len(current_holdings)
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
 ```
 
-`PositionReview` fields: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`, `held_since`, `sell_reason` (`"exit_signal"` or `None`).
+`PositionReview` fields: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`, `held_since`, `sell_reason` (`"exit_signal"` or `"warrant_degraded"`), and optional `roll_replacement`.
 
 ## Tools used
 
-None — operates on data provided by the orchestrator.
+None directly. External lookups for roll replacement are orchestrated in `Pipeline._run_monitoring()`.
 
 ## Behaviour
 
 ### For each held position
 
-1. **Resolve underlying symbol** from `warrant_underlying_map[warrant_isin]`, fallback `warrant_underlying_map[warrant_wkn]`.
-   - If not found (no mapping available): mark as KEEP with `underlying_symbol=""` (safe default).
-2. **Resolve underlying display name** from `underlying_names[underlying_symbol]` when available.
-  - Name precedence is enforced by orchestrator:
-    - universe name via underlying ISIN
-    - cached fallback name
-3. **Check holding period**: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
-4. **Check exit signal**: `trend_signals[underlying_symbol] == "BREAK"`.
-5. Decision:
-   - `has_exit_signal AND holding_days >= min_holding_days` → **SELL** (`sell_reason="exit_signal"`)
-   - Otherwise → **KEEP**
+- Resolve underlying symbol from `warrant_underlying_map[warrant_isin]`, fallback `warrant_underlying_map[warrant_wkn]`. If not found (no mapping available), mark as KEEP with `underlying_symbol=""` (safe default).
+- Resolve underlying display name from `underlying_names[underlying_symbol]` when available. Name precedence is enforced by orchestrator: universe name via underlying ISIN, then cached fallback name.
+- Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
+- Check exit signal: `trend_signals[underlying_symbol] == "BREAK"`.
+- Evaluate warrant health via `_check_warrant_health()` using available snapshot metrics (`spread_pct`, `leverage`, `days_to_maturity`, `delta`).
+- Resolve action via `_decide_action`:
+  - `has_exit_signal AND (is_degraded OR exit_triggered)` => **SELL** (`sell_reason` is `warrant_degraded` for degraded path, else `exit_signal`)
+  - `is_degraded` without exit signal => **ROLL**
+  - otherwise => **KEEP**
+
+Where `exit_triggered = has_exit_signal AND (holding_days >= min_holding_days OR is_break_confirmed)`.
+
+### Roll replacement enrichment (orchestrator)
+
+After the agent returns, the orchestrator resolves roll candidates:
+
+- `_find_roll_replacement()` queries `WarrantSelectionAgent` for the same underlying.
+- If no replacement found → downgrade to **SELL** (`warrant_degraded`).
+- If replacement is worse (`_is_roll_replacement_worse`) than current snapshot (wider spread or shorter maturity) → downgrade to **HOLD**.
+- Otherwise attach `roll_replacement` details and keep as **ROLL**.
 
 ### Entry candidate selection
 
@@ -80,8 +94,18 @@ None — operates on data provided by the orchestrator.
 | Dimension | Entry | Exit |
 | --------- | ----- | ---- |
 | Criterion | ALL policies must pass (enforced in Screening) | ANY BREAK policy fires |
-| Grace period | n/a | `min_holding_days` (default 5) |
+| Grace period | n/a | `min_holding_days` (default 5), bypassed by confirmed BREAK |
 | Same-run re-entry | Excluded for any sold underlying | — |
+
+### Three-state action matrix
+
+| Warrant Degraded | Exit Signal | Grace/Confirm | Action |
+| --- | --- | --- | --- |
+| ✓ | ✓ | any | SELL |
+| ✓ | ✗ | — | ROLL |
+| ✗ | ✓ | met | SELL |
+| ✗ | ✓ | not met | HOLD |
+| ✗ | ✗ | — | HOLD |
 
 ## Configuration (`MonitoringSettings`)
 
@@ -89,6 +113,14 @@ None — operates on data provided by the orchestrator.
 | --- | ------- | ----- |
 | `min_holding_days` | `5` | Grace period — exit signal ignored if position held fewer days |
 | `re_entry_prevention_days` | `10` | Intended for future re-entry prevention from transaction history (not yet implemented) |
+
+`MonitoringSettings` also includes `warrant_health` thresholds:
+
+- `enabled` (default `True`)
+- `spread_max_pct` (`2.5`)
+- `leverage_min` (`3.0`), `leverage_max` (`8.0`)
+- `min_days_to_maturity` (`60`)
+- `delta_min` (`0.3`), `delta_max` (`0.7`)
 
 Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`.
 
@@ -111,6 +143,6 @@ Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`
 
 ## Known limitations / TODO
 
-- **Warrant health checks** (spread %, days to maturity) are not yet implemented. ADR-011 plans a `warrant_degraded` sell reason; currently only `exit_signal` is supported.
 - **Re-entry prevention from history**: `re_entry_prevention_days` is stored but the agent does not yet query transaction history to exclude recently-sold underlyings from entry. Currently only currently-held symbols are excluded.
 - **Real depot held-since**: `_fetch_held_since` only reads `virtual_depot_transactions`. For real Comdirect depots the purchase date is not tracked.
+- **Roll approval flow**: roll suggestions are produced, but downstream approval UX is still basic and relies on stage review/approval flow.

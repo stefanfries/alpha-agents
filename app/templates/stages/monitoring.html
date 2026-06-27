@@ -22,6 +22,7 @@
   {% if stage_result %}
   {% set r = stage_result %}
   {% set unresolved = r.positions_to_keep | selectattr('underlying_symbol', 'equalto', '') | list %}
+  {% set rolls = r.positions_to_roll | default([], true) | list %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
 
     {% if unresolved %}
@@ -40,7 +41,7 @@
     {# --- Summary cards --- #}
     <div class="flex-shrink-0 mb-3">
       {% set max_positions = execution.get('config_overrides', {}).get('portfolio', {}).get('max_positions', 15) %}
-      {% set current_positions = (r.positions_to_keep | default([], true) | length) + (r.positions_to_sell | default([], true) | length) %}
+      {% set current_positions = (r.positions_to_keep | default([], true) | length) + (r.positions_to_sell | default([], true) | length) + (rolls | length) %}
       {% set free_after_sells = r.free_positions + (r.positions_to_sell | length) %}
       <div class="row g-3">
         <div class="col-auto">
@@ -65,6 +66,12 @@
           <div class="card text-center px-4 py-3 shadow-sm border-success">
             <div class="fs-3 fw-bold text-success">{{ r.positions_to_keep | length }}</div>
             <div class="text-muted small">Keep</div>
+          </div>
+        </div>
+        <div class="col-auto">
+          <div class="card text-center px-4 py-3 shadow-sm border-primary">
+            <div class="fs-3 fw-bold text-primary">{{ rolls | length }}</div>
+            <div class="text-muted small">Roll</div>
           </div>
         </div>
         <div class="col-auto">
@@ -104,7 +111,7 @@
               <col style="width:14%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_sell %}
@@ -113,11 +120,76 @@
                 <td>{{ p.underlying_name or "—" }}</td>
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td><span class="badge bg-danger bg-opacity-10 text-danger">{{ p.sell_reason }}</span></td>
+                <td><span class="badge bg-danger bg-opacity-10 text-danger">SELL</span></td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
+        </div>
+        {% endif %}
+
+        {# --- Rolls --- #}
+        {% if rolls %}
+        <div>
+          <h6 class="text-primary mb-2">Roll recommendations</h6>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%">
+            <colgroup>
+              <col style="width:12%">
+              <col style="width:28%">
+              <col style="width:12%">
+              <col style="width:12%">
+              <col style="width:10%">
+              <col style="width:26%">
+            </colgroup>
+            <thead class="table-light">
+              <tr><th>Symbol</th><th>Underlying name</th><th>Current WKN</th><th>Held since</th><th>Action</th><th>Replacement</th></tr>
+            </thead>
+            <tbody>
+              {% for p in rolls %}
+              <tr>
+                <td><code>{{ p.underlying_symbol }}</code></td>
+                <td>{{ p.underlying_name or "—" }}</td>
+                <td><code>{{ p.warrant_wkn }}</code></td>
+                <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td><span class="badge bg-primary bg-opacity-10 text-primary">ROLL</span></td>
+                <td>
+                  {% if p.roll_replacement %}
+                  <div class="small">
+                    <div><code>{{ p.roll_replacement.warrant_wkn or p.roll_replacement.warrant_isin }}</code></div>
+                    <div class="text-muted">{{ p.roll_replacement.maturity_date or "—" }} | Strike {{ p.roll_replacement.strike if p.roll_replacement.strike is not none else "—" }}</div>
+                  </div>
+                  {% else %}
+                  <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <div class="row g-3">
+            {% for p in rolls if p.roll_replacement %}
+            {% set repl = p.roll_replacement %}
+            <div class="col-12 col-lg-6">
+              <div class="card shadow-sm border-primary-subtle h-100">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0"><code>{{ p.underlying_symbol }}</code> replacement</h6>
+                    <span class="badge bg-primary bg-opacity-10 text-primary">ROLL</span>
+                  </div>
+                  <div class="small"><strong>Current:</strong> <code>{{ p.warrant_wkn }}</code> ({{ p.warrant_isin }})</div>
+                  <div class="small mb-2"><strong>Suggested:</strong> <code>{{ repl.warrant_wkn }}</code> ({{ repl.warrant_isin }})</div>
+                  <div class="small text-muted">Maturity: {{ repl.maturity_date or "—" }}</div>
+                  <div class="small text-muted">Strike: {{ repl.strike if repl.strike is not none else "—" }}</div>
+                  <div class="small text-muted">Spread %: {{ repl.spread_pct if repl.spread_pct is not none else "—" }}</div>
+                  <div class="small text-muted">Leverage: {{ repl.leverage if repl.leverage is not none else "—" }}</div>
+                  <div class="small text-muted">Delta: {{ repl.delta if repl.delta is not none else "—" }}</div>
+                  <div class="small text-muted">Score: {{ repl.score if repl.score is not none else "—" }}</div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
         </div>
         {% endif %}
 
@@ -134,7 +206,7 @@
               <col style="width:14%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
@@ -143,7 +215,7 @@
                 <td>{{ p.underlying_name or "—" }}</td>
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td class="text-muted">—</td>
+                <td><span class="badge bg-success bg-opacity-10 text-success">HOLD</span></td>
               </tr>
               {% endfor %}
             </tbody>

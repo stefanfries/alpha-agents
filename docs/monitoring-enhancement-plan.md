@@ -396,9 +396,9 @@ async def _find_roll_replacement(
 
 ### Phase M1.6: UI & Documentation
 
-- [ ] Update [docs/agents/monitoring.md](docs/agents/monitoring.md) with three-state decision logic (HOLD, SELL, ROLL)
-- [ ] Update monitoring results template to show action column (HOLD | SELL | ROLL) with color coding
-- [ ] Add `roll_replacement` details panel (suggested ISIN, strike, maturity, projected improvement)
+- [x] Update [docs/agents/monitoring.md](docs/agents/monitoring.md) with three-state decision logic (HOLD, SELL, ROLL)
+- [x] Update monitoring results template to show action column (HOLD | SELL | ROLL) with color coding
+- [x] Add `roll_replacement` details panel (suggested ISIN, strike, maturity, projected improvement)
 - [ ] Add configuration guide with holding warrant thresholds
 - [ ] Document ROLL workflow and manual approval requirements
 
