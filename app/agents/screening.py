@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 
 import numpy as np
 import talib
@@ -81,6 +82,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         rationale: dict[str, str] = {}
         policy_results: dict[str, dict[str, bool]] = {}
         trend_signals: dict[str, str | None] = {}
+        latest_candle_dates: dict[str, date] = {}
+        previous_candle_dates: dict[str, date] = {}
         candidate_symbols: set[str] = set()
 
         for ticker in input.tickers:
@@ -98,6 +101,10 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 rationale[symbol] = f"Skipped: only {len(bars)} bars (minimum {_MIN_BARS})"
                 scores[symbol] = 0.0
                 continue
+
+            latest_candle_dates[symbol] = bars[-1].date
+            if len(bars) >= 2:
+                previous_candle_dates[symbol] = bars[-2].date
 
             # --- Score ---
             tq = self._trend_quality(bars, self._lookback_regression)
@@ -174,6 +181,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             rank_changes=rank_changes,
             history_labels=history_labels,
             trend_signals=trend_signals,
+            latest_candle_dates=latest_candle_dates,
+            previous_candle_dates=previous_candle_dates,
         )
 
     # ------------------------------------------------------------------ #

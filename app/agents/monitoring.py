@@ -31,6 +31,7 @@ class MonitoringInput(BaseModel):
     warrant_underlying_map: dict[str, str]     # warrant_isin → underlying_symbol
     held_since_map: dict[str, date]            # warrant_wkn → most recent BUY date
     warrant_snapshots: dict[str, WarrantSnapshot] = Field(default_factory=dict)
+    break_confirmed_symbols: set[str] = Field(default_factory=set)
     max_positions: int = 15
 
 
@@ -116,6 +117,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             # Check exit signal: ANY break criterion already evaluated by screening
             trend_signal = input.trend_signals.get(underlying_sym)
             has_exit_signal = trend_signal == "BREAK"
+            is_break_confirmed = underlying_sym in input.break_confirmed_symbols
 
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
             is_degraded, degrade_detail = False, None
@@ -139,12 +141,12 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                     degrade_detail,
                     warrant_wkn,
                 )
-            elif has_exit_signal and holding_days >= self._min_holding_days:
+            elif has_exit_signal and (holding_days >= self._min_holding_days or is_break_confirmed):
                 review.sell_reason = "exit_signal"
                 positions_to_sell.append(review)
                 logger.info(
-                    "Monitoring: exit signal for %s (held %d days, signal=%s) → SELL %s",
-                    underlying_sym, holding_days, trend_signal, warrant_wkn,
+                    "Monitoring: exit signal for %s (held %d days, signal=%s, confirmed=%s) -> SELL %s",
+                    underlying_sym, holding_days, trend_signal, is_break_confirmed, warrant_wkn,
                 )
             else:
                 positions_to_keep.append(review)

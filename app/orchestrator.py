@@ -247,6 +247,7 @@ class Pipeline:
             for symbol, name in (await self._underlying_names_from_cache(held_identifiers)).items():
                 underlying_names.setdefault(symbol, name)
         held_since_map = await self._fetch_held_since(run)
+        break_confirmed_symbols = await self._break_confirmed_symbols(run, screening)
         overrides = run.get("config_overrides", {}).get("monitoring", {})
         mon_cfg = settings.monitoring.model_copy(update=overrides)
         return await MonitoringAgent(
@@ -260,8 +261,46 @@ class Pipeline:
             current_holdings=current_holdings,
             warrant_underlying_map=warrant_underlying_map,
             held_since_map=held_since_map,
+            break_confirmed_symbols=break_confirmed_symbols,
             max_positions=max_positions,
         ))
+
+    async def _break_confirmed_symbols(self, run: dict, screening: SelectionResult) -> set[str]:
+        """Confirm BREAK on two consecutive closed candles (same-day reruns don't count)."""
+        previous_break_candles = await self._previous_break_candle_dates(run)
+        confirmed: set[str] = set()
+        for symbol, signal in screening.trend_signals.items():
+            if signal != "BREAK":
+                continue
+            previous_candle = screening.previous_candle_dates.get(symbol)
+            if previous_candle and previous_break_candles.get(symbol) == previous_candle:
+                confirmed.add(symbol)
+        return confirmed
+
+    async def _previous_break_candle_dates(self, run: dict) -> dict[str, date]:
+        """Return prior execution BREAK candle dates by symbol for this quant system."""
+        qs_id = run.get("quant_system_id")
+        if not qs_id:
+            return {}
+        previous_run = await executions_collection().find_one(
+            {
+                "quant_system_id": qs_id,
+                "execution_id": {"$ne": run["execution_id"]},
+                "stages.screening.result": {"$exists": True},
+            },
+            sort=[("created_at", -1)],
+        )
+        if not previous_run:
+            return {}
+        screening_data = previous_run.get("stages", {}).get("screening", {}).get("result")
+        if not screening_data:
+            return {}
+        previous_screening = SelectionResult.model_validate(screening_data)
+        return {
+            symbol: candle_date
+            for symbol, candle_date in previous_screening.latest_candle_dates.items()
+            if previous_screening.trend_signals.get(symbol) == "BREAK"
+        }
 
     async def _fetch_warrant_underlying_map(self, run: dict, holdings: list[Position]) -> dict[str, str]:
         """Resolve map for held warrants using: previous run -> cache -> FinHub fallback.

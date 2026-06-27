@@ -40,6 +40,8 @@ class SelectionResult(BaseModel):
     rank_changes: dict[str, list[int | None]] = {}  # sym → [delta_1w, delta_2w]
     history_labels: list[str] = []
     trend_signals: dict[str, str | None] = {}  # sym → "NEW" | "HOLD" | "BREAK" | None
+    latest_candle_dates: dict[str, date] = {}
+    previous_candle_dates: dict[str, date] = {}
 
 
 class SelectedWarrant(BaseModel):

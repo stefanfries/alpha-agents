@@ -412,7 +412,8 @@ async def _find_roll_replacement(
    - YES + Exit signal (trend broken) → **SELL** (exit completely)
    - YES + No exit signal (trend intact) → **ROLL** (replace warrant, stay in trade)
    - NO + Exit signal + grace period met → **SELL** (exit on trend)
-   - NO + No exit signal → **HOLD** (keep position)
+    - NO + Exit signal + grace period not met → **HOLD** unless BREAK is candle-confirmed on two consecutive closed candles
+    - NO + No exit signal → **HOLD** (keep position)
 
 **Matrix:**
 
@@ -422,8 +423,14 @@ async def _find_roll_replacement(
 | ✓ | ✓ | ✗ | **ROLL** (wait grace period, but replace warrant) |
 | ✓ | ✗ | — | **ROLL** (trend intact, just swap warrant) |
 | ✗ | ✓ | ✓ | **SELL** (clean exit) |
-| ✗ | ✓ | ✗ | **HOLD** (await grace period) |
+| ✗ | ✓ | ✗ | **HOLD** (await grace period, unless candle-confirmed BREAK) |
 | ✗ | ✗ | — | **HOLD** (no action) |
+
+**Candle confirmation rule (anti-overtrading during development):**
+
+- Same-day re-runs do not count as confirmation.
+- Confirmed BREAK requires BREAK on two consecutive closed candles.
+- Implementation compares the previous run's BREAK candle date with the current run's previous candle date.
 
 **Rationale:**
 

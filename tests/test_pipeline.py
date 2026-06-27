@@ -799,3 +799,59 @@ async def test_monitoring_prefers_warrant_degraded_over_exit_signal():
 
     assert len(result.positions_to_sell) == 1
     assert result.positions_to_sell[0].sell_reason == "warrant_degraded"
+
+
+@pytest.mark.asyncio
+async def test_monitoring_holds_break_during_grace_without_candle_confirmation():
+    agent = MonitoringAgent(settings=MonitoringSettings(min_holding_days=5), max_positions=5)
+
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"A": "BREAK"},
+            underlying_names={"A": "Alpha Corp"},
+            current_holdings=[
+                Position(
+                    ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                    quantity=Decimal("1"),
+                    avg_cost=Decimal("0"),
+                )
+            ],
+            warrant_underlying_map={"ISIN1": "A"},
+            held_since_map={"WKN1": date.today() - timedelta(days=1)},
+            break_confirmed_symbols=set(),
+            max_positions=5,
+        )
+    )
+
+    assert len(result.positions_to_keep) == 1
+    assert len(result.positions_to_sell) == 0
+
+
+@pytest.mark.asyncio
+async def test_monitoring_sells_break_during_grace_with_candle_confirmation():
+    agent = MonitoringAgent(settings=MonitoringSettings(min_holding_days=5), max_positions=5)
+
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"A": "BREAK"},
+            underlying_names={"A": "Alpha Corp"},
+            current_holdings=[
+                Position(
+                    ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                    quantity=Decimal("1"),
+                    avg_cost=Decimal("0"),
+                )
+            ],
+            warrant_underlying_map={"ISIN1": "A"},
+            held_since_map={"WKN1": date.today() - timedelta(days=1)},
+            break_confirmed_symbols={"A"},
+            max_positions=5,
+        )
+    )
+
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].sell_reason == "exit_signal"
