@@ -443,6 +443,32 @@ MONITORING__WARRANT_HEALTH__DELTA_MAX=0.80
 
 Manual approval requirement: ROLL is advisory until the monitoring stage is approved in HITL mode; no replacement order is executed automatically before approval.
 
+### M1.6 Monitoring KPIs and Tuning Runbook
+
+Recommended KPI set per approved monitoring run:
+
+| KPI | Formula | Intent |
+| --- | --- | --- |
+| `roll_rate` | `len(positions_to_roll) / current_holdings_count` | Monitor replacement churn |
+| `sell_rate` | `len(positions_to_sell) / current_holdings_count` | Monitor hard exits |
+| `avg_holding_days_roll` | Mean holding days of rolled positions | Detect early-roll behavior |
+| `avg_holding_days_sell` | Mean holding days of sold positions | Detect premature sells |
+| `replacement_fail_rate` | `(roll_candidates - resolved_rolls) / roll_candidates` | Measure roll fallback quality |
+
+Suggested guardrails for trend-following baseline:
+
+- `roll_rate > 0.20` for 3 consecutive runs
+- `replacement_fail_rate > 0.30` for 3 consecutive runs
+
+Adjustment runbook (single-variable changes only):
+
+1. Freeze parameter set for 3-4 weeks before interpreting results.
+2. If `roll_rate` breaches guardrail, first increase `MONITORING__WARRANT_HEALTH__DELTA_MAX` by `+0.05`.
+3. If churn remains elevated, increase `MONITORING__MIN_HOLDING_DAYS` by `+2`.
+4. If risk exposure appears excessive, reduce `MONITORING__WARRANT_HEALTH__DELTA_MAX` by `-0.05`.
+5. If degraded warrants are held too close to expiry, increase `MONITORING__WARRANT_HEALTH__MIN_DAYS_TO_MATURITY` by `+15`.
+6. Hold changes for at least 2 weeks between adjustments and record KPI deltas.
+
 ---
 
 ## Decision Priority (Three-State Model)

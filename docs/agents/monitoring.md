@@ -162,6 +162,34 @@ MONITORING__WARRANT_HEALTH__DELTA_MIN=0.25
 MONITORING__WARRANT_HEALTH__DELTA_MAX=0.80
 ```
 
+### Monitoring KPIs (recommended)
+
+Track these KPIs per approved monitoring run to evaluate parameter fit for trend following:
+
+| KPI | Formula | Why it matters |
+| --- | --- | --- |
+| `roll_rate` | `len(positions_to_roll) / current_holdings_count` | Detects replacement churn while trend remains intact |
+| `sell_rate` | `len(positions_to_sell) / current_holdings_count` | Captures hard exits and trend-break intensity |
+| `avg_holding_days_roll` | Mean holding days for rolled positions | Indicates whether rolls happen too early |
+| `avg_holding_days_sell` | Mean holding days for sold positions | Distinguishes normal exits from premature exits |
+| `replacement_fail_rate` | `(roll_candidates - resolved_rolls) / roll_candidates` | Measures how often roll suggestions degrade to SELL/HOLD |
+
+Guardrail suggestions for the baseline profile:
+
+- `roll_rate > 0.20` for 3 consecutive runs -> churn likely too high
+- `replacement_fail_rate > 0.30` for 3 consecutive runs -> replacement quality/filtering issue
+
+### Tuning runbook (one knob at a time)
+
+- Freeze parameters for at least 3-4 weeks (or a statistically meaningful number of runs).
+- Review KPIs weekly and compare against guardrails.
+- If churn is too high, first increase `MONITORING__WARRANT_HEALTH__DELTA_MAX` by `+0.05` (cap at `0.90`).
+- If churn remains elevated after the prior step, increase `MONITORING__MIN_HOLDING_DAYS` by `+2`.
+- If risk is too high (positions held too long in degraded state), decrease `MONITORING__WARRANT_HEALTH__DELTA_MAX` by `-0.05`.
+- If degraded warrants are held too close to expiry, increase `MONITORING__WARRANT_HEALTH__MIN_DAYS_TO_MATURITY` by `+15`.
+- After each single change, run at least 2 weeks before further adjustments.
+- Record each change with timestamp, rationale, and expected KPI impact.
+
 ## ROLL workflow and manual approval
 
 - Monitoring emits `positions_to_roll` when action resolves to ROLL.
