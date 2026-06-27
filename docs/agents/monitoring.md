@@ -40,9 +40,9 @@ The orchestrator builds `MonitoringInput` from:
 
 ```python
 class MonitoringResult(BaseModel):
-  positions_to_sell: list[PositionReview]  # SELL decisions
-  positions_to_keep: list[PositionReview]  # HOLD decisions
-  positions_to_roll: list[PositionReview]  # ROLL decisions with replacement suggestion
+    positions_to_sell: list[PositionReview]  # SELL decisions
+    positions_to_keep: list[PositionReview]  # HOLD decisions
+    positions_to_roll: list[PositionReview]  # ROLL decisions with replacement suggestion
     entry_candidates: list[Ticker]           # filtered and capped to free_positions
     free_positions: int                      # max_positions − len(current_holdings)
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
@@ -63,12 +63,12 @@ None directly. External lookups for roll replacement are orchestrated in `Pipeli
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
 - Check exit signal: `trend_signals[underlying_symbol] == "BREAK"`.
 - Evaluate warrant health via `_check_warrant_health()` using available snapshot metrics (`spread_pct`, `leverage`, `days_to_maturity`, `delta`).
-- Resolve action via `_decide_action`:
-  - `has_exit_signal AND (is_degraded OR exit_triggered)` => **SELL** (`sell_reason` is `warrant_degraded` for degraded path, else `exit_signal`)
-  - `is_degraded` without exit signal => **ROLL**
+- Resolve action via `_decide_action` (trend-first):
+  - confirmed BREAK (`has_exit_signal AND is_break_confirmed`) => **SELL** (`sell_reason="exit_signal"`)
+  - trend not confirmed broken + degraded + roll grace met (`holding_days >= min_holding_days`) => **ROLL**
   - otherwise => **KEEP**
 
-Where `exit_triggered = has_exit_signal AND (holding_days >= min_holding_days OR is_break_confirmed)`.
+Confirmed BREAK is derived from two consecutive closed-candle BREAK signals.
 
 ### Roll replacement enrichment (orchestrator)
 
@@ -94,24 +94,24 @@ After the agent returns, the orchestrator resolves roll candidates:
 | Dimension | Entry | Exit |
 | --------- | ----- | ---- |
 | Criterion | ALL policies must pass (enforced in Screening) | ANY BREAK policy fires |
-| Grace period | n/a | `min_holding_days` (default 5), bypassed by confirmed BREAK |
+| Grace period | n/a | Used only as ROLL grace (not SELL grace) |
 | Same-run re-entry | Excluded for any sold underlying | — |
 
 ### Three-state action matrix
 
-| Warrant Degraded | Exit Signal | Grace/Confirm | Action |
+| Confirmed BREAK | Warrant Degraded | Roll Grace Met | Action |
 | --- | --- | --- | --- |
 | ✓ | ✓ | any | SELL |
-| ✓ | ✗ | — | ROLL |
-| ✗ | ✓ | met | SELL |
-| ✗ | ✓ | not met | HOLD |
-| ✗ | ✗ | — | HOLD |
+| ✓ | ✗ | any | SELL |
+| ✗ | ✓ | ✓ | ROLL |
+| ✗ | ✓ | ✗ | HOLD |
+| ✗ | ✗ | any | HOLD |
 
 ## Configuration (`MonitoringSettings`)
 
 | Key | Default | Notes |
 | --- | ------- | ----- |
-| `min_holding_days` | `5` | Grace period — exit signal ignored if position held fewer days |
+| `min_holding_days` | `5` | Grace period before degraded warrants are eligible for ROLL |
 | `re_entry_prevention_days` | `10` | Intended for future re-entry prevention from transaction history (not yet implemented) |
 
 `MonitoringSettings` also includes `warrant_health` thresholds:

@@ -133,7 +133,7 @@ class MonitoringWarrantHealthSettings(BaseModel):
 
 
 class MonitoringSettings(BaseModel):
-    min_holding_days: int = 5        # grace period before exit signal can trigger a sell
+    min_holding_days: int = 5        # grace period before degraded warrants are eligible for ROLL
     re_entry_prevention_days: int = 10  # days after selling before same underlying can be re-entered
     warrant_health: MonitoringWarrantHealthSettings = Field(default_factory=MonitoringWarrantHealthSettings)
 

@@ -289,7 +289,9 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         current_passes_new = prev_pn
         if last_signal == "NEW" and age <= 5 and current_passes_new:
             return "NEW"
-        if last_signal == "BREAK" and age <= 5:
+        # Expose BREAK for at most two consecutive days (event day + next day)
+        # so monitoring can confirm on consecutive closed candles without 5-day stickiness.
+        if last_signal == "BREAK" and age <= 1:
             return "BREAK"
         if state == "IN_TREND":
             return "HOLD"

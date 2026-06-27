@@ -86,15 +86,21 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
     def _decide_action(
         *,
         has_exit_signal: bool,
-        exit_triggered: bool,
+        is_break_confirmed: bool,
         is_degraded: bool,
+        holding_days: int,
+        min_holding_days: int,
     ) -> tuple[Literal["sell", "roll", "keep"], Literal["warrant_degraded", "exit_signal"] | None]:
-        """Resolve action for one holding from precomputed signal flags."""
-        if has_exit_signal and (is_degraded or exit_triggered):
-            sell_reason: Literal["warrant_degraded", "exit_signal"]
-            sell_reason = "warrant_degraded" if is_degraded else "exit_signal"
-            return "sell", sell_reason
-        if is_degraded:
+        """Resolve action with trend-first priority.
+
+        1) Confirmed BREAK -> SELL (independent of grace and warrant health)
+        2) Trend intact (or unconfirmed BREAK) -> degradation handling
+           - degraded + grace met -> ROLL
+           - otherwise -> KEEP
+        """
+        if has_exit_signal and is_break_confirmed:
+            return "sell", "exit_signal"
+        if is_degraded and holding_days >= min_holding_days:
             return "roll", None
         return "keep", None
 
@@ -150,7 +156,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
 
             all_held_underlyings.add(underlying_sym)
 
-            # Check holding period (grace period applies only to exit signals)
+            # Check holding period (used as grace period for ROLL recommendations)
             held_since = input.held_since_map.get(warrant_wkn)
             holding_days = (today - held_since).days if held_since else 9999
 
@@ -158,10 +164,6 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             trend_signal = input.trend_signals.get(underlying_sym)
             has_exit_signal = trend_signal == "BREAK"
             is_break_confirmed = underlying_sym in input.break_confirmed_symbols
-            exit_triggered = has_exit_signal and (
-                holding_days >= self._min_holding_days or is_break_confirmed
-            )
-
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
             is_degraded, degrade_detail = False, None
             if warrant_snapshot:
@@ -177,8 +179,10 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
 
             action, sell_reason = self._decide_action(
                 has_exit_signal=has_exit_signal,
-                exit_triggered=exit_triggered,
+                is_break_confirmed=is_break_confirmed,
                 is_degraded=is_degraded,
+                holding_days=holding_days,
+                min_holding_days=self._min_holding_days,
             )
 
             match action:

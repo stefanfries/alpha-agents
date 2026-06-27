@@ -408,35 +408,34 @@ async def _find_roll_replacement(
 
 **Evaluation order:**
 
-1. **Warrant health first** — Is warrant degraded?
-   - YES + Exit signal (trend broken) → **SELL** (exit completely)
-   - YES + No exit signal (trend intact) → **ROLL** (replace warrant, stay in trade)
-   - NO + Exit signal + grace period met → **SELL** (exit on trend)
-   - NO + Exit signal + grace period not met → **HOLD** unless BREAK is candle-confirmed on two consecutive closed candles
-   - NO + No exit signal → **HOLD** (keep position)
+1. **Trend health first** — Is BREAK confirmed on consecutive closed candles?
+    - YES → **SELL** (exit immediately, independent of grace period and warrant health)
+2. **If trend is not confirmed broken**, evaluate warrant health:
+    - Warrant degraded + roll grace met → **ROLL** (replace warrant, stay in trade)
+    - Warrant degraded + roll grace not met → **HOLD** (avoid immediate post-entry churn)
+    - Warrant healthy → **HOLD**
 
 **Matrix:**
 
-| Warrant Degraded | Exit Signal | Grace Period | Action |
+| Confirmed BREAK | Warrant Degraded | Roll Grace Met | Action |
 | --- | --- | --- | --- |
-| ✓ | ✓ | ✓ | **SELL** (trend broken) |
-| ✓ | ✓ | ✗ | **SELL** (trend broken; do not preserve exposure) |
-| ✓ | ✗ | — | **ROLL** (trend intact, just swap warrant) |
-| ✗ | ✓ | ✓ | **SELL** (clean exit) |
-| ✗ | ✓ | ✗ | **HOLD** (await grace period, unless candle-confirmed BREAK) |
-| ✗ | ✗ | — | **HOLD** (no action) |
+| ✓ | ✓ | any | **SELL** (trend broken) |
+| ✓ | ✗ | any | **SELL** (trend broken) |
+| ✗ | ✓ | ✓ | **ROLL** (trend intact, quality degraded) |
+| ✗ | ✓ | ✗ | **HOLD** (degraded but still in roll grace) |
+| ✗ | ✗ | any | **HOLD** (healthy and trend intact) |
 
-**Candle confirmation rule (anti-overtrading during development):**
+**Candle confirmation rule:**
 
 - Same-day re-runs do not count as confirmation.
-- Confirmed BREAK requires BREAK on two consecutive closed candles.
+- Confirmed BREAK requires two consecutive closed-candle BREAK signals.
 - Implementation compares the previous run's BREAK candle date with the current run's previous candle date.
 
 **Rationale:**
 
-- Warrant health is a **hard floor** (non-negotiable risk management)
-- Trend signal is **softer** (respects grace period)
-- ROLL preserves trend exposure while eliminating execution risk (spread, leverage, maturity)
+- Trend-break exit has highest priority because thesis invalidation dominates instrument quality details.
+- ROLL grace applies only when trend is intact and only to reduce unnecessary early churn.
+- ROLL preserves trend exposure while eliminating execution-risk degradation (spread, leverage, maturity).
 
 ---
 

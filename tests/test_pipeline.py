@@ -186,10 +186,10 @@ def test_trend_signal_k2_emits_new_before_break_phase():
     assert signal in {"NEW", "HOLD"}
 
 
-def test_trend_signal_k2_emits_break_after_regime_change():
+def test_trend_signal_k2_emits_break_event_not_sticky_after_two_days():
     from app.config import ScreeningSettings
 
-    # k=2 for both NEW and BREAK; BREAK should trigger after the downtrend regime starts.
+    # k=2 for both NEW and BREAK. BREAK is now an event signal and not sticky for 5 days.
     agent = SecuritySelectionAgent(
         ScreeningSettings(min_adx=90, new_min_true=2, break_min_true=2)
     )
@@ -221,7 +221,7 @@ def test_trend_signal_k2_emits_break_after_regime_change():
         break_min_true=2,
     )
 
-    assert signal == "BREAK"
+    assert signal is None
 
 
 def test_recent_new_downgrades_to_hold_when_current_bar_fails_selected_policy(monkeypatch):
@@ -660,9 +660,13 @@ async def test_monitoring_resolves_underlying_via_wkn_fallback_and_sells_on_brea
     async def fake_held_since(_run: dict) -> dict[str, date]:
         return {"WKN1": date.today() - timedelta(days=30)}
 
+    async def fake_break_confirmed(_run: dict, _screening: SelectionResult) -> set[str]:
+        return {"A"}
+
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
+    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A"), Ticker(symbol="B")],
@@ -782,7 +786,7 @@ async def test_monitoring_rolls_degraded_warrant_without_break_signal():
                 )
             ],
             warrant_underlying_map={"ISIN1": "A"},
-            held_since_map={"WKN1": date.today() - timedelta(days=1)},
+            held_since_map={"WKN1": date.today() - timedelta(days=30)},
             warrant_snapshots={
                 "ISIN1": WarrantSnapshot(
                     warrant_isin="ISIN1",
@@ -836,7 +840,7 @@ async def test_monitoring_keeps_non_degraded_without_exit_signal():
 
 
 @pytest.mark.asyncio
-async def test_monitoring_prefers_warrant_degraded_over_exit_signal():
+async def test_monitoring_unconfirmed_break_with_degraded_rolls_after_grace():
     agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
 
     result = await agent.run(
@@ -864,8 +868,42 @@ async def test_monitoring_prefers_warrant_degraded_over_exit_signal():
         )
     )
 
+    assert len(result.positions_to_sell) == 0
+    assert len(result.positions_to_roll) == 1
+
+
+@pytest.mark.asyncio
+async def test_monitoring_confirmed_break_sells_regardless_of_warrant_health_and_grace():
+    agent = MonitoringAgent(settings=MonitoringSettings(min_holding_days=5), max_positions=5)
+
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"A": "BREAK"},
+            underlying_names={"A": "Alpha Corp"},
+            current_holdings=[
+                Position(
+                    ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                    quantity=Decimal("1"),
+                    avg_cost=Decimal("0"),
+                )
+            ],
+            warrant_underlying_map={"ISIN1": "A"},
+            held_since_map={"WKN1": date.today() - timedelta(days=1)},
+            break_confirmed_symbols={"A"},
+            warrant_snapshots={
+                "ISIN1": WarrantSnapshot(
+                    warrant_isin="ISIN1",
+                    spread_pct=3.2,
+                )
+            },
+            max_positions=5,
+        )
+    )
+
     assert len(result.positions_to_sell) == 1
-    assert result.positions_to_sell[0].sell_reason == "warrant_degraded"
+    assert result.positions_to_sell[0].sell_reason == "exit_signal"
     assert len(result.positions_to_roll) == 0
 
 
@@ -894,6 +932,40 @@ async def test_monitoring_holds_break_during_grace_without_candle_confirmation()
     )
 
     assert len(result.positions_to_keep) == 1
+    assert len(result.positions_to_sell) == 0
+
+
+@pytest.mark.asyncio
+async def test_monitoring_holds_degraded_before_roll_grace_period():
+    agent = MonitoringAgent(settings=MonitoringSettings(min_holding_days=5), max_positions=5)
+
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"A": "HOLD"},
+            underlying_names={"A": "Alpha Corp"},
+            current_holdings=[
+                Position(
+                    ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                    quantity=Decimal("1"),
+                    avg_cost=Decimal("0"),
+                )
+            ],
+            warrant_underlying_map={"ISIN1": "A"},
+            held_since_map={"WKN1": date.today() - timedelta(days=1)},
+            warrant_snapshots={
+                "ISIN1": WarrantSnapshot(
+                    warrant_isin="ISIN1",
+                    spread_pct=3.2,
+                )
+            },
+            max_positions=5,
+        )
+    )
+
+    assert len(result.positions_to_keep) == 1
+    assert len(result.positions_to_roll) == 0
     assert len(result.positions_to_sell) == 0
 
 
@@ -984,7 +1056,7 @@ async def test_run_monitoring_wires_warrant_snapshots_and_sells_degraded(monkeyp
         return {"ISIN1": "A"}
 
     async def fake_held_since(_run: dict) -> dict[str, date]:
-        return {"WKN1": date.today() - timedelta(days=1)}
+        return {"WKN1": date.today() - timedelta(days=30)}
 
     async def fake_break_confirmed(_run: dict, _screening: SelectionResult) -> set[str]:
         return set()
@@ -1047,7 +1119,7 @@ async def test_run_monitoring_keeps_roll_when_replacement_found(monkeypatch):
         return {"ISIN1": "A"}
 
     async def fake_held_since(_run: dict) -> dict[str, date]:
-        return {"WKN1": date.today() - timedelta(days=1)}
+        return {"WKN1": date.today() - timedelta(days=30)}
 
     async def fake_break_confirmed(_run: dict, _screening: SelectionResult) -> set[str]:
         return set()
