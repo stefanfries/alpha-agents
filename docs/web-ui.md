@@ -190,7 +190,7 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 
 #### 4.4 Monitoring — `/stages/monitoring`
 
-**Summary cards** (left to right): `Max. positions`, `Current positions`, `Sell`, `Keep`, `Free now`, `Free after sells`, `Entry candidates`.
+**Summary cards** (left to right): `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, `Free after sells`, `Entry candidates`.
 
 **Summary intent:**
 
@@ -203,9 +203,9 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 - If held warrants cannot be mapped to an underlying, a warning block is shown with unresolved WKNs.
 - Those rows are kept as a safe default and BREAK evaluation is skipped.
 
-**Three-section layout:**
+**Four-section layout:**
 
-1. **Exit signals** table: positions where a BREAK signal was detected and the minimum holding period has elapsed.
+1. **SELL decisions** table: positions where trend-break exit is confirmed.
 
 | Column | Description |
 | ------ | ----------- |
@@ -213,9 +213,23 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
 | Warrant WKN | Held warrant |
 | Held since | Most recent BUY date (from virtual depot transactions) |
-| Reason | `exit_signal` |
+| Action | `SELL` (red badge) |
+| Reason | `exit_signal` or `warrant_degraded` |
 
-2. **Incumbent positions (keep)** table: incumbent holdings with no exit trigger.
+1. **ROLL recommendations** table: degraded warrants where trend remains intact and roll grace is met.
+
+| Column | Description |
+| ------ | ----------- |
+| Symbol | Underlying symbol |
+| Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
+| Warrant WKN | Current held warrant |
+| Held since | Most recent BUY date |
+| Action | `ROLL` (blue badge) |
+| Reason | `warrant_degraded` |
+
+ROLL rows are linked to a replacement details panel showing suggested replacement metadata (ISIN/WKN, strike, maturity, projected spread/maturity deltas when available).
+
+1. **Incumbent positions (keep)** table: holdings without confirmed break and without actionable degradation.
 
 | Column | Description |
 | ------ | ----------- |
@@ -223,9 +237,10 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
 | Warrant WKN | Held warrant |
 | Held since | Date |
+| Action | `HOLD` (green badge) |
 | Reason | `—` |
 
-3. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
+1. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
 
 | Column | Description |
 | ------ | ----------- |
@@ -233,11 +248,16 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Underlying name | Name from screening universe |
 | Warrant WKN | `—` (no warrant selected yet) |
 | Held since | `—` |
+| Action | `—` |
 | Reason | `—` |
 
-All three tables share aligned column headers and widths for visual consistency.
+All monitoring tables share aligned column headers and widths for visual consistency.
 
-**User actions at approve:** entry candidates advance to warrant selection.
+**User actions at approve:**
+
+- SELL and ROLL recommendations are accepted at stage level in HITL mode.
+- No replacement order is executed before stage approval.
+- Entry candidates then advance to warrant selection.
 
 ---
 
@@ -310,7 +330,7 @@ Below the split panel — **maturity and strike controls**:
 | Weight % | Proposed allocation |
 | Capital (EUR) | Allocated amount |
 
-2. **Existing positions** table (no trade needed):
+1. **Existing positions** table (no trade needed):
 
 | Column | Description |
 | ------ | ----------- |
@@ -318,7 +338,7 @@ Below the split panel — **maturity and strike controls**:
 | Warrant | WKN |
 | Current weight % | In current portfolio |
 
-3. **Positions to close** table:
+1. **Positions to close** table:
 
 | Column | Description |
 | ------ | ----------- |
