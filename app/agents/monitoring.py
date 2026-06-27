@@ -1,7 +1,7 @@
 import logging
 from datetime import date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agents.base import Agent
 from app.config import MonitoringSettings
@@ -9,6 +9,17 @@ from app.models.market import Position, Ticker
 from app.models.signals import MonitoringResult, PositionReview
 
 logger = logging.getLogger(__name__)
+
+
+class WarrantSnapshot(BaseModel):
+    """Current warrant quote snapshot used by health checks."""
+
+    warrant_isin: str
+    spread_pct: float | None = None
+    leverage: float | None = None
+    days_to_maturity: int | None = None
+    delta: float | None = None
+    bid_ask_midprice: float | None = None
 
 
 class MonitoringInput(BaseModel):
@@ -19,6 +30,7 @@ class MonitoringInput(BaseModel):
     current_holdings: list[Position]           # depot warrant positions (isin+wkn in ticker)
     warrant_underlying_map: dict[str, str]     # warrant_isin → underlying_symbol
     held_since_map: dict[str, date]            # warrant_wkn → most recent BUY date
+    warrant_snapshots: dict[str, WarrantSnapshot] = Field(default_factory=dict)
     max_positions: int = 15
 
 

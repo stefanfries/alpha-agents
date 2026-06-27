@@ -81,9 +81,9 @@ could remain unresolved and BREAK/SELL could not be applied to those holdings.
 
 - Keep safe default (do not force SELL without resolved underlying)
 - Show explicit warning block in monitoring UI:
-    - unresolved count
-    - identifiers (WKN/ISIN)
-    - note that BREAK/SELL evaluation was skipped
+    -- unresolved count
+    -- identifiers (WKN/ISIN)
+    -- note that BREAK/SELL evaluation was skipped
 
 **Name resolution implemented for monitoring UI:**
 
@@ -348,25 +348,25 @@ async def _find_roll_replacement(
 
 ### Phase M0: Mapping Fallback & Persistence (must ship first)
 
-- [ ] Add persistent `warrant_underlying_map` collection + index in `app/db.py`
-- [ ] Extend orchestrator mapping fetch to merge:
-    - prior approved run map
-    - persisted cache map
-    - FinHub `/instruments` fallback for unresolved holdings
-- [ ] Resolve by both identifiers when available (`isin`, `wkn`)
-- [ ] Persist resolved mappings with `checked_at`, `source`, `resolved_from`
-- [ ] Add monitoring UI warning panel for unresolved holdings
+- [x] Add persistent `warrant_underlying_map` collection + index in `app/db.py`
+- [x] Extend orchestrator mapping fetch to merge:
+    -- prior approved run map
+    -- persisted cache map
+    -- FinHub `/instruments` fallback for unresolved holdings
+- [x] Resolve by both identifiers when available (`isin`, `wkn`)
+- [x] Persist resolved mappings with `checked_at`, `source`, `resolved_from`
+- [x] Add monitoring UI warning panel for unresolved holdings
 - [ ] Add tests:
-    - no prior approved warrant-selection run -> fallback resolves
-    - missing ISIN but valid WKN -> fallback resolves
-    - unresolved after fallback -> shown in UI and excluded from SELL logic
+    -- no prior approved warrant-selection run -> fallback resolves
+    -- missing ISIN but valid WKN -> fallback resolves
+    -- unresolved after fallback -> shown in UI and excluded from SELL logic
 
 ### Phase M1.1: Configuration & Model Updates
 
-- [ ] Add `MonitoringWarrantHealthSettings` to `app/config.py`
-- [ ] Add `warrant_degraded` sell reason to `PositionReview` model
-- [ ] Add `WarrantSnapshot` input model to `MonitoringInput`
-- [ ] Update `.env` with new warrant health config params
+- [x] Add `MonitoringWarrantHealthSettings` to `app/config.py`
+- [x] Add `warrant_degraded` sell reason to `PositionReview` model
+- [x] Add `WarrantSnapshot` input model to `MonitoringInput`
+- [x] Update `.env` with new warrant health config params
 
 ### Phase M1.2: Agent Logic
 

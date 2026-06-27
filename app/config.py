@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -116,9 +116,26 @@ class WarrantScoringSettings(BaseModel):
     delta_half_width: float = 0.5
 
 
+class MonitoringWarrantHealthSettings(BaseModel):
+    """Warrant health checks for held positions (independent of entry thresholds)."""
+
+    enabled: bool = True
+    # Defensive threshold for held positions. Intentionally tighter than
+    # WARRANT_SCORING__SPREAD_CUTOFF_PCT (entry scoring, usually 3.0%).
+    # Entry is selective; monitoring is degradation control.
+    spread_max_pct: float = 2.5
+    leverage_min: float = 3.0
+    leverage_max: float = 8.0
+    min_days_to_maturity: int = 60
+    delta_min: float = 0.3
+    delta_max: float = 0.7
+    min_warrant_score: float | None = None
+
+
 class MonitoringSettings(BaseModel):
     min_holding_days: int = 5        # grace period before exit signal can trigger a sell
     re_entry_prevention_days: int = 10  # days after selling before same underlying can be re-entered
+    warrant_health: MonitoringWarrantHealthSettings = Field(default_factory=MonitoringWarrantHealthSettings)
 
 
 class PortfolioSettings(BaseModel):

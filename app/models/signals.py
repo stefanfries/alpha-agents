@@ -73,7 +73,7 @@ class PositionReview(BaseModel):
     warrant_isin: str
     warrant_wkn: str
     held_since: date | None = None
-    sell_reason: Literal["exit_signal"] | None = None  # None = keep
+    sell_reason: Literal["exit_signal", "warrant_degraded"] | None = None  # None = keep
 
 
 class MonitoringResult(BaseModel):
