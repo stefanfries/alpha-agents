@@ -399,8 +399,49 @@ async def _find_roll_replacement(
 - [x] Update [docs/agents/monitoring.md](docs/agents/monitoring.md) with three-state decision logic (HOLD, SELL, ROLL)
 - [x] Update monitoring results template to show action column (HOLD | SELL | ROLL) with color coding
 - [x] Add `roll_replacement` details panel (suggested ISIN, strike, maturity, projected improvement)
-- [ ] Add configuration guide with holding warrant thresholds
-- [ ] Document ROLL workflow and manual approval requirements
+- [x] Add configuration guide with holding warrant thresholds
+- [x] Document ROLL workflow and manual approval requirements
+
+### M1.6 Configuration Guide (Holding Thresholds)
+
+Monitoring threshold configuration is independent from entry scoring and is read from `MONITORING__*` settings.
+
+| Environment variable | Default | Meaning | Typical adjustment |
+| --- | --- | --- | --- |
+| `MONITORING__MIN_HOLDING_DAYS` | `5` | Grace period before degraded warrants are eligible for ROLL | Increase to reduce churn after fresh entries |
+| `MONITORING__WARRANT_HEALTH__ENABLED` | `true` | Enable/disable warrant health checks | Disable only for diagnostics/backtests |
+| `MONITORING__WARRANT_HEALTH__SPREAD_MAX_PCT` | `2.5` | Max acceptable spread for held warrants | Lower for stricter execution quality |
+| `MONITORING__WARRANT_HEALTH__LEVERAGE_MIN` | `3.0` | Lower leverage bound | Raise to avoid low-reactivity instruments |
+| `MONITORING__WARRANT_HEALTH__LEVERAGE_MAX` | `8.0` | Upper leverage bound | Lower to reduce convexity/whipsaw risk |
+| `MONITORING__WARRANT_HEALTH__MIN_DAYS_TO_MATURITY` | `60` | Hard floor before warrant is degraded | Raise to roll earlier |
+| `MONITORING__WARRANT_HEALTH__DELTA_MIN` | `0.3` | Lower delta bound | Raise for tighter directional tracking |
+| `MONITORING__WARRANT_HEALTH__DELTA_MAX` | `0.7` | Upper delta bound | Raise toward `0.80` for trend-following to reduce premature roll churn; lower to avoid excessive gamma exposure |
+
+Example `.env` override set:
+
+```dotenv
+MONITORING__MIN_HOLDING_DAYS=7
+MONITORING__WARRANT_HEALTH__SPREAD_MAX_PCT=2.5
+MONITORING__WARRANT_HEALTH__LEVERAGE_MIN=2.8
+MONITORING__WARRANT_HEALTH__LEVERAGE_MAX=8.5
+MONITORING__WARRANT_HEALTH__MIN_DAYS_TO_MATURITY=90
+MONITORING__WARRANT_HEALTH__DELTA_MIN=0.25
+MONITORING__WARRANT_HEALTH__DELTA_MAX=0.80
+```
+
+### M1.6 ROLL Workflow and Manual Approval
+
+1. Monitoring marks an incumbent as **ROLL** when trend is not confirmed broken, warrant is degraded, and roll grace is met.
+2. Orchestrator enriches with `roll_replacement` via `_find_roll_replacement()` for the same underlying.
+3. If no acceptable replacement exists, decision is downgraded automatically:
+    - no replacement -> SELL (`warrant_degraded`)
+    - replacement worse than current (spread wider or maturity shorter) -> HOLD
+4. Monitoring UI presents ROLL rows and replacement details (WKN/ISIN, strike, maturity, projected metrics).
+5. Human review at stage approval is required before execution advances:
+    - approve stage -> ROLL recommendations proceed to downstream planning/execution context
+    - restart from monitoring or earlier stage -> recompute and optionally reject/replace recommendations
+
+Manual approval requirement: ROLL is advisory until the monitoring stage is approved in HITL mode; no replacement order is executed automatically before approval.
 
 ---
 

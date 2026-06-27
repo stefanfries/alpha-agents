@@ -124,6 +124,57 @@ After the agent returns, the orchestrator resolves roll candidates:
 
 Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`.
 
+### Threshold tuning guide
+
+Use holding thresholds to control replacement cadence independently from entry scoring.
+
+| Variable | Lower value tends to | Higher value tends to |
+| --- | --- | --- |
+| `MONITORING__MIN_HOLDING_DAYS` | Roll sooner | Roll later (less churn) |
+| `MONITORING__WARRANT_HEALTH__SPREAD_MAX_PCT` | Trigger more rolls/sells on spread | Tolerate wider spreads |
+| `MONITORING__WARRANT_HEALTH__LEVERAGE_MIN` | Tolerate lower leverage | Trigger earlier on decayed leverage |
+| `MONITORING__WARRANT_HEALTH__LEVERAGE_MAX` | Tolerate high leverage | Trigger earlier on over-levered instruments |
+| `MONITORING__WARRANT_HEALTH__MIN_DAYS_TO_MATURITY` | Keep shorter-dated warrants longer | Roll earlier to extend maturity |
+| `MONITORING__WARRANT_HEALTH__DELTA_MIN` | Tolerate lower directional sensitivity | Trigger earlier on low-delta drift |
+| `MONITORING__WARRANT_HEALTH__DELTA_MAX` | Tolerate higher directional sensitivity | Trigger earlier on high-delta drift |
+
+Trend-following baseline profile:
+
+- `MONITORING__MIN_HOLDING_DAYS=7`
+- `MONITORING__WARRANT_HEALTH__SPREAD_MAX_PCT=2.5`
+- `MONITORING__WARRANT_HEALTH__LEVERAGE_MIN=2.8`
+- `MONITORING__WARRANT_HEALTH__LEVERAGE_MAX=8.5`
+- `MONITORING__WARRANT_HEALTH__MIN_DAYS_TO_MATURITY=90`
+- `MONITORING__WARRANT_HEALTH__DELTA_MIN=0.25`
+- `MONITORING__WARRANT_HEALTH__DELTA_MAX=0.80`
+
+This profile is tuned to reduce premature roll churn in persistent trends while still protecting against severe warrant quality drift.
+
+Example:
+
+```dotenv
+MONITORING__MIN_HOLDING_DAYS=7
+MONITORING__WARRANT_HEALTH__SPREAD_MAX_PCT=2.5
+MONITORING__WARRANT_HEALTH__LEVERAGE_MIN=2.8
+MONITORING__WARRANT_HEALTH__LEVERAGE_MAX=8.5
+MONITORING__WARRANT_HEALTH__MIN_DAYS_TO_MATURITY=90
+MONITORING__WARRANT_HEALTH__DELTA_MIN=0.25
+MONITORING__WARRANT_HEALTH__DELTA_MAX=0.80
+```
+
+## ROLL workflow and manual approval
+
+- Monitoring emits `positions_to_roll` when action resolves to ROLL.
+- Orchestrator enriches each row with `roll_replacement`.
+- Automatic downgrade rules apply before presenting results.
+- no replacement found -> SELL (`warrant_degraded`)
+- replacement objectively worse (wider spread or shorter maturity) -> HOLD
+- Stage page shows ROLL recommendations and replacement details panel.
+- In HITL mode, no replacement trade is executed before human approval of the monitoring stage.
+- Reviewer options:
+- approve stage to accept current recommendations
+- restart from monitoring (or earlier) to recompute recommendations with changed conditions/config
+
 ## Bug fixes (2026-06-22)
 
 **Issue:** Monitoring reported incorrect free slot counts and incorrectly counted zero-quantity positions as active holdings.
@@ -145,4 +196,4 @@ Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`
 
 - **Re-entry prevention from history**: `re_entry_prevention_days` is stored but the agent does not yet query transaction history to exclude recently-sold underlyings from entry. Currently only currently-held symbols are excluded.
 - **Real depot held-since**: `_fetch_held_since` only reads `virtual_depot_transactions`. For real Comdirect depots the purchase date is not tracked.
-- **Roll approval flow**: roll suggestions are produced, but downstream approval UX is still basic and relies on stage review/approval flow.
+- **Roll approval controls**: ROLL recommendations are approved at stage level (no per-row accept/reject yet).
