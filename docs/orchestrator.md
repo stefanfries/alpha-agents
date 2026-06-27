@@ -195,19 +195,18 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through), with `free_positions = max_positions`.
 4. Builds initial underlying names from screening universe (`SelectionResult.all_tickers` fallback `selected`): `{symbol -> name}`.
 5. Calls `_fetch_warrant_underlying_map(run, holdings)` — layered resolver:
-  - last approved warrant-selection map
-  - persisted `warrant_underlying_map` cache
-  - FinHub `/v1/instruments/{identifier}` fallback (`isin` first, then `wkn`)
+  last approved warrant-selection map; persisted `warrant_underlying_map` cache;
+  FinHub `/v1/instruments/{identifier}` fallback (`isin` first, then `wkn`).
   The result can contain both key types (`warrant_isin` and `warrant_wkn`) mapped to `underlying_symbol`.
 6. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
 7. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
 8. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
 9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
 10. `MonitoringAgent.run()` evaluates each held position:
-   - If the underlying symbol maps to `trend_signals[symbol] == "BREAK"` and `holding_days >= min_holding_days` → `positions_to_sell`
-   - Otherwise → `positions_to_keep`
+   If the underlying symbol maps to `trend_signals[symbol] == "BREAK"` and
+   `holding_days >= min_holding_days` → `positions_to_sell`; otherwise → `positions_to_keep`.
 11. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list.
-   - Positions whose underlying cannot be mapped are always kept (safe default).
+   Positions whose underlying cannot be mapped are always kept (safe default).
 12. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
 13. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
