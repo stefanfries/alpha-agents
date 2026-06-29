@@ -74,6 +74,14 @@
           {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} underlyings skipped</span>{% endif %}.
           <span class="ms-2 text-muted">Click a row to see top-3 alternatives.</span>
         </span>
+        {% if r.keep_existing_isins %}
+        <div class="alert alert-info small mt-2 mb-0">
+          <strong>Keeping existing warrants</strong> (replacement was worse):
+          {% for isin in r.keep_existing_isins %}
+            <code>{{ isin }}</code>{% if not loop.last %},{% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {# Build screening rank order from the stored screening result #}
       {% set scr = execution.stages.screening.result if execution.stages and execution.stages.screening and execution.stages.screening.result else none %}
@@ -88,6 +96,7 @@
             <thead class="table-light sticky-top">
               <tr>
                 <th>#</th>
+                <th>Type</th>
                 <th>Underlying</th>
                 <th class="text-end">Analyzed</th>
                 <th>WKN</th>
@@ -107,11 +116,23 @@
               {% set rank.n = rank.n + 1 %}
               {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
               {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
+              {% set is_roll = sym in (r.roll_underlyings or []) %}
+              {% set is_roll_keep = sym in (r.roll_keep_underlyings or []) %}
+              {% set row_type = "ROLL" if is_roll else ("ROLL/KEEP" if is_roll_keep else "ENTRY") %}
               <tr style="cursor:pointer"
                   data-top3='{{ top3_list | tojson }}'
                   data-analyzed="{{ analyzed }}"
                   onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td class="text-muted small">{{ rank.n }}</td>
+                <td>
+                  {% if row_type == "ROLL" %}
+                    <span class="badge bg-primary">{{ row_type }}</span>
+                  {% elif row_type == "ROLL/KEEP" %}
+                    <span class="badge bg-info">{{ row_type }}</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ row_type }}</span>
+                  {% endif %}
+                </td>
                 <td>
                   <code>{{ w.underlying.symbol }}</code>
                   {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}

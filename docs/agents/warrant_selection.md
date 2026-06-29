@@ -16,6 +16,10 @@ class WarrantSelectionResult(BaseModel):
     skipped: list[str]                        # Underlying symbols where no warrant was found
     top3: dict[str, list[SelectedWarrant]]    # Symbol -> up to 3 best warrants by score
     analyzed_count: dict[str, int]            # Symbol -> total candidates detail-fetched
+    # Monitoring metadata (populated by orchestrator after monitoring stage):
+    keep_existing_isins: list[str]            # Warrants from monitoring staying unchanged
+    roll_underlyings: list[str]               # Underlyings being rolled to new warrants
+    roll_keep_underlyings: list[str]          # Underlyings downgraded from ROLL to KEEP
 ```
 
 ### `SelectedWarrant`
@@ -135,7 +139,8 @@ Note: in warrant selection, the effective maturity target is derived from the se
 
 The warrant selection stage page shows:
 
-- **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score. Clicking a row loads the top-3 detail panel.
+- **Status summary** (top): count of selected warrants, skipped underlyings, and an info box displaying "Keeping existing warrants (replacement is worse): ISIN1, ISIN2, ..." if any warrants were downgraded from ROLL to KEEP in the monitoring roll-resolution loop.
+- **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) | `ROLL` (replacement) | `ROLL/KEEP` (replacement downgraded). Clicking a row loads the top-3 detail panel.
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
 - **Strike controls** (below table): configurable strike min/max factors plus a read-only target strike factor field showing the midpoint of the selected strike range.

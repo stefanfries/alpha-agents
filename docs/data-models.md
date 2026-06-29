@@ -260,7 +260,7 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 
 ### `PositionReview`
 
-Represents a single depot position under review by the Monitoring Agent. Used in both `positions_to_sell` and `positions_to_keep` lists inside `MonitoringResult`.
+Represents a single depot position under review by the Monitoring Agent. Used in `positions_to_sell`, `positions_to_keep`, and `positions_to_roll` lists inside `MonitoringResult`.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
@@ -269,7 +269,14 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `warrant_isin` | `str` | ISIN of the held warrant |
 | `warrant_wkn` | `str` | WKN of the held warrant (key in depot transactions) |
 | `held_since` | `date \| None` | Date of most recent BUY transaction for this WKN; `None` if unavailable |
-| `sell_reason` | `Literal["exit_signal"] \| None` | `"exit_signal"` when a BREAK trend signal triggered the decision; `None` when the position is being kept |
+| `sell_reason` | `Literal["exit_signal", "warrant_degraded"] \| None` | Reason for SELL decision; `None` when position is KEEP or ROLL |
+| `spread_pct` | `float \| None` | Bid-ask spread as percentage (from warrant snapshot) |
+| `leverage` | `float \| None` | Current leverage ratio (from warrant snapshot) |
+| `delta` | `float \| None` | Delta / directional sensitivity (from warrant snapshot) |
+| `days_to_maturity` | `int \| None` | Days until warrant expiry |
+| `monitoring_score` | `float \| None` | Health score 0-1 (weighted 4-component: spread, leverage, maturity, delta) |
+| `decision_reason` | `str \| None` | Human-readable decision text (e.g., "leverage too low: 2.45× \| replacement is worse") |
+| `roll_replacement` | `Warrant \| None` | Suggested replacement warrant for ROLL positions (populated by orchestrator) |
 
 ### `MonitoringResult`
 
@@ -277,11 +284,15 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `positions_to_sell` | `list[PositionReview]` | Positions where the underlying has a confirmed BREAK signal and the minimum holding period has elapsed |
-| `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger — carry forward |
+| `positions_to_sell` | `list[PositionReview]` | Positions where the underlying has a confirmed BREAK signal and/or no replacement warrant exists |
+| `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger; includes degraded warrants with no better replacement |
+| `positions_to_roll` | `list[PositionReview]` | Degraded warrants with valid replacement suggestions; contains `roll_replacement` details |
 | `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |
 | `free_positions` | `int` | `max_positions − len(current_holdings)` (`Free now`; capital recycling deferred) |
-| `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling); blocked from entry in this run |
+| `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling + rolling); blocked from entry in this run |
+| `keep_existing_isins` | `list[str]` | Warrant ISINs staying unchanged (no replacement) |
+| `roll_underlyings` | `list[str]` | Underlying symbols with valid roll replacements attached |
+| `roll_keep_underlyings` | `list[str]` | Underlying symbols downgraded from ROLL to KEEP (replacement was worse) |
 
 ### `PortfolioProposal`
 

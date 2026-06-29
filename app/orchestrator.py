@@ -205,7 +205,7 @@ class Pipeline:
         ws_cfg = resolve_warrant_selection_settings(ws_overrides)
         async with FinHubTool() as finhub:
             await self._wake_finhub(execution_id, finhub, "warrant_selection")
-            return await WarrantSelectionAgent(
+            result = await WarrantSelectionAgent(
                 finhub=finhub,
                 prices=prices,
                 min_days_to_expiry=ws_cfg.min_days_to_expiry,
@@ -216,6 +216,16 @@ class Pipeline:
                 isin_overrides=overrides,
                 on_progress=on_progress,
             ).run(SelectionResult(selected=candidates, scores={t.symbol: 1.0 for t in candidates}, rationale={}))
+
+        # Wire monitoring metadata if available
+        monitoring_data = run.get("stages", {}).get("monitoring", {}).get("result")
+        if monitoring_data:
+            monitoring = MonitoringResult.model_validate(monitoring_data)
+            result.keep_existing_isins = monitoring.keep_existing_isins or []
+            result.roll_underlyings = monitoring.roll_underlyings or []
+            result.roll_keep_underlyings = monitoring.roll_keep_underlyings or []
+
+        return result
 
     async def _run_monitoring(self, run: dict) -> MonitoringResult:
         screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
@@ -293,6 +303,8 @@ class Pipeline:
                     continue
 
                 if self._is_roll_replacement_worse(replacement, current_snapshot):
+                    # Downgrade from ROLL to KEEP: replacement is worse, so keep current warrant
+                    review.decision_reason = f"{review.decision_reason or 'warrant degraded'} | replacement is worse"
                     result.positions_to_keep.append(review)
                     logger.info(
                         "Monitoring roll: replacement worse for %s -> HOLD %s",
@@ -311,6 +323,30 @@ class Pipeline:
                 )
 
             result.positions_to_roll = resolved_rolls
+
+        # Collect metadata for warrant selection integration
+        keep_isins: set[str] = set()
+        roll_symbols: set[str] = set()
+        roll_keep_symbols: set[str] = set()
+
+        # Identify ISINs being kept (unchanged from current holdings)
+        for p in result.positions_to_keep:
+            if p.warrant_isin:
+                keep_isins.add(p.warrant_isin)
+
+        # Identify warrants actually being rolled (have replacement)
+        for p in result.positions_to_roll:
+            if p.roll_replacement and p.roll_replacement.warrant_isin:
+                roll_symbols.add(p.underlying_symbol)
+
+        # Identify roll underlyings that were downgraded to keep (in the roll resolution above)
+        for p in result.positions_to_keep:
+            if p.underlying_symbol in {r.underlying_symbol for r in result.positions_to_roll if r.warrant_isin}:
+                roll_keep_symbols.add(p.underlying_symbol)
+
+        result.keep_existing_isins = sorted(keep_isins)
+        result.roll_underlyings = sorted(roll_symbols)
+        result.roll_keep_underlyings = sorted(roll_keep_symbols)
 
         return result
 

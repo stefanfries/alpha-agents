@@ -46,9 +46,19 @@ class MonitoringResult(BaseModel):
     entry_candidates: list[Ticker]           # filtered and capped to free_positions
     free_positions: int                      # max_positions − len(current_holdings)
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
+    # Metadata for warrant selection integration (populated after roll resolution):
+    keep_existing_isins: list[str]           # warrants staying as-is (no replacement)
+    roll_underlyings: list[str]              # underlyings with valid replacements
+    roll_keep_underlyings: list[str]         # underlyings downgraded from ROLL to KEEP
 ```
 
-`PositionReview` fields: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`, `held_since`, `sell_reason` (`"exit_signal"` or `"warrant_degraded"`), and optional `roll_replacement`.
+`PositionReview` fields:
+
+- Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
+- Holding context: `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
+- Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity` (all optional float)
+- Health assessment: `monitoring_score` (0-1 health score), `decision_reason` (human-readable decision text)
+- Roll context: optional `roll_replacement` (populated by orchestrator)
 
 ## Tools used
 
@@ -63,21 +73,34 @@ None directly. External lookups for roll replacement are orchestrated in `Pipeli
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
 - Check exit signal: `trend_signals[underlying_symbol] == "BREAK"`.
 - Evaluate warrant health via `_check_warrant_health()` using available snapshot metrics (`spread_pct`, `leverage`, `days_to_maturity`, `delta`).
-- Resolve action via `_decide_action` (trend-first):
-  - confirmed BREAK (`has_exit_signal AND is_break_confirmed`) => **SELL** (`sell_reason="exit_signal"`)
-  - trend not confirmed broken + degraded + roll grace met (`holding_days >= min_holding_days`) => **ROLL**
-  - otherwise => **KEEP**
+- Compute health score via `_monitoring_score()`: weighted 4-component normalization (spread, leverage, maturity, delta)
+- **Resolve action via `_decide_action()` with trend-first priority**:
+  
+  **Step 1: Trend check (exit signal)**
+  - Confirmed BREAK (`has_exit_signal AND is_break_confirmed`) => **SELL** with reason `"trend break confirmed"`
+  - Unconfirmed BREAK (`has_exit_signal AND NOT is_break_confirmed`) => **KEEP** with reason `"break signal, not confirmed yet"` (wait for confirmation)
+  
+  **Step 2: Warrant health check (only if trend is intact)**
+  - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
+  - Otherwise => **KEEP**
 
-Confirmed BREAK is derived from two consecutive closed-candle BREAK signals.
+**Confirmed BREAK** is derived from two consecutive closed-candle BREAK signals (same underlying, different trading dates).
+
+**Unconfirmed BREAK** takes precedence: if a BREAK signal fires but hasn't yet confirmed on a second candle, the position is held (not rolled) while waiting for trend confirmation.
 
 ### Roll replacement enrichment (orchestrator)
 
-After the agent returns, the orchestrator resolves roll candidates:
+After the monitoring agent returns, the orchestrator resolves roll candidates in a loop:
 
-- `_find_roll_replacement()` queries `WarrantSelectionAgent` for the same underlying.
-- If no replacement found → downgrade to **SELL** (`warrant_degraded`).
-- If replacement is worse (`_is_roll_replacement_worse`) than current snapshot (wider spread or shorter maturity) → downgrade to **HOLD**.
-- Otherwise attach `roll_replacement` details and keep as **ROLL**.
+- `_find_roll_replacement()` queries `WarrantSelectionAgent` for a better warrant on the same underlying.
+- **If no replacement found** → downgrade from ROLL to **SELL** (`warrant_degraded`)
+  - `decision_reason` unchanged from monitoring
+- **If replacement is worse** (`_is_roll_replacement_worse()`: wider spread or shorter maturity) → downgrade from ROLL to **HOLD**
+  - `decision_reason` updated to append `" | replacement is worse"` (e.g., `"leverage too low: 2.45× | replacement is worse"`)
+  - This clarifies: position was degraded and considered for replacement, but current warrant is better than alternatives
+- **If replacement is better** → attach `roll_replacement` details and keep as **ROLL**
+
+This loop ensures only warrants with genuinely superior replacements are rolled; degraded warrants with no better alternative are held.
 
 ### Entry candidate selection
 
@@ -97,22 +120,43 @@ After the agent returns, the orchestrator resolves roll candidates:
 | Grace period | n/a | Used only as ROLL grace (not SELL grace) |
 | Same-run re-entry | Excluded for any sold underlying | — |
 
-### Three-state action matrix
+### Three-state decision matrix (trend-first priority)
 
-| Confirmed BREAK | Warrant Degraded | Roll Grace Met | Action |
+**Step 1: Exit signal (trend)**
+
+| Confirmed BREAK | Trend Signal | Action | Reason |
 | --- | --- | --- | --- |
-| ✓ | ✓ | any | SELL |
-| ✓ | ✗ | any | SELL |
-| ✗ | ✓ | ✓ | ROLL |
-| ✗ | ✓ | ✗ | HOLD |
-| ✗ | ✗ | any | HOLD |
+| ✓ | BREAK | **SELL** | "trend break confirmed" |
+| ✗ | BREAK | **KEEP** | "break signal, not confirmed yet" (wait for 2nd candle) |
+| — | other/none | → Step 2 | Continue to warrant health check |
+
+**Step 2: Warrant health (only if trend is intact)**
+
+| Warrant Degraded | Grace Met (holding_days ≥ min_holding_days) | Action | Reason |
+| --- | --- | --- | --- |
+| ✓ | ✓ | **ROLL** | `"<health_detail>"` (e.g., "leverage too low: 2.45×") |
+| ✓ | ✗ | **KEEP** | "degraded but within grace period" |
+| ✗ | any | **KEEP** | "warrant healthy, trend intact" |
+
+**After orchestrator roll resolution loop**
+
+If replacement found and is worse:
+- Action remains **KEEP**
+- Reason appended: `"<health_detail> \| replacement is worse"`
 
 ## Configuration (`MonitoringSettings`)
 
 | Key | Default | Notes |
 | --- | ------- | ----- |
-| `min_holding_days` | `5` | Grace period before degraded warrants are eligible for ROLL |
+| `min_holding_days` | `5` | Grace period before degraded warrants are eligible for ROLL; prevents roll churn on temporary fluctuations |
 | `re_entry_prevention_days` | `10` | Intended for future re-entry prevention from transaction history (not yet implemented) |
+| `warrant_health.enabled` | `True` | Master switch for warrant health checks |
+| `warrant_health.spread_max_pct` | `2.5` | Bid-ask spread threshold for degradation (tighter than entry screening) |
+| `warrant_health.leverage_min` | `3.0` | Minimum acceptable leverage |
+| `warrant_health.leverage_max` | `8.0` | Maximum acceptable leverage |
+| `warrant_health.min_days_to_maturity` | `60` | Minimum days until expiry |
+| `warrant_health.delta_min` | `0.3` | Minimum acceptable delta (directional sensitivity) |
+| `warrant_health.delta_max` | `0.7` | Maximum acceptable delta |
 
 `MonitoringSettings` also includes `warrant_health` thresholds:
 

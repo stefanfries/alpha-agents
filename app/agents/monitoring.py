@@ -56,31 +56,68 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         reasons: list[str] = []
 
         if snapshot.spread_pct is not None and snapshot.spread_pct > self._warrant_health.spread_max_pct:
-            reasons.append(f"spread_too_wide:{snapshot.spread_pct:.2f}%")
+            reasons.append(f"spread too wide: {snapshot.spread_pct:.2f}%")
 
         if snapshot.leverage is not None:
             if snapshot.leverage < self._warrant_health.leverage_min:
-                reasons.append(f"leverage_too_low:{snapshot.leverage:.2f}x")
+                reasons.append(f"leverage too low: {snapshot.leverage:.2f}×")
             elif snapshot.leverage > self._warrant_health.leverage_max:
-                reasons.append(f"leverage_too_high:{snapshot.leverage:.2f}x")
+                reasons.append(f"leverage too high: {snapshot.leverage:.2f}×")
 
         if (
             snapshot.days_to_maturity is not None
             and snapshot.days_to_maturity < self._warrant_health.min_days_to_maturity
         ):
-            reasons.append(f"maturity_too_short:{snapshot.days_to_maturity}d")
+            reasons.append(f"maturity too short: {snapshot.days_to_maturity} days")
 
         if snapshot.delta is not None:
             if snapshot.delta < self._warrant_health.delta_min:
-                reasons.append(f"delta_too_low:{snapshot.delta:.3f}")
+                reasons.append(f"delta too low: {snapshot.delta:.3f}")
             elif snapshot.delta > self._warrant_health.delta_max:
-                reasons.append(f"delta_too_high:{snapshot.delta:.3f}")
+                reasons.append(f"delta too high: {snapshot.delta:.3f}")
 
         is_degraded = len(reasons) > 0
         detail = " | ".join(reasons) if reasons else None
         if is_degraded:
             logger.info("Monitoring: degraded warrant %s (%s)", warrant_isin, detail)
         return is_degraded, detail
+
+    def _monitoring_score(self, snapshot: WarrantSnapshot | None) -> float | None:
+        """Compute a 0..1 health score for held warrants from available metrics."""
+        if snapshot is None:
+            return None
+
+        components: list[float] = []
+
+        # Spread: lower is better (1.0 at 0%, decay to 0.0 at max spread)
+        if snapshot.spread_pct is not None:
+            max_spread = max(self._warrant_health.spread_max_pct, 0.001)
+            components.append(max(0.0, 1.0 - (snapshot.spread_pct / max_spread)))
+
+        # Leverage: peak at midpoint, decay towards min/max
+        if snapshot.leverage is not None:
+            lev_min = self._warrant_health.leverage_min
+            lev_max = self._warrant_health.leverage_max
+            lev_mid = (lev_min + lev_max) / 2.0
+            lev_half = max((lev_max - lev_min) / 2.0, 0.001)
+            components.append(max(0.0, 1.0 - abs(snapshot.leverage - lev_mid) / lev_half))
+
+        # Maturity: scaled by min threshold (higher better, floors at min days)
+        if snapshot.days_to_maturity is not None:
+            min_days = max(self._warrant_health.min_days_to_maturity, 1)
+            components.append(min(1.0, max(0.0, snapshot.days_to_maturity / min_days)))
+
+        # Delta: peak at midpoint, decay towards min/max
+        if snapshot.delta is not None:
+            d_min = self._warrant_health.delta_min
+            d_max = self._warrant_health.delta_max
+            d_mid = (d_min + d_max) / 2.0
+            d_half = max((d_max - d_min) / 2.0, 0.001)
+            components.append(max(0.0, 1.0 - abs(snapshot.delta - d_mid) / d_half))
+
+        if not components:
+            return None
+        return round(sum(components) / len(components), 3)
 
     @staticmethod
     def _decide_action(
@@ -90,18 +127,29 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         is_degraded: bool,
         holding_days: int,
         min_holding_days: int,
-    ) -> tuple[Literal["sell", "roll", "keep"], Literal["warrant_degraded", "exit_signal"] | None]:
-        """Resolve action with trend-first priority.
+    ) -> tuple[Literal["sell", "roll", "keep"], str | None]:
+        """Resolve action with trend-first priority, then warrant health.
 
-        1) Confirmed BREAK -> SELL (independent of grace and warrant health)
-        2) Trend intact (or unconfirmed BREAK) -> degradation handling
-           - degraded + grace met -> ROLL
-           - otherwise -> KEEP
+        Priority order:
+        1) Trend check (from screening):
+           - Confirmed BREAK -> SELL
+           - Unconfirmed BREAK -> KEEP (with reason: "break signal, not confirmed yet")
+        2) Warrant health check (only if trend is intact):
+           - Degraded + grace met -> ROLL
+           - Otherwise -> KEEP
         """
-        if has_exit_signal and is_break_confirmed:
-            return "sell", "exit_signal"
+        # Step 1: Check trend status first
+        if has_exit_signal:
+            if is_break_confirmed:
+                return "sell", "trend break confirmed"
+            else:
+                # Unconfirmed BREAK: hold and wait for confirmation
+                return "keep", "break signal, not confirmed yet"
+        
+        # Step 2: Check warrant health only if trend is intact
         if is_degraded and holding_days >= min_holding_days:
-            return "roll", None
+            return "roll", None  # reason will be set from degrade_detail
+        
         return "keep", None
 
     @staticmethod
@@ -143,13 +191,19 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             underlying_name = input.underlying_names.get(underlying_sym) if underlying_sym else None
             if underlying_sym is None:
                 # Can't map to underlying — keep as-is (safe default)
+                warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
                 positions_to_keep.append(PositionReview(
                     underlying_symbol="",
                     underlying_name=None,
                     warrant_isin=warrant_isin,
                     warrant_wkn=warrant_wkn,
                     held_since=input.held_since_map.get(warrant_wkn),
-                    sell_reason=None,
+                    spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
+                    leverage=warrant_snapshot.leverage if warrant_snapshot else None,
+                    delta=warrant_snapshot.delta if warrant_snapshot else None,
+                    days_to_maturity=warrant_snapshot.days_to_maturity if warrant_snapshot else None,
+                    monitoring_score=self._monitoring_score(warrant_snapshot) if warrant_snapshot else None,
+                    decision_reason="underlying mapping unresolved",
                 ))
                 logger.debug("Monitoring: no underlying mapping for warrant %s — keeping", warrant_isin or warrant_wkn)
                 continue
@@ -168,6 +222,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             is_degraded, degrade_detail = False, None
             if warrant_snapshot:
                 is_degraded, degrade_detail = self._check_warrant_health(warrant_isin, warrant_snapshot)
+            monitoring_score = self._monitoring_score(warrant_snapshot)
 
             review = PositionReview(
                 underlying_symbol=underlying_sym,
@@ -175,9 +230,14 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 warrant_isin=warrant_isin,
                 warrant_wkn=warrant_wkn,
                 held_since=held_since,
+                spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
+                leverage=warrant_snapshot.leverage if warrant_snapshot else None,
+                delta=warrant_snapshot.delta if warrant_snapshot else None,
+                days_to_maturity=warrant_snapshot.days_to_maturity if warrant_snapshot else None,
+                monitoring_score=monitoring_score,
             )
 
-            action, sell_reason = self._decide_action(
+            action, decision_reason = self._decide_action(
                 has_exit_signal=has_exit_signal,
                 is_break_confirmed=is_break_confirmed,
                 is_degraded=is_degraded,
@@ -187,7 +247,8 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
 
             match action:
                 case "sell":
-                    review.sell_reason = sell_reason
+                    review.sell_reason = "exit_signal"
+                    review.decision_reason = decision_reason  # "trend break confirmed"
                     positions_to_sell.append(review)
                     self._log_sell_decision(
                         underlying_symbol=underlying_sym,
@@ -199,6 +260,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                         warrant_wkn=warrant_wkn,
                     )
                 case "roll":
+                    review.decision_reason = degrade_detail or "warrant degraded, replacement available"
                     positions_to_roll.append(review)
                     logger.info(
                         "Monitoring: warrant degraded for %s (detail=%s) -> ROLL %s",
@@ -207,6 +269,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                         warrant_wkn,
                     )
                 case "keep":
+                    review.decision_reason = decision_reason or ("warrant healthy, trend intact" if not is_degraded else "degraded but within grace period")
                     positions_to_keep.append(review)
                     logger.debug(
                         "Monitoring: keeping %s (held %d days, signal=%s)",

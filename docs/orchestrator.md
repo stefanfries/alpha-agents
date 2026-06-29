@@ -202,12 +202,20 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 7. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
 8. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
 9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-10. `MonitoringAgent.run()` evaluates each held position:
-   If the underlying symbol maps to `trend_signals[symbol] == "BREAK"` and
-   `holding_days >= min_holding_days` → `positions_to_sell`; otherwise → `positions_to_keep`.
-11. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list.
+10. `MonitoringAgent.run()` evaluates each held position using **trend-first decision priority**:
+   - Trend check: confirmed BREAK (`break_confirmed_symbols` member) → SELL; unconfirmed BREAK → KEEP ("break signal, not confirmed yet").
+   - Warrant health check (only if trend intact): degraded + grace met (`holding_days >= min_holding_days`) → ROLL; otherwise → KEEP.
+   - Populates warrant metrics (spread_pct, leverage, delta, days_to_maturity) and monitoring_score on each PositionReview.
+   - Sets decision_reason with human-readable text (e.g., "leverage too low: 2.45×").
+11. **Roll resolution loop** — processes positions flagged for ROLL:
+   - For each position in `positions_to_roll`:
+     - Call `_find_roll_replacement()` to find a better warrant on the same underlying via WarrantSelectionAgent.
+     - If no replacement found → downgrade to SELL (`warrant_degraded`).
+     - If replacement is worse (wider spread or shorter maturity) → downgrade to KEEP and append " | replacement is worse" to decision_reason.
+     - If replacement is better → attach `roll_replacement` and keep as ROLL.
+   - Collects metadata: `keep_existing_isins` (warrants staying unchanged), `roll_underlyings` (with valid replacements), `roll_keep_underlyings` (downgraded from ROLL).
+12. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list.
    Positions whose underlying cannot be mapped are always kept (safe default).
-12. `free_positions = max_positions − len(current_holdings)` (capital recycling deferred to next run)
 13. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:

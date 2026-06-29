@@ -67,6 +67,10 @@ class WarrantSelectionResult(BaseModel):
     skipped: list[str]
     top3: dict[str, list[SelectedWarrant]] = {}       # symbol → up to 3 warrants by score
     analyzed_count: dict[str, int] = {}               # symbol → total candidates evaluated
+    # Metadata for monitoring integration
+    keep_existing_isins: list[str] = []               # ISINs downgraded to KEEP (replacement worse)
+    roll_underlyings: list[str] = []                  # symbols where valid replacement found
+    roll_keep_underlyings: list[str] = []             # symbols downgraded to KEEP
 
 
 class RollReplacement(BaseModel):
@@ -87,7 +91,15 @@ class PositionReview(BaseModel):
     warrant_isin: str
     warrant_wkn: str
     held_since: date | None = None
+    # Health snapshot (from current warrant, if available)
+    spread_pct: float | None = None
+    leverage: float | None = None
+    delta: float | None = None
+    days_to_maturity: int | None = None
+    monitoring_score: float | None = None  # 0–1 health score
+    # Decision info
     sell_reason: Literal["exit_signal", "warrant_degraded"] | None = None  # None = keep
+    decision_reason: str | None = None  # human-readable reason
     roll_replacement: RollReplacement | None = None
 
 
@@ -98,6 +110,10 @@ class MonitoringResult(BaseModel):
     entry_candidates: list[Ticker]   # filtered and capped to free_positions
     free_positions: int
     excluded_symbols: list[str]      # already held (kept or selling) → blocked from entry
+    # Metadata for warrant selection integration
+    keep_existing_isins: list[str] = Field(default_factory=list)  # ISINs where replacement was worse
+    roll_underlyings: list[str] = Field(default_factory=list)  # symbols with valid replacement
+    roll_keep_underlyings: list[str] = Field(default_factory=list)  # symbols downgraded to KEEP
 
 
 class PortfolioProposal(BaseModel):

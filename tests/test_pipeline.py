@@ -732,10 +732,10 @@ def test_monitoring_warrant_health_check_flags_threshold_breaches():
 
     assert degraded is True
     assert detail is not None
-    assert "spread_too_wide" in detail
-    assert "leverage_too_low" in detail
-    assert "maturity_too_short" in detail
-    assert "delta_too_high" in detail
+    assert "spread too wide" in detail
+    assert "leverage too low" in detail
+    assert "maturity too short" in detail
+    assert "delta too high" in detail
 
 
 def test_monitoring_warrant_health_check_keeps_exact_threshold_values():
@@ -840,7 +840,8 @@ async def test_monitoring_keeps_non_degraded_without_exit_signal():
 
 
 @pytest.mark.asyncio
-async def test_monitoring_unconfirmed_break_with_degraded_rolls_after_grace():
+async def test_monitoring_unconfirmed_break_holds_regardless_of_warrant_degradation():
+    """Unconfirmed BREAK takes precedence: hold and wait for confirmation, don't act on warrant health yet."""
     agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
 
     result = await agent.run(
@@ -869,7 +870,9 @@ async def test_monitoring_unconfirmed_break_with_degraded_rolls_after_grace():
     )
 
     assert len(result.positions_to_sell) == 0
-    assert len(result.positions_to_roll) == 1
+    assert len(result.positions_to_roll) == 0
+    assert len(result.positions_to_keep) == 1
+    assert result.positions_to_keep[0].decision_reason == "break signal, not confirmed yet"
 
 
 @pytest.mark.asyncio
