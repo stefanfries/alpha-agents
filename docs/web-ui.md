@@ -203,9 +203,9 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 - If held warrants cannot be mapped to an underlying, a warning block is shown with unresolved WKNs.
 - Those rows are kept as a safe default and BREAK evaluation is skipped.
 
-**Four-section layout:**
+**Two-section layout:**
 
-1. **SELL decisions** table: positions where trend-break exit is confirmed.
+1. **Current positions** table: unified view of held positions with action and rationale.
 
 | Column | Description |
 | ------ | ----------- |
@@ -213,32 +213,9 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
 | Warrant WKN | Held warrant |
 | Held since | Most recent BUY date (from virtual depot transactions) |
-| Action | `SELL` (red badge) |
-| Reason | `exit_signal` or `warrant_degraded` |
-
-1. **ROLL recommendations** table: degraded warrants where trend remains intact and roll grace is met.
-
-| Column | Description |
-| ------ | ----------- |
-| Symbol | Underlying symbol |
-| Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
-| Warrant WKN | Current held warrant |
-| Held since | Most recent BUY date |
-| Action | `ROLL` (blue badge) |
-| Reason | `warrant_degraded` |
-
-ROLL rows are linked to a replacement details panel showing suggested replacement metadata (ISIN/WKN, strike, maturity, projected spread/maturity deltas when available).
-
-1. **Incumbent positions (keep)** table: holdings without confirmed break and without actionable degradation.
-
-| Column | Description |
-| ------ | ----------- |
-| Symbol | Underlying symbol |
-| Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
-| Warrant WKN | Held warrant |
-| Held since | Date |
-| Action | `HOLD` (green badge) |
-| Reason | `—` |
+| Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
+| Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
+| Reason | Human-readable decision reason string |
 
 1. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
 
@@ -251,13 +228,12 @@ ROLL rows are linked to a replacement details panel showing suggested replacemen
 | Action | `—` |
 | Reason | `—` |
 
-All monitoring tables share aligned column headers and widths for visual consistency.
+Monitoring does not display replacement recommendations. Replacement lookup is deferred to Warrant Selection.
 
 **User actions at approve:**
 
-- SELL and ROLL recommendations are accepted at stage level in HITL mode.
-- No replacement order is executed before stage approval.
-- Entry candidates then advance to warrant selection.
+- Monitoring decisions are accepted at stage level in HITL mode.
+- Entry candidates and roll intents then advance to warrant selection.
 
 ---
 
@@ -272,6 +248,7 @@ Left side (55% width) — **main warrant table**: one row per underlying, ordere
 | Column | Description |
 | ------ | ----------- |
 | `#` | Screening rank |
+| Type | `ENTRY`, `ROLL`, or `ROLL/KEEP` |
 | Underlying | Symbol + company name |
 | Analyzed | Number of warrant details fetched and scored |
 | WKN | Best warrant WKN |
@@ -282,6 +259,8 @@ Left side (55% width) — **main warrant table**: one row per underlying, ordere
 | Lev | Leverage ratio |
 | Delta | Option delta |
 | Score | Composite score in [0, 1] |
+
+`ROLL/KEEP` means replacement lookup ran for a roll candidate, but replacement was worse than the currently held warrant by spread/maturity guardrails. In that case the selected row is the current held warrant and downstream close logic keeps it open.
 
 Right side — two vertically stacked panels:
 
@@ -311,7 +290,7 @@ Below the split panel — **maturity and strike controls**:
 - Target strike factor shown in UI equals midpoint `(min_factor + max_factor) / 2`
 - Clicking **Apply & Re-run** restarts from warrant selection with the updated maturity window
 
-**User actions at approve:** all selected warrants advance to portfolio construction.
+**User actions at approve:** selected warrants advance to portfolio construction; retained roll rows are protected from closure via `keep_existing_isins` metadata.
 
 ---
 

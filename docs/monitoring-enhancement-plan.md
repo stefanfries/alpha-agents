@@ -1,6 +1,6 @@
 # Monitoring Agent Enhancement Plan — Warrant Degradation Health Checks
 
-**Status:** M0 implemented; M1 planned  
+**Status:** Implemented with architecture split (Monitoring classify-only, Warrant Selection replacement ownership). Follow-up planned for comparator/score alignment.  
 **Date Created:** 2026-06-22  
 **Priority:** High (risk management for trend-following strategy)
 
@@ -22,6 +22,20 @@ Currently, the monitoring agent only sells a warrant when the underlying trigger
 - **HOLD** → Keep warrant (healthy, trend intact)
 - **SELL** → Exit position (warrant degraded AND trend broken)
 - **ROLL** → Replace warrant (warrant degraded BUT trend still strong) → sell old, buy new for same underlying
+
+---
+
+## Current State (2026-06-27)
+
+The implementation evolved from the initial draft in this file. Current production behavior is:
+
+- Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`.
+- Monitoring no longer resolves or attaches replacement warrants.
+- Warrant Selection owns replacement lookup for roll underlyings and applies replacement guardrails.
+- If replacement is worse than current (spread/maturity guard), the row becomes `ROLL/KEEP`; current warrant stays selected.
+- `WarrantSelectionResult` now carries `keep_existing_isins`, `roll_underlyings`, and `roll_keep_underlyings` for downstream portfolio/UX behavior.
+
+Use this section as the source of truth. Historical sections below remain for implementation history and may describe superseded intermediate designs.
 
 ---
 
@@ -526,6 +540,34 @@ Adjustment runbook (single-variable changes only):
 - **Maturity ladder:** Stagger maturity ranges by portfolio slot to ensure continuous coverage
 - **Historical tracking:** Store degradation events for analysis (e.g., "how often did spread widening predict poor fills?")
 - **Alerts:** Real-time Slack/email alerts when warrant health degrades, allowing manual intervention before next monitoring run
+
+### Next Session Plan (2026-06-28)
+
+Observed in production-like UI review:
+
+- ROLL/KEEP rows can show a lower `Score` than alternative warrants in the right panel, but still stay KEEP.
+- Root cause: score systems are mixed in one view.
+  - Current-warrant row score uses monitoring health score (`monitoring_score`).
+  - Alternatives use warrant-selection score (`compute_warrant_score`).
+- Replacement downgrade currently ignores score and only checks spread/maturity.
+
+Planned follow-up tasks:
+
+1. **Unify score semantics in Warrant Selection UI**
+    - Show a score type label or separate columns (`Monitoring Health` vs `Warrant Selection`).
+    - Preferred: compute/display warrant-selection score for current ROLL/KEEP rows so row-vs-alternative comparison is apples-to-apples.
+
+2. **Refine replacement comparator policy**
+    - Extend `_is_roll_replacement_worse(...)` to include score-based decisioning (configurable threshold), not only spread/maturity.
+    - Keep hard guards for unacceptable spread/maturity, but allow replacement if score gain is materially better.
+
+3. **Add targeted regression tests**
+    - Case A: replacement has better score and acceptable spread/maturity -> expect ROLL.
+    - Case B: replacement has better score but fails hard spread/maturity guard -> expect ROLL/KEEP.
+    - Case C: replacement worse on score with marginal spread improvement -> expect ROLL/KEEP.
+
+4. **Document business rule clearly**
+    - Update `docs/agents/monitoring.md` and `docs/web-ui.md` with final comparator priorities and score interpretation.
 
 ---
 
