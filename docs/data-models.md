@@ -275,8 +275,10 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `delta` | `float \| None` | Delta / directional sensitivity (from warrant snapshot) |
 | `days_to_maturity` | `int \| None` | Days until warrant expiry |
 | `monitoring_score` | `float \| None` | Health score 0-1 (weighted 4-component: spread, leverage, maturity, delta) |
+| `screening_signal` | `str \| None` | Resolved screening signal for mapped underlying symbol (`NEW`/`HOLD`/`BREAK`/`None`) |
+| `screening_signal_present` | `bool \| None` | Whether mapped underlying symbol exists as a key in `SelectionResult.trend_signals` |
 | `decision_reason` | `str \| None` | Human-readable decision text (e.g., "leverage too low: 2.45× \| replacement is worse") |
-| `roll_replacement` | `Warrant \| None` | Suggested replacement warrant for ROLL positions (populated by orchestrator) |
+| `roll_replacement` | `RollReplacement \| None` | Suggested replacement warrant for ROLL positions (populated by orchestrator) |
 
 ### `MonitoringResult`
 
@@ -284,7 +286,7 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `positions_to_sell` | `list[PositionReview]` | Positions where the underlying has a confirmed BREAK signal and/or no replacement warrant exists |
+| `positions_to_sell` | `list[PositionReview]` | Positions with confirmed trend exit (`BREAK` confirmed or aged-out `--` for mapped symbol) and/or no viable replacement warrant |
 | `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger; includes degraded warrants with no better replacement |
 | `positions_to_roll` | `list[PositionReview]` | Degraded warrants with valid replacement suggestions; contains `roll_replacement` details |
 | `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |

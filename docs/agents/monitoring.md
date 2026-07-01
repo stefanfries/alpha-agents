@@ -57,6 +57,7 @@ class MonitoringResult(BaseModel):
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
 - Holding context: `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
 - Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity` (all optional float)
+- Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
 - Health assessment: `monitoring_score` (0-1 health score), `decision_reason` (human-readable decision text)
 - Roll context: optional `roll_replacement` (populated by orchestrator)
 
@@ -71,14 +72,18 @@ None directly. External lookups for roll replacement are orchestrated in `Pipeli
 - Resolve underlying symbol from `warrant_underlying_map[warrant_isin]`, fallback `warrant_underlying_map[warrant_wkn]`. If not found (no mapping available), mark as KEEP with `underlying_symbol=""` (safe default).
 - Resolve underlying display name from `underlying_names[underlying_symbol]` when available. Name precedence is enforced by orchestrator: universe name via underlying ISIN, then cached fallback name.
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
-- Check exit signal: `trend_signals[underlying_symbol] == "BREAK"`.
+- Check exit signal from screening:
+  - `BREAK` = active break signal (still in the short confirmation window)
+  - `None` (`--` in screening UI) = break happened earlier and signal aged out; treated as confirmed earlier break
+  - Missing key in `trend_signals` = no signal available for mapped underlying symbol (not auto-sold)
 - Evaluate warrant health via `_check_warrant_health()` using available snapshot metrics (`spread_pct`, `leverage`, `days_to_maturity`, `delta`).
 - Compute health score via `_monitoring_score()`: weighted 4-component normalization (spread, leverage, maturity, delta)
 - **Resolve action via `_decide_action()` with trend-first priority**:
   
   **Step 1: Trend check (exit signal)**
-  - Confirmed BREAK (`has_exit_signal AND is_break_confirmed`) => **SELL** with reason `"trend break confirmed"`
-  - Unconfirmed BREAK (`has_exit_signal AND NOT is_break_confirmed`) => **KEEP** with reason `"break signal, not confirmed yet"` (wait for confirmation)
+  - `trend_signal is None` (`--`) => **SELL** with reason `"break signal, confirmed earlier"`
+  - `trend_signal == BREAK` and confirmed (`is_break_confirmed`) => **SELL** with reason `"trend break confirmed"`
+  - `trend_signal == BREAK` and not confirmed => **KEEP** with reason `"break signal, not confirmed yet"` (wait for confirmation)
   
   **Step 2: Warrant health check (only if trend is intact)**
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
@@ -126,9 +131,10 @@ This loop ensures only warrants with genuinely superior replacements are rolled;
 
 | Confirmed BREAK | Trend Signal | Action | Reason |
 | --- | --- | --- | --- |
+| ✓ (implicit) | `None` (`--`) with key present | **SELL** | "break signal, confirmed earlier" |
 | ✓ | BREAK | **SELL** | "trend break confirmed" |
 | ✗ | BREAK | **KEEP** | "break signal, not confirmed yet" (wait for 2nd candle) |
-| — | other/none | → Step 2 | Continue to warrant health check |
+| — | key missing / NEW / HOLD | → Step 2 | Continue to warrant health check |
 
 **Step 2: Warrant health (only if trend is intact)**
 
@@ -138,9 +144,29 @@ This loop ensures only warrants with genuinely superior replacements are rolled;
 | ✓ | ✗ | **KEEP** | "degraded but within grace period" |
 | ✗ | any | **KEEP** | "warrant healthy, trend intact" |
 
+### Trend reason semantics (KEEP rows)
+
+Reason precedence for KEEP rows:
+
+1. If `_decide_action()` returns a reason, use it (e.g., `"break signal, not confirmed yet"`).
+2. If warrant is degraded but still within grace period, use `"degraded but within grace period"`.
+3. If trend signal is `NEW` or `HOLD`, use `"warrant healthy, trend intact"`.
+4. Otherwise use `"no signal"`.
+
+### Signal map diagnostics
+
+Monitoring exposes a lightweight signal-map diagnostic for each reviewed position:
+
+- `screening_signal_present`: whether the mapped underlying symbol exists in `SelectionResult.trend_signals`
+- `screening_signal`: resolved signal value for that symbol (or `None`)
+
+The stage UI shows these as `Signal map` in the form `yes/no` and signal value
+(e.g., `yes / HOLD`, `no / —`) to surface symbol mismatches quickly.
+
 **After orchestrator roll resolution loop**
 
 If replacement found and is worse:
+
 - Action remains **KEEP**
 - Reason appended: `"<health_detail> \| replacement is worse"`
 

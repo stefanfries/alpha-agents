@@ -508,3 +508,87 @@ async def test_orchestrator_collects_keep_existing_metadata(monkeypatch):
     # Should have collected metadata
     assert "ISIN_A" in result.keep_existing_isins, "ISIN should be in keep list (replacement worse)"
     assert "A" not in result.roll_underlyings, "A should not be in roll list (replacement worse)"
+
+
+@pytest.mark.asyncio
+async def test_missing_trend_signal_key_does_not_sell():
+    """If symbol is absent from trend_signals, monitoring must not treat it as confirmed earlier BREAK."""
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+    position = Position(
+        ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+        quantity=Decimal("1"),
+        avg_cost=Decimal("0"),
+    )
+    result = await agent.run(
+        MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={},
+            underlying_names={"ASML": "ASML Holding N.V."},
+            current_holdings=[position],
+            warrant_underlying_map={"ISIN1": "ASML"},
+            held_since_map={},
+            warrant_snapshots={},
+            break_confirmed_symbols=set(),
+            max_positions=5,
+        )
+    )
+
+    assert len(result.positions_to_sell) == 0
+    assert len(result.positions_to_keep) == 1
+    assert result.positions_to_keep[0].decision_reason == "no signal"
+
+
+@pytest.mark.asyncio
+async def test_run_monitoring_normalizes_dotted_symbol_to_screening_symbol(monkeypatch):
+    from app.orchestrator import Pipeline
+
+    pipeline = Pipeline()
+
+    async def fake_fetch_holdings(_run: dict):
+        return [
+            Position(
+                ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                quantity=Decimal("1"),
+                avg_cost=Decimal("0"),
+            )
+        ]
+
+    async def fake_warrant_underlying_map(_run: dict, _current_holdings=None):
+        return {"ISIN1": "ASML.AS"}
+
+    async def fake_held_since(_run: dict):
+        return {"WKN1": date.today() - timedelta(days=30)}
+
+    async def fake_break_confirmed(_run: dict, _screening: SelectionResult):
+        return set()
+
+    async def fake_snapshots(_isins: list[str]):
+        return {}
+
+    async def fake_names_from_universe(**_kwargs):
+        return {}
+
+    monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
+    monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
+    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
+    monkeypatch.setattr(pipeline, "_resolve_underlying_names_from_universe", fake_names_from_universe)
+
+    screening = SelectionResult(
+        selected=[Ticker(symbol="ASML")],
+        scores={"ASML": 1.0},
+        rationale={},
+        trend_signals={"ASML": "HOLD"},
+    )
+    run = {
+        "stages": {"screening": {"result": screening.model_dump(mode="json")}},
+        "config_overrides": {"portfolio": {"max_positions": 5}},
+    }
+
+    result = await pipeline._run_monitoring(run)
+    assert len(result.positions_to_sell) == 0
+    assert len(result.positions_to_keep) == 1
+    assert result.positions_to_keep[0].underlying_symbol == "ASML"
+    assert result.positions_to_keep[0].decision_reason == "warrant healthy, trend intact"

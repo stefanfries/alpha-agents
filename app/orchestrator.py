@@ -232,6 +232,7 @@ class Pipeline:
         name_source = screening.all_tickers or screening.selected
         universe_names_by_isin = {t.isin: t.name for t in name_source if t.isin and t.name}
         underlying_names = {t.symbol: t.name for t in name_source if t.name}
+        screening_symbols = set(screening.trend_signals.keys())
         current_holdings = await self._fetch_holdings(run)
         max_positions = self._portfolio_max_positions(run)
 
@@ -248,6 +249,11 @@ class Pipeline:
             )
 
         warrant_underlying_map = await self._fetch_warrant_underlying_map(run, current_holdings)
+        if screening_symbols:
+            warrant_underlying_map = {
+                key: self._normalize_underlying_symbol_for_screening(value, screening_symbols)
+                for key, value in warrant_underlying_map.items()
+            }
         warrant_isins = [pos.ticker.isin for pos in current_holdings if pos.ticker.isin]
         warrant_snapshots = await self._fetch_warrant_snapshots(warrant_isins)
         # Prefer canonical universe names by resolving each held warrant to underlying ISIN via /instruments.
@@ -349,6 +355,19 @@ class Pipeline:
         result.roll_keep_underlyings = sorted(roll_keep_symbols)
 
         return result
+
+    @staticmethod
+    def _normalize_underlying_symbol_for_screening(
+        symbol: str,
+        screening_symbols: set[str],
+    ) -> str:
+        if symbol in screening_symbols:
+            return symbol
+        if "." in symbol:
+            base = symbol.split(".", 1)[0]
+            if base in screening_symbols:
+                return base
+        return symbol
 
     async def _break_confirmed_symbols(self, run: dict, screening: SelectionResult) -> set[str]:
         """Confirm BREAK on two consecutive closed candles (same-day reruns don't count)."""

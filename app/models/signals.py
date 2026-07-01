@@ -97,6 +97,8 @@ class PositionReview(BaseModel):
     delta: float | None = None
     days_to_maturity: int | None = None
     monitoring_score: float | None = None  # 0–1 health score
+    screening_signal: str | None = None
+    screening_signal_present: bool | None = None
     # Decision info
     sell_reason: Literal["exit_signal", "warrant_degraded"] | None = None  # None = keep
     decision_reason: str | None = None  # human-readable reason

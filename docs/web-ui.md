@@ -203,9 +203,12 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 - If held warrants cannot be mapped to an underlying, a warning block is shown with unresolved WKNs.
 - Those rows are kept as a safe default and BREAK evaluation is skipped.
 
-**Two-section layout:**
+**Section layout:**
 
-1. **Current positions** table: unified view of held positions with action and rationale.
+1. **Exit signals** table (`positions_to_sell`): SELL rows with rationale.
+2. **Roll recommendations** table (`positions_to_roll`): ROLL rows plus replacement details card(s).
+3. **Incumbent positions (keep)** table (`positions_to_keep`): HOLD rows with rationale.
+4. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
 
 | Column | Description |
 | ------ | ----------- |
@@ -216,8 +219,9 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
 | Reason | Human-readable decision reason string |
+| Signal map | Diagnostic `present / signal` pair (e.g. `yes / HOLD`, `no / —`) to expose symbol/signal mismatches |
 
-1. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
+Entry-candidate columns:
 
 | Column | Description |
 | ------ | ----------- |
@@ -227,8 +231,6 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Held since | `—` |
 | Action | `—` |
 | Reason | `—` |
-
-Monitoring does not display replacement recommendations. Replacement lookup is deferred to Warrant Selection.
 
 **User actions at approve:**
 

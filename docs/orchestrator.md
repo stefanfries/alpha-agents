@@ -198,25 +198,30 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   last approved warrant-selection map; persisted `warrant_underlying_map` cache;
   FinHub `/v1/instruments/{identifier}` fallback (`isin` first, then `wkn`).
   The result can contain both key types (`warrant_isin` and `warrant_wkn`) mapped to `underlying_symbol`.
-6. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
-7. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
-8. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
-9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-10. `MonitoringAgent.run()` evaluates each held position using **trend-first decision priority**:
+6. Normalizes mapped underlying symbols to screening symbols before monitoring decisions.
+  Example: `ASML.AS` is normalized to `ASML` when `ASML` exists in `screening.trend_signals`.
+7. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
+8. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
+9. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
+10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
+11. `MonitoringAgent.run()` evaluates each held position using **trend-first decision priority**:
    - Trend check: confirmed BREAK (`break_confirmed_symbols` member) → SELL; unconfirmed BREAK → KEEP ("break signal, not confirmed yet").
+  - Trend check: `trend_signal is None` (`--`) is treated as earlier confirmed BREAK → SELL ("break signal, confirmed earlier") **only when the symbol key exists in `trend_signals`**.
+  - If mapped symbol is missing in `trend_signals`, it is treated as `no signal` (not auto-sold).
    - Warrant health check (only if trend intact): degraded + grace met (`holding_days >= min_holding_days`) → ROLL; otherwise → KEEP.
-   - Populates warrant metrics (spread_pct, leverage, delta, days_to_maturity) and monitoring_score on each PositionReview.
-   - Sets decision_reason with human-readable text (e.g., "leverage too low: 2.45×").
-11. **Roll resolution loop** — processes positions flagged for ROLL:
+  - Populates warrant metrics (spread_pct, leverage, delta, days_to_maturity) and monitoring_score on each PositionReview.
+  - Sets decision_reason with human-readable text (for KEEP rows typically `warrant healthy, trend intact`, `degraded but within grace period`, or `no signal`).
+  - Adds diagnostics for UI/debugging: `screening_signal_present` and `screening_signal`.
+12. **Roll resolution loop** — processes positions flagged for ROLL:
    - For each position in `positions_to_roll`:
      - Call `_find_roll_replacement()` to find a better warrant on the same underlying via WarrantSelectionAgent.
      - If no replacement found → downgrade to SELL (`warrant_degraded`).
      - If replacement is worse (wider spread or shorter maturity) → downgrade to KEEP and append " | replacement is worse" to decision_reason.
      - If replacement is better → attach `roll_replacement` and keep as ROLL.
    - Collects metadata: `keep_existing_isins` (warrants staying unchanged), `roll_underlyings` (with valid replacements), `roll_keep_underlyings` (downgraded from ROLL).
-12. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list.
+13. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list.
    Positions whose underlying cannot be mapped are always kept (safe default).
-13. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
+14. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 

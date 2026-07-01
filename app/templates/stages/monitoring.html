@@ -113,11 +113,12 @@
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:6%">
-              <col style="width:12%">
+              <col style="width:10%">
+              <col style="width:10%">
               <col style="width:8%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Reason</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Reason</th><th>Signal map</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_sell %}
@@ -132,6 +133,10 @@
                 <td class="text-end text-muted small">{{ p.days_to_maturity or "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.3f" | format(p.monitoring_score) if p.monitoring_score is not none else "—" }}</td>
                 <td class="small text-muted">{{ p.decision_reason or "—" }}</td>
+                <td class="small text-muted">
+                  {% if p.screening_signal_present is sameas true %}yes{% elif p.screening_signal_present is sameas false %}no{% else %}—{% endif %}
+                  / {{ p.screening_signal if p.screening_signal is not none else "—" }}
+                </td>
                 <td><span class="badge bg-danger bg-opacity-10 text-danger">SELL</span></td>
               </tr>
               {% endfor %}
@@ -155,12 +160,13 @@
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
-              <col style="width:10%">
+              <col style="width:9%">
               <col style="width:7%">
-              <col style="width:16%">
+              <col style="width:8%">
+              <col style="width:14%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Current WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Reason</th><th>Action</th><th>Replacement</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Current WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Reason</th><th>Signal map</th><th>Action</th><th>Replacement</th></tr>
             </thead>
             <tbody>
               {% for p in rolls %}
@@ -175,6 +181,10 @@
                 <td class="text-end text-muted small">{{ p.days_to_maturity or "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.3f" | format(p.monitoring_score) if p.monitoring_score is not none else "—" }}</td>
                 <td class="small text-muted">{{ p.decision_reason or "—" }}</td>
+                <td class="small text-muted">
+                  {% if p.screening_signal_present is sameas true %}yes{% elif p.screening_signal_present is sameas false %}no{% else %}—{% endif %}
+                  / {{ p.screening_signal if p.screening_signal is not none else "—" }}
+                </td>
                 <td><span class="badge bg-primary bg-opacity-10 text-primary">ROLL</span></td>
                 <td>
                   {% if p.roll_replacement %}
@@ -232,11 +242,12 @@
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:6%">
-              <col style="width:12%">
+              <col style="width:10%">
+              <col style="width:10%">
               <col style="width:8%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Reason</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Reason</th><th>Signal map</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
@@ -251,6 +262,10 @@
                 <td class="text-end text-muted small">{{ p.days_to_maturity or "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.3f" | format(p.monitoring_score) if p.monitoring_score is not none else "—" }}</td>
                 <td class="small text-muted">{{ p.decision_reason or "—" }}</td>
+                <td class="small text-muted">
+                  {% if p.screening_signal_present is sameas true %}yes{% elif p.screening_signal_present is sameas false %}no{% else %}—{% endif %}
+                  / {{ p.screening_signal if p.screening_signal is not none else "—" }}
+                </td>
                 <td><span class="badge bg-success bg-opacity-10 text-success">HOLD</span></td>
               </tr>
               {% endfor %}

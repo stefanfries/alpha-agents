@@ -214,10 +214,19 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             held_since = input.held_since_map.get(warrant_wkn)
             holding_days = (today - held_since).days if held_since else 9999
 
-            # Check exit signal: ANY break criterion already evaluated by screening
+            # Check exit signal from screening:
+            # - BREAK: requires candle confirmation across runs
+            # - None: BREAK happened earlier and the signal already aged out
+            has_trend_signal = underlying_sym in input.trend_signals
             trend_signal = input.trend_signals.get(underlying_sym)
-            has_exit_signal = trend_signal == "BREAK"
-            is_break_confirmed = underlying_sym in input.break_confirmed_symbols
+            if not has_trend_signal:
+                logger.warning(
+                    "Monitoring: mapped underlying %s has no screening signal entry (warrant=%s)",
+                    underlying_sym,
+                    warrant_wkn,
+                )
+            has_exit_signal = trend_signal == "BREAK" or (has_trend_signal and trend_signal is None)
+            is_break_confirmed = (has_trend_signal and trend_signal is None) or underlying_sym in input.break_confirmed_symbols
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
             is_degraded, degrade_detail = False, None
             if warrant_snapshot:
@@ -235,6 +244,8 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 delta=warrant_snapshot.delta if warrant_snapshot else None,
                 days_to_maturity=warrant_snapshot.days_to_maturity if warrant_snapshot else None,
                 monitoring_score=monitoring_score,
+                screening_signal=trend_signal,
+                screening_signal_present=has_trend_signal,
             )
 
             action, decision_reason = self._decide_action(
@@ -248,7 +259,11 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             match action:
                 case "sell":
                     review.sell_reason = "exit_signal"
-                    review.decision_reason = decision_reason  # "trend break confirmed"
+                    review.decision_reason = (
+                        "break signal, confirmed earlier"
+                        if trend_signal is None
+                        else decision_reason
+                    )
                     positions_to_sell.append(review)
                     self._log_sell_decision(
                         underlying_symbol=underlying_sym,
@@ -269,7 +284,17 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                         warrant_wkn,
                     )
                 case "keep":
-                    review.decision_reason = decision_reason or ("warrant healthy, trend intact" if not is_degraded else "degraded but within grace period")
+                    if decision_reason:
+                        review.decision_reason = decision_reason
+                    elif is_degraded:
+                        review.decision_reason = "degraded but within grace period"
+                    elif trend_signal in {"NEW", "HOLD"}:
+                        review.decision_reason = "warrant healthy, trend intact"
+                    elif trend_signal == "BREAK":
+                        # Defensive fallback: keep this explicit if signal semantics ever change.
+                        review.decision_reason = "break signal, not confirmed yet"
+                    else:
+                        review.decision_reason = "no signal"
                     positions_to_keep.append(review)
                     logger.debug(
                         "Monitoring: keeping %s (held %d days, signal=%s)",
