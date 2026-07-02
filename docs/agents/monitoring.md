@@ -153,15 +153,20 @@ Reason precedence for KEEP rows:
 3. If trend signal is `NEW` or `HOLD`, use `"warrant healthy, trend intact"`.
 4. Otherwise use `"no signal"`.
 
-### Signal map diagnostics
+### Signal state diagnostics
 
-Monitoring exposes a lightweight signal-map diagnostic for each reviewed position:
+Monitoring exposes two underlying screening diagnostics for each reviewed position:
 
 - `screening_signal_present`: whether the mapped underlying symbol exists in `SelectionResult.trend_signals`
 - `screening_signal`: resolved signal value for that symbol (or `None`)
 
-The stage UI shows these as `Signal map` in the form `yes/no` and signal value
-(e.g., `yes / HOLD`, `no / —`) to surface symbol mismatches quickly.
+The stage UI derives a user-facing `Signal state` from those diagnostics and the monitoring decision:
+
+- `BREAK pending` = current screening signal is `BREAK`, but the break is not yet candle-confirmed
+- `BREAK confirmed` = current screening signal is `BREAK` and the second closed candle confirmed the exit
+- `BREAK confirmed earlier` = screening signal already aged out to `None`, which monitoring treats as an earlier confirmed break
+- `NEW` / `HOLD` = trend remains intact for the mapped underlying
+- `no screening signal` = mapped underlying symbol has no entry in `trend_signals`
 
 **After orchestrator roll resolution loop**
 

@@ -116,14 +116,21 @@ If zero candidates result, the user can relax NEW rules in HITL and re-run scree
 
 ### Trend signal
 
-For every ticker with sufficient bar history (> `_MIN_BARS + 5`), the agent also evaluates whether all enabled policies passed **5 trading days ago** (by re-running `_evaluate_policies` on `bars[:-5]`). The result is stored in `trend_signals`:
+For every ticker with sufficient bar history, the agent runs a state machine over the full bar series:
+
+- `OUT -[NEW]-> IN_TREND -[BREAK]-> OUT`
+- A `NEW` event is emitted only when the NEW rule group changes from failing to passing.
+- A `BREAK` event is emitted only when the BREAK rule group changes from failing to passing while already `IN_TREND`.
+- Consecutive same-direction events are impossible by construction.
+
+The stored `trend_signals` value is then derived from the most recent event and the current state:
 
 | Signal | Condition |
 | ------ | --------- |
-| `"NEW"` | Passes now, did **not** pass 5 days ago — trend freshly established |
-| `"HOLD"` | Passes now, also passed 5 days ago — trend already established |
-| `"BREAK"` | Does **not** pass now, but passed 5 days ago — trend recently broken |
-| `None` | Failed both now and 5 days ago — no meaningful signal |
+| `"NEW"` | The most recent signal was `NEW`, it occurred on the current bar or within the last 5 trading bars, and the ticker still passes the NEW rule group |
+| `"HOLD"` | The state machine is currently `IN_TREND`, but the latest `NEW` event is older than 5 trading bars or the current bar no longer qualifies for `NEW` stickiness |
+| `"BREAK"` | The most recent signal was `BREAK` and it occurred on the current bar or the immediately following trading bar |
+| `None` | The state machine is `OUT` and there is no recent `BREAK` signal to expose |
 
 This signal is purely observational. It informs entry timing at the screening stage; it does not trigger orders.
 

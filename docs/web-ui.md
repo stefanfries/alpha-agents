@@ -160,7 +160,7 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 | TQ-20 | Short-window Trend Quality (20-bar) |
 | TSI | True Strength Index value |
 | ST / E20 / ADX / E50 | Per-policy pass/fail badges (green ✓ / red ✗) |
-| Signal | Trend signal vs 5 trading days ago: **NEW** (green) / **HOLD** (yellow) / **BREAK** (red) / — |
+| Signal | Recent trend-state signal from the screening state machine: **NEW** (green, fresh signal with 5-bar stickiness) / **HOLD** (yellow, still in trend) / **BREAK** (red, break event with 1-bar follow-through) / — |
 | 1W / 2W / 4W | Rank delta vs prior runs (▲/▼/▶/—) |
 
 Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
@@ -219,7 +219,7 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
 | Reason | Human-readable decision reason string |
-| Signal map | Diagnostic `present / signal` pair (e.g. `yes / HOLD`, `no / —`) to expose symbol/signal mismatches |
+| Signal state | User-facing monitoring state derived from screening diagnostics: `NEW`, `HOLD`, `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, or `no screening signal` |
 
 Entry-candidate columns:
 
