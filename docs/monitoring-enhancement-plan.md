@@ -32,7 +32,7 @@ The implementation evolved from the initial draft in this file. Current producti
 - Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`.
 - Monitoring no longer resolves or attaches replacement warrants.
 - Warrant Selection owns replacement lookup for roll underlyings and applies replacement guardrails.
-- If replacement is worse than current (spread/maturity guard), the row becomes `ROLL/KEEP`; current warrant stays selected.
+- If replacement metadata marks a roll candidate as worse than current (spread/maturity guard), the row can appear as `ROLL/KEEP`; current warrant stays selected.
 - `WarrantSelectionResult` now carries `keep_existing_isins`, `roll_underlyings`, and `roll_keep_underlyings` for downstream portfolio/UX behavior.
 
 Use this section as the source of truth. Historical sections below remain for implementation history and may describe superseded intermediate designs.
@@ -402,11 +402,10 @@ async def _find_roll_replacement(
 
 ### Phase M1.5: Warrant Replacement Logic (ROLL)
 
-- [x] Implement `_find_roll_replacement()` helper to query WarrantSelectionAgent
+- [x] Keep monitoring stage classification-only (`SELL` / `KEEP` / `ROLL`)
 - [x] Add `positions_to_roll` output list to `MonitoringResult`
-- [x] Extend `PositionReview` with `roll_replacement` field (suggested warrant ISIN, strike, maturity)
-- [x] Add decision tree logic for ROLL vs. SELL based on trend signal presence
-- [x] Wire replacement warrant suggestions into monitoring result
+- [x] Export `roll_underlyings` metadata for downstream replacement selection
+- [x] Keep replacement warrant lookup and replacement guardrails in warrant-selection stage
 
 ### Phase M1.6: UI & Documentation
 
@@ -446,11 +445,9 @@ MONITORING__WARRANT_HEALTH__DELTA_MAX=0.80
 ### M1.6 ROLL Workflow and Manual Approval
 
 1. Monitoring marks an incumbent as **ROLL** when trend is not confirmed broken, warrant is degraded, and roll grace is met.
-2. Orchestrator enriches with `roll_replacement` via `_find_roll_replacement()` for the same underlying.
-3. If no acceptable replacement exists, decision is downgraded automatically:
-    - no replacement -> SELL (`warrant_degraded`)
-    - replacement worse than current (spread wider or maturity shorter) -> HOLD
-4. Monitoring UI presents ROLL rows and replacement details (WKN/ISIN, strike, maturity, projected metrics).
+2. Monitoring emits `roll_underlyings`; replacement search is performed in warrant selection.
+3. If no acceptable replacement exists, warrant selection keeps the incumbent (`ROLL/KEEP` in UI).
+4. Monitoring UI presents classification details (Trend status + Warrant health + Decision rationale).
 5. Human review at stage approval is required before execution advances:
     - approve stage -> ROLL recommendations proceed to downstream planning/execution context
     - restart from monitoring or earlier stage -> recompute and optionally reject/replace recommendations
@@ -467,7 +464,6 @@ Recommended KPI set per approved monitoring run:
 | `sell_rate` | `len(positions_to_sell) / current_holdings_count` | Monitor hard exits |
 | `avg_holding_days_roll` | Mean holding days of rolled positions | Detect early-roll behavior |
 | `avg_holding_days_sell` | Mean holding days of sold positions | Detect premature sells |
-| `replacement_fail_rate` | `(roll_candidates - resolved_rolls) / roll_candidates` | Measure roll fallback quality |
 
 Suggested guardrails for trend-following baseline:
 

@@ -277,8 +277,11 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `monitoring_score` | `float \| None` | Health score 0-1 (weighted 4-component: spread, leverage, maturity, delta) |
 | `screening_signal` | `str \| None` | Resolved screening signal for mapped underlying symbol (`NEW`/`HOLD`/`BREAK`/`None`) |
 | `screening_signal_present` | `bool \| None` | Whether mapped underlying symbol exists as a key in `SelectionResult.trend_signals` |
-| `decision_reason` | `str \| None` | Human-readable decision text (e.g., "leverage too low: 2.45× \| replacement is worse") |
-| `roll_replacement` | `RollReplacement \| None` | Suggested replacement warrant for ROLL positions (populated by orchestrator) |
+| `trend_status` | `str \| None` | UI-ready trend state (`NEW`, `HOLD`, `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, `no screening signal`) |
+| `warrant_health_status` | `str \| None` | UI-ready health state (`healthy`, `degraded`, `unknown`) |
+| `warrant_health_reason` | `str \| None` | Degradation detail text when health is degraded |
+| `decision_reason` | `str \| None` | Human-readable action rationale (non-redundant with warrant-health detail in UI) |
+| `roll_replacement` | `RollReplacement \| None` | Optional replacement payload (not populated by monitoring stage) |
 
 ### `MonitoringResult`
 
@@ -286,15 +289,15 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `positions_to_sell` | `list[PositionReview]` | Positions with confirmed trend exit (`BREAK` confirmed or aged-out `--` for mapped symbol) and/or no viable replacement warrant |
-| `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger; includes degraded warrants with no better replacement |
-| `positions_to_roll` | `list[PositionReview]` | Degraded warrants with valid replacement suggestions; contains `roll_replacement` details |
+| `positions_to_sell` | `list[PositionReview]` | Positions with confirmed trend exit (`BREAK` confirmed or aged-out `--` for mapped symbol) |
+| `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger and/or degraded-but-not-roll-eligible positions |
+| `positions_to_roll` | `list[PositionReview]` | Degraded warrants classified as roll candidates (replacement selection occurs downstream) |
 | `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |
 | `free_positions` | `int` | `max_positions − len(current_holdings)` (`Free now`; capital recycling deferred) |
 | `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling + rolling); blocked from entry in this run |
-| `keep_existing_isins` | `list[str]` | Warrant ISINs staying unchanged (no replacement) |
-| `roll_underlyings` | `list[str]` | Underlying symbols with valid roll replacements attached |
-| `roll_keep_underlyings` | `list[str]` | Underlying symbols downgraded from ROLL to KEEP (replacement was worse) |
+| `keep_existing_isins` | `list[str]` | Reserved metadata for downstream stages |
+| `roll_underlyings` | `list[str]` | Underlying symbols classified as roll candidates |
+| `roll_keep_underlyings` | `list[str]` | Reserved metadata for downstream stages |
 
 ### `PortfolioProposal`
 

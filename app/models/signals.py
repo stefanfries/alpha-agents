@@ -99,6 +99,9 @@ class PositionReview(BaseModel):
     monitoring_score: float | None = None  # 0–1 health score
     screening_signal: str | None = None
     screening_signal_present: bool | None = None
+    trend_status: str | None = None         # derived UI status (NEW/HOLD/BREAK pending/confirmed/...)
+    warrant_health_status: str | None = None  # healthy/degraded/unknown
+    warrant_health_reason: str | None = None  # degradation detail, if any
     # Decision info
     sell_reason: Literal["exit_signal", "warrant_degraded"] | None = None  # None = keep
     decision_reason: str | None = None  # human-readable reason

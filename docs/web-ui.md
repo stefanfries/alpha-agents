@@ -206,7 +206,7 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 **Section layout:**
 
 1. **Exit signals** table (`positions_to_sell`): SELL rows with rationale.
-2. **Roll recommendations** table (`positions_to_roll`): ROLL rows plus replacement details card(s).
+2. **Roll recommendations** table (`positions_to_roll`): ROLL candidate rows from monitoring classification.
 3. **Incumbent positions (keep)** table (`positions_to_keep`): HOLD rows with rationale.
 4. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
 
@@ -219,7 +219,8 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
 | Reason | Human-readable decision reason string |
-| Signal state | User-facing monitoring state derived from screening diagnostics: `NEW`, `HOLD`, `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, or `no screening signal` |
+| Trend status | User-facing trend state: `NEW`, `HOLD`, `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, or `no screening signal` |
+| Warrant health | Health status derived from monitoring checks: `healthy`, `degraded` (+ detail), or `unknown` |
 
 Entry-candidate columns:
 
@@ -262,7 +263,7 @@ Left side (55% width) — **main warrant table**: one row per underlying, ordere
 | Delta | Option delta |
 | Score | Composite score in [0, 1] |
 
-`ROLL/KEEP` means replacement lookup ran for a roll candidate, but replacement was worse than the currently held warrant by spread/maturity guardrails. In that case the selected row is the current held warrant and downstream close logic keeps it open.
+`ROLL/KEEP` is an optional state when replacement metadata (`roll_keep_underlyings`) is present. It indicates a roll candidate was ultimately kept as incumbent.
 
 Right side — two vertically stacked panels:
 

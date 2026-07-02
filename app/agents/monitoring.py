@@ -120,6 +120,23 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         return round(sum(components) / len(components), 3)
 
     @staticmethod
+    def _trend_status(
+        *,
+        has_trend_signal: bool,
+        trend_signal: str | None,
+        is_break_confirmed: bool,
+    ) -> str:
+        if not has_trend_signal:
+            return "no screening signal"
+        if trend_signal is None:
+            return "BREAK confirmed earlier"
+        if trend_signal == "BREAK":
+            return "BREAK confirmed" if is_break_confirmed else "BREAK pending"
+        if trend_signal in {"NEW", "HOLD"}:
+            return trend_signal
+        return "no signal"
+
+    @staticmethod
     def _decide_action(
         *,
         has_exit_signal: bool,
@@ -246,6 +263,17 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 monitoring_score=monitoring_score,
                 screening_signal=trend_signal,
                 screening_signal_present=has_trend_signal,
+                trend_status=self._trend_status(
+                    has_trend_signal=has_trend_signal,
+                    trend_signal=trend_signal,
+                    is_break_confirmed=is_break_confirmed,
+                ),
+                warrant_health_status=(
+                    "unknown"
+                    if warrant_snapshot is None
+                    else ("degraded" if is_degraded else "healthy")
+                ),
+                warrant_health_reason=degrade_detail,
             )
 
             action, decision_reason = self._decide_action(

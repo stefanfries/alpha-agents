@@ -314,15 +314,11 @@ async def test_position_review_captures_snapshot_data(monkeypatch):
             )
         }
 
-    async def fake_find_roll_replacement(**_kwargs):
-        return None
-
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
     monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
     monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
-    monkeypatch.setattr(pipeline, "_find_roll_replacement", fake_find_roll_replacement)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A")],
@@ -398,15 +394,11 @@ async def test_decision_reason_set_on_sell(monkeypatch):
             )
         }
 
-    async def fake_find_roll_replacement(**_kwargs):
-        return None
-
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
     monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
     monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
-    monkeypatch.setattr(pipeline, "_find_roll_replacement", fake_find_roll_replacement)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A")],
@@ -429,8 +421,7 @@ async def test_decision_reason_set_on_sell(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_orchestrator_collects_keep_existing_metadata(monkeypatch):
-    """Test that orchestrator collects keep_existing_isins metadata."""
-    from app.models.signals import RollReplacement
+    """Monitoring metadata should expose roll underlyings without replacement resolution."""
     from app.orchestrator import Pipeline
 
     pipeline = Pipeline()
@@ -464,33 +455,11 @@ async def test_orchestrator_collects_keep_existing_metadata(monkeypatch):
             )
         }
 
-    replacement_snapshot = WarrantSnapshot(
-        warrant_isin="ISIN_B",
-        spread_pct=5.0,  # worse spread
-        leverage=5.0,
-        delta=0.5,
-        days_to_maturity=100,
-    )
-
-    async def fake_find_roll_replacement(**_kwargs):
-        # Return a worse replacement
-        return RollReplacement(
-            warrant_wkn="WKN2",
-            warrant_isin="ISIN_B",
-            strike=100.0,
-            maturity_date=date.today() + timedelta(days=100),
-            spread_pct=5.0,
-            leverage=5.0,
-            delta=0.5,
-            days_to_maturity=100,
-        )
-
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
     monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
     monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
-    monkeypatch.setattr(pipeline, "_find_roll_replacement", fake_find_roll_replacement)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A")],
@@ -505,9 +474,10 @@ async def test_orchestrator_collects_keep_existing_metadata(monkeypatch):
 
     result = await pipeline._run_monitoring(run)
 
-    # Should have collected metadata
-    assert "ISIN_A" in result.keep_existing_isins, "ISIN should be in keep list (replacement worse)"
-    assert "A" not in result.roll_underlyings, "A should not be in roll list (replacement worse)"
+    # Monitoring is classification-only: roll symbols are exposed, keep/replacement metadata is empty.
+    assert result.keep_existing_isins == []
+    assert "A" in result.roll_underlyings
+    assert result.roll_keep_underlyings == []
 
 
 @pytest.mark.asyncio

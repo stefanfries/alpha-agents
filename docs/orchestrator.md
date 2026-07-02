@@ -204,23 +204,9 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 8. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
 9. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
 10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-11. `MonitoringAgent.run()` evaluates each held position using **trend-first decision priority**:
-   - Trend check: confirmed BREAK (`break_confirmed_symbols` member) → SELL; unconfirmed BREAK → KEEP ("break signal, not confirmed yet").
-  - Trend check: `trend_signal is None` (`--`) is treated as earlier confirmed BREAK → SELL ("break signal, confirmed earlier") **only when the symbol key exists in `trend_signals`**.
-  - If mapped symbol is missing in `trend_signals`, it is treated as `no signal` (not auto-sold).
-   - Warrant health check (only if trend intact): degraded + grace met (`holding_days >= min_holding_days`) → ROLL; otherwise → KEEP.
-  - Populates warrant metrics (spread_pct, leverage, delta, days_to_maturity) and monitoring_score on each PositionReview.
-  - Sets decision_reason with human-readable text (for KEEP rows typically `warrant healthy, trend intact`, `degraded but within grace period`, or `no signal`).
-  - Adds diagnostics for UI/debugging: `screening_signal_present` and `screening_signal`.
-12. **Roll resolution loop** — processes positions flagged for ROLL:
-   - For each position in `positions_to_roll`:
-     - Call `_find_roll_replacement()` to find a better warrant on the same underlying via WarrantSelectionAgent.
-     - If no replacement found → downgrade to SELL (`warrant_degraded`).
-     - If replacement is worse (wider spread or shorter maturity) → downgrade to KEEP and append " | replacement is worse" to decision_reason.
-     - If replacement is better → attach `roll_replacement` and keep as ROLL.
-   - Collects metadata: `keep_existing_isins` (warrants staying unchanged), `roll_underlyings` (with valid replacements), `roll_keep_underlyings` (downgraded from ROLL).
-13. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list.
-   Positions whose underlying cannot be mapped are always kept (safe default).
+11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (confirmed BREAK or aged-out BREAK-to-`None` sells, unconfirmed BREAK keeps, warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
+12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
+13. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
 14. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:

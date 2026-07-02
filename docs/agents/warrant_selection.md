@@ -16,10 +16,10 @@ class WarrantSelectionResult(BaseModel):
     skipped: list[str]                        # Underlying symbols where no warrant was found
     top3: dict[str, list[SelectedWarrant]]    # Symbol -> up to 3 best warrants by score
     analyzed_count: dict[str, int]            # Symbol -> total candidates detail-fetched
-    # Monitoring metadata (populated by orchestrator after monitoring stage):
-    keep_existing_isins: list[str]            # Warrants from monitoring staying unchanged
-    roll_underlyings: list[str]               # Underlyings being rolled to new warrants
-    roll_keep_underlyings: list[str]          # Underlyings downgraded from ROLL to KEEP
+    # Monitoring metadata (consumed by UI/portfolio flows):
+    keep_existing_isins: list[str]            # Optional: incumbents explicitly marked to keep
+    roll_underlyings: list[str]               # Underlyings requested for replacement search
+    roll_keep_underlyings: list[str]          # Optional: roll underlyings downgraded to KEEP
 ```
 
 ### `SelectedWarrant`
@@ -139,9 +139,14 @@ Note: in warrant selection, the effective maturity target is derived from the se
 
 The warrant selection stage page shows:
 
-- **Status summary** (top): count of selected warrants, skipped underlyings, and an info box displaying "Keeping existing warrants (replacement is worse): ISIN1, ISIN2, ..." if any warrants were downgraded from ROLL to KEEP in the monitoring roll-resolution loop.
-- **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) | `ROLL` (replacement) | `ROLL/KEEP` (replacement downgraded). Clicking a row loads the top-3 detail panel.
+- **Status summary** (top): count of selected warrants and skipped underlyings. If `keep_existing_isins` is populated by upstream/downstream enrichment, an info box displays those incumbent ISINs.
+- **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) or `ROLL` (replacement). Optional `ROLL/KEEP` is supported when `roll_keep_underlyings` is populated.
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
 - **Strike controls** (below table): configurable strike min/max factors plus a read-only target strike factor field showing the midpoint of the selected strike range.
 - **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.
+
+Monitoring integration note:
+
+- Monitoring classifies roll candidates and emits `roll_underlyings`.
+- Replacement warrant discovery and replacement quality guardrails are applied in this stage.

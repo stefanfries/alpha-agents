@@ -42,14 +42,14 @@ The orchestrator builds `MonitoringInput` from:
 class MonitoringResult(BaseModel):
     positions_to_sell: list[PositionReview]  # SELL decisions
     positions_to_keep: list[PositionReview]  # HOLD decisions
-    positions_to_roll: list[PositionReview]  # ROLL decisions with replacement suggestion
+    positions_to_roll: list[PositionReview]  # ROLL candidates (classification only)
     entry_candidates: list[Ticker]           # filtered and capped to free_positions
     free_positions: int                      # max_positions − len(current_holdings)
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
-    # Metadata for warrant selection integration (populated after roll resolution):
-    keep_existing_isins: list[str]           # warrants staying as-is (no replacement)
-    roll_underlyings: list[str]              # underlyings with valid replacements
-    roll_keep_underlyings: list[str]         # underlyings downgraded from ROLL to KEEP
+    # Metadata for warrant selection integration:
+    keep_existing_isins: list[str]
+    roll_underlyings: list[str]              # symbols classified as roll candidates
+    roll_keep_underlyings: list[str]
 ```
 
 `PositionReview` fields:
@@ -58,12 +58,12 @@ class MonitoringResult(BaseModel):
 - Holding context: `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
 - Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity` (all optional float)
 - Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
-- Health assessment: `monitoring_score` (0-1 health score), `decision_reason` (human-readable decision text)
-- Roll context: optional `roll_replacement` (populated by orchestrator)
+- Trend status: `trend_status` (UI-ready status label)
+- Health assessment: `monitoring_score` (0-1 health score), `warrant_health_status`, `warrant_health_reason`, `decision_reason`
 
 ## Tools used
 
-None directly. External lookups for roll replacement are orchestrated in `Pipeline._run_monitoring()`.
+None directly.
 
 ## Behaviour
 
@@ -93,19 +93,13 @@ None directly. External lookups for roll replacement are orchestrated in `Pipeli
 
 **Unconfirmed BREAK** takes precedence: if a BREAK signal fires but hasn't yet confirmed on a second candle, the position is held (not rolled) while waiting for trend confirmation.
 
-### Roll replacement enrichment (orchestrator)
+### Responsibility boundary
 
-After the monitoring agent returns, the orchestrator resolves roll candidates in a loop:
+Monitoring is classification-only:
 
-- `_find_roll_replacement()` queries `WarrantSelectionAgent` for a better warrant on the same underlying.
-- **If no replacement found** → downgrade from ROLL to **SELL** (`warrant_degraded`)
-  - `decision_reason` unchanged from monitoring
-- **If replacement is worse** (`_is_roll_replacement_worse()`: wider spread or shorter maturity) → downgrade from ROLL to **HOLD**
-  - `decision_reason` updated to append `" | replacement is worse"` (e.g., `"leverage too low: 2.45× | replacement is worse"`)
-  - This clarifies: position was degraded and considered for replacement, but current warrant is better than alternatives
-- **If replacement is better** → attach `roll_replacement` details and keep as **ROLL**
-
-This loop ensures only warrants with genuinely superior replacements are rolled; degraded warrants with no better alternative are held.
+- It determines `SELL` / `KEEP` / `ROLL` candidate status from trend + warrant health.
+- It does **not** select replacement warrants.
+- Replacement selection happens in the `warrant_selection` stage.
 
 ### Entry candidate selection
 
@@ -127,7 +121,7 @@ This loop ensures only warrants with genuinely superior replacements are rolled;
 
 ### Three-state decision matrix (trend-first priority)
 
-**Step 1: Exit signal (trend)**
+#### Step 1: Exit signal (trend)
 
 | Confirmed BREAK | Trend Signal | Action | Reason |
 | --- | --- | --- | --- |
@@ -136,7 +130,7 @@ This loop ensures only warrants with genuinely superior replacements are rolled;
 | ✗ | BREAK | **KEEP** | "break signal, not confirmed yet" (wait for 2nd candle) |
 | — | key missing / NEW / HOLD | → Step 2 | Continue to warrant health check |
 
-**Step 2: Warrant health (only if trend is intact)**
+#### Step 2: Warrant health (only if trend is intact)
 
 | Warrant Degraded | Grace Met (holding_days ≥ min_holding_days) | Action | Reason |
 | --- | --- | --- | --- |
@@ -160,20 +154,11 @@ Monitoring exposes two underlying screening diagnostics for each reviewed positi
 - `screening_signal_present`: whether the mapped underlying symbol exists in `SelectionResult.trend_signals`
 - `screening_signal`: resolved signal value for that symbol (or `None`)
 
-The stage UI derives a user-facing `Signal state` from those diagnostics and the monitoring decision:
+The stage UI derives two user-facing columns from those diagnostics and monitoring checks:
 
-- `BREAK pending` = current screening signal is `BREAK`, but the break is not yet candle-confirmed
-- `BREAK confirmed` = current screening signal is `BREAK` and the second closed candle confirmed the exit
-- `BREAK confirmed earlier` = screening signal already aged out to `None`, which monitoring treats as an earlier confirmed break
-- `NEW` / `HOLD` = trend remains intact for the mapped underlying
-- `no screening signal` = mapped underlying symbol has no entry in `trend_signals`
-
-**After orchestrator roll resolution loop**
-
-If replacement found and is worse:
-
-- Action remains **KEEP**
-- Reason appended: `"<health_detail> \| replacement is worse"`
+- `Trend status`: `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, `NEW`, `HOLD`, or `no screening signal`
+- `Warrant health`: `healthy`, `degraded` (with detail), or `unknown`
+- `Decision rationale`: only non-redundant action context (e.g. `break signal, not confirmed yet`), while duplicate degradation text is shown only once under warrant health
 
 ## Configuration (`MonitoringSettings`)
 
@@ -201,7 +186,7 @@ Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`
 
 ### Threshold tuning guide
 
-Use holding thresholds to control replacement cadence independently from entry scoring.
+Use holding thresholds to control roll-candidate cadence independently from entry scoring.
 
 | Variable | Lower value tends to | Higher value tends to |
 | --- | --- | --- |
@@ -247,12 +232,10 @@ Track these KPIs per approved monitoring run to evaluate parameter fit for trend
 | `sell_rate` | `len(positions_to_sell) / current_holdings_count` | Captures hard exits and trend-break intensity |
 | `avg_holding_days_roll` | Mean holding days for rolled positions | Indicates whether rolls happen too early |
 | `avg_holding_days_sell` | Mean holding days for sold positions | Distinguishes normal exits from premature exits |
-| `replacement_fail_rate` | `(roll_candidates - resolved_rolls) / roll_candidates` | Measures how often roll suggestions degrade to SELL/HOLD |
 
 Guardrail suggestions for the baseline profile:
 
 - `roll_rate > 0.20` for 3 consecutive runs -> churn likely too high
-- `replacement_fail_rate > 0.30` for 3 consecutive runs -> replacement quality/filtering issue
 
 ### Tuning runbook (one knob at a time)
 
@@ -267,16 +250,10 @@ Guardrail suggestions for the baseline profile:
 
 ## ROLL workflow and manual approval
 
-- Monitoring emits `positions_to_roll` when action resolves to ROLL.
-- Orchestrator enriches each row with `roll_replacement`.
-- Automatic downgrade rules apply before presenting results.
-- no replacement found -> SELL (`warrant_degraded`)
-- replacement objectively worse (wider spread or shorter maturity) -> HOLD
-- Stage page shows ROLL recommendations and replacement details panel.
-- In HITL mode, no replacement trade is executed before human approval of the monitoring stage.
-- Reviewer options:
-- approve stage to accept current recommendations
-- restart from monitoring (or earlier) to recompute recommendations with changed conditions/config
+- Monitoring emits `positions_to_roll` when action resolves to ROLL candidate.
+- Stage page shows trend status and warrant health separately for each row.
+- In HITL mode, no replacement trade is executed before human approval.
+- Replacement warrant discovery and final roll selection happen downstream in `warrant_selection`.
 
 ## Bug fixes (2026-06-22)
 
