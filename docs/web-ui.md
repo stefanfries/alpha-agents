@@ -228,10 +228,6 @@ Entry-candidate columns:
 | ------ | ----------- |
 | Symbol | Underlying ticker |
 | Underlying name | Name from screening universe |
-| Warrant WKN | `—` (no warrant selected yet) |
-| Held since | `—` |
-| Action | `—` |
-| Reason | `—` |
 
 **User actions at approve:**
 

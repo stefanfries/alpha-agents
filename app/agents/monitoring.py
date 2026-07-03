@@ -60,9 +60,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
 
         if snapshot.leverage is not None:
             if snapshot.leverage < self._warrant_health.leverage_min:
-                reasons.append(f"leverage too low: {snapshot.leverage:.2f}×")
+                reasons.append(f"leverage too low: {snapshot.leverage:.2f}")
             elif snapshot.leverage > self._warrant_health.leverage_max:
-                reasons.append(f"leverage too high: {snapshot.leverage:.2f}×")
+                reasons.append(f"leverage too high: {snapshot.leverage:.2f}")
 
         if (
             snapshot.days_to_maturity is not None

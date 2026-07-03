@@ -134,7 +134,7 @@ Monitoring is classification-only:
 
 | Warrant Degraded | Grace Met (holding_days ≥ min_holding_days) | Action | Reason |
 | --- | --- | --- | --- |
-| ✓ | ✓ | **ROLL** | `"<health_detail>"` (e.g., "leverage too low: 2.45×") |
+| ✓ | ✓ | **ROLL** | `"<health_detail>"` (e.g., "leverage too low: 2.45") |
 | ✓ | ✗ | **KEEP** | "degraded but within grace period" |
 | ✗ | any | **KEEP** | "warrant healthy, trend intact" |
 

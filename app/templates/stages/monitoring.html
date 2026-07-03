@@ -284,25 +284,19 @@
         {% if r.entry_candidates %}
         <div>
           <h6 class="mb-2">Entry candidates <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ r.entry_candidates | length }} / {{ r.free_positions }} slots</span></h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%">
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
             <colgroup>
-              <col style="width:14%">
-              <col style="width:44%">
-              <col style="width:14%">
-              <col style="width:14%">
-              <col style="width:14%">
+              <col style="width:10%">
+              <col style="width:90%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th>Reason</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th></tr>
             </thead>
             <tbody>
               {% for t in r.entry_candidates %}
               <tr>
                 <td><code>{{ t.symbol }}</code></td>
                 <td>{{ t.name or "—" }}</td>
-                <td class="text-muted">—</td>
-                <td class="text-muted">—</td>
-                <td class="text-muted">—</td>
               </tr>
               {% endfor %}
             </tbody>
