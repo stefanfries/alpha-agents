@@ -81,7 +81,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         maturity_to = (today + timedelta(days=self._max_days)).isoformat()
 
         underlying_sem = asyncio.Semaphore(5)   # max 5 underlyings in parallel
-        detail_sem = asyncio.Semaphore(10)       # max 10 concurrent detail fetches total
+        detail_sem = asyncio.Semaphore(5)        # max 5 concurrent detail fetches total (reduced from 10 to avoid Comdirect rate limiting)
         total = len(input.selected)
         done_count = [0]
         active: set[str] = set()

@@ -79,7 +79,7 @@ name); only warrant sourcing and the strike chart follow the override.
 6. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
 7. Underlyings with no candidates (neither band) are recorded in `skipped` and excluded from portfolio construction
 
-Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail fetches share a pool of 10 concurrent connections (`asyncio.Semaphore(10)`).
+Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail fetches share a pool of 5 concurrent connections (`asyncio.Semaphore(5)`). The detail concurrency was reduced from 10 to 5 to avoid triggering Comdirect rate limiting on the FinHub backend when processing large candidate pools (e.g. AMD with 100+ candidates).
 
 ## Scoring model
 
