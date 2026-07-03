@@ -162,6 +162,8 @@ The stage UI derives two user-facing columns from those diagnostics and monitori
 
 ## Configuration (`MonitoringSettings`)
 
+Warrant health thresholds can be adjusted directly in the monitoring stage UI ("Warrant health thresholds" panel above the action bar) without editing `.env`. UI-selected values are persisted to `config_overrides.monitoring.warrant_health` in the execution document and take precedence over the `.env` defaults for that execution.
+
 | Key | Default | Notes |
 | --- | ------- | ----- |
 | `min_holding_days` | `5` | Grace period before degraded warrants are eligible for ROLL; prevents roll churn on temporary fluctuations |
@@ -182,7 +184,7 @@ The stage UI derives two user-facing columns from those diagnostics and monitori
 - `min_days_to_maturity` (`60`)
 - `delta_min` (`0.3`), `delta_max` (`0.7`)
 
-Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`.
+Set via `.env` with `MONITORING__` prefix, e.g. `MONITORING__MIN_HOLDING_DAYS=7`, or via the stage UI for per-execution overrides.
 
 ### Threshold tuning guide
 

@@ -322,6 +322,59 @@
   </div>
   {% endif %}
 
+  {# --- Warrant health config panel + action bar --- #}
+  {% if monitoring_health_cfg is defined %}
+  <div class="flex-shrink-0 mt-3 pt-3 border-top">
+    <form method="post" action="/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}/stages/monitoring/restart"
+          class="d-flex flex-column gap-2">
+      <input type="hidden" name="from_stage" value="monitoring">
+      <input type="hidden" name="monitoring_health_submitted" value="1">
+      <fieldset class="border rounded p-2">
+        <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Warrant health thresholds</legend>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <div class="d-flex align-items-center gap-1">
+            <label class="small text-muted mb-0" for="wh_spread_max_pct">Max spread %</label>
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0" max="20"
+                   name="wh_spread_max_pct" id="wh_spread_max_pct"
+                   value="{{ monitoring_health_cfg.spread_max_pct }}" style="width:80px">
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <label class="small text-muted mb-0" for="wh_leverage_min">Leverage min</label>
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0" max="50"
+                   name="wh_leverage_min" id="wh_leverage_min"
+                   value="{{ monitoring_health_cfg.leverage_min }}" style="width:72px">
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <label class="small text-muted mb-0" for="wh_leverage_max">max</label>
+            <input class="form-control form-control-sm" type="number" step="0.1" min="0" max="50"
+                   name="wh_leverage_max" id="wh_leverage_max"
+                   value="{{ monitoring_health_cfg.leverage_max }}" style="width:72px">
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <label class="small text-muted mb-0" for="wh_delta_min">Delta min</label>
+            <input class="form-control form-control-sm" type="number" step="0.01" min="0" max="1"
+                   name="wh_delta_min" id="wh_delta_min"
+                   value="{{ monitoring_health_cfg.delta_min }}" style="width:72px">
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <label class="small text-muted mb-0" for="wh_delta_max">max</label>
+            <input class="form-control form-control-sm" type="number" step="0.01" min="0" max="1"
+                   name="wh_delta_max" id="wh_delta_max"
+                   value="{{ monitoring_health_cfg.delta_max }}" style="width:72px">
+          </div>
+          <div class="d-flex align-items-center gap-1">
+            <label class="small text-muted mb-0" for="wh_min_days_to_maturity">Min days to maturity</label>
+            <input class="form-control form-control-sm" type="number" step="1" min="0" max="730"
+                   name="wh_min_days_to_maturity" id="wh_min_days_to_maturity"
+                   value="{{ monitoring_health_cfg.min_days_to_maturity }}" style="width:80px">
+          </div>
+          {% include "partials/apply_rerun_btn.html" %}
+        </div>
+      </fieldset>
+    </form>
+  </div>
+  {% endif %}
+
   {% include "partials/action_bar.html" %}
 
 {% elif stage_status == "approved" %}

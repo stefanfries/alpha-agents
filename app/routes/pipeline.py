@@ -227,6 +227,18 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "strike_min_factor": ws_cfg.strike_min_factor,
             "strike_max_factor": ws_cfg.strike_max_factor,
         }
+    if stage == "monitoring" and execution:
+        mon_overrides = execution.get("config_overrides", {}).get("monitoring", {})
+        wh_overrides = mon_overrides.get("warrant_health", {}) if mon_overrides else {}
+        defs = settings.monitoring.warrant_health
+        ctx["monitoring_health_cfg"] = {
+            "spread_max_pct":       wh_overrides.get("spread_max_pct",       defs.spread_max_pct),
+            "leverage_min":         wh_overrides.get("leverage_min",         defs.leverage_min),
+            "leverage_max":         wh_overrides.get("leverage_max",         defs.leverage_max),
+            "delta_min":            wh_overrides.get("delta_min",            defs.delta_min),
+            "delta_max":            wh_overrides.get("delta_max",            defs.delta_max),
+            "min_days_to_maturity": wh_overrides.get("min_days_to_maturity", defs.min_days_to_maturity),
+        }
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 
 
@@ -295,6 +307,13 @@ async def restart_stage(
     ws_max_months: Annotated[str | None, Form()] = None,
     ws_strike_min_factor: Annotated[str | None, Form()] = None,
     ws_strike_max_factor: Annotated[str | None, Form()] = None,
+    monitoring_health_submitted: Annotated[str | None, Form()] = None,
+    wh_spread_max_pct: Annotated[str | None, Form()] = None,
+    wh_leverage_min: Annotated[str | None, Form()] = None,
+    wh_leverage_max: Annotated[str | None, Form()] = None,
+    wh_delta_min: Annotated[str | None, Form()] = None,
+    wh_delta_max: Annotated[str | None, Form()] = None,
+    wh_min_days_to_maturity: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(from_stage)
     updates: dict = {}
@@ -420,6 +439,42 @@ async def restart_stage(
             "max_days_to_expiry": safe_max_months * 30,
             "strike_min_factor": safe_strike_min_factor,
             "strike_max_factor": safe_strike_max_factor,
+        }
+
+    if monitoring_health_submitted is not None:
+        defs = settings.monitoring.warrant_health
+
+        def _parse_float(val: str | None, default: float) -> float:
+            try:
+                return float(val) if val not in (None, "") else default
+            except ValueError:
+                return default
+
+        def _parse_int(val: str | None, default: int) -> int:
+            try:
+                return int(val) if val not in (None, "") else default
+            except ValueError:
+                return default
+
+        safe_spread   = max(0.0, min(_parse_float(wh_spread_max_pct,   defs.spread_max_pct),  20.0))
+        safe_lev_min  = max(0.0, min(_parse_float(wh_leverage_min,      defs.leverage_min),    50.0))
+        safe_lev_max  = max(0.0, min(_parse_float(wh_leverage_max,      defs.leverage_max),    50.0))
+        safe_delta_min = max(0.0, min(_parse_float(wh_delta_min,        defs.delta_min),        1.0))
+        safe_delta_max = max(0.0, min(_parse_float(wh_delta_max,        defs.delta_max),        1.0))
+        safe_days     = max(0,    min(_parse_int(wh_min_days_to_maturity, defs.min_days_to_maturity), 730))
+        if safe_lev_max < safe_lev_min:
+            safe_lev_max = safe_lev_min
+        if safe_delta_max < safe_delta_min:
+            safe_delta_max = safe_delta_min
+        updates["config_overrides.monitoring"] = {
+            "warrant_health": {
+                "spread_max_pct":       safe_spread,
+                "leverage_min":         safe_lev_min,
+                "leverage_max":         safe_lev_max,
+                "delta_min":            safe_delta_min,
+                "delta_max":            safe_delta_max,
+                "min_days_to_maturity": safe_days,
+            }
         }
 
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})

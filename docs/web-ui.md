@@ -181,7 +181,7 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 - Two framed rule groups shown side-by-side:
   - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
   - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling, ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
-- **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run
+- **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run. Uses the shared `partials/apply_rerun_btn.html` partial.
 - Policy state is persisted to `config_overrides.screening` in the run document
 
 **User actions at approve:** the selection advances to monitoring.
@@ -233,6 +233,16 @@ Entry-candidate columns:
 
 - Monitoring decisions are accepted at stage level in HITL mode.
 - Entry candidates and roll intents then advance to warrant selection.
+
+**Warrant health thresholds panel** (above action bar):
+
+- Six numeric inputs pre-populated from persisted `config_overrides.monitoring.warrant_health` (falling back to `.env` / `MonitoringSettings` defaults):
+  - Max spread % (default 2.5)
+  - Leverage min / max (defaults 3.0 / 8.0)
+  - Delta min / max (defaults 0.3 / 0.7)
+  - Min days to maturity (default 60)
+- **Apply & Re-run** button — persists values to `config_overrides.monitoring.warrant_health` and restarts the monitoring stage. Values survive page refreshes and carry over to subsequent executions.
+- The button uses the shared `partials/apply_rerun_btn.html` partial (same component as the Screening stage).
 
 ---
 

@@ -15,7 +15,7 @@ from app.agents.risk import RiskAgent
 from app.agents.screening import SecuritySelectionAgent
 from app.agents.universe import UniverseAgent, UniverseInput
 from app.agents.warrant_selection import WarrantSelectionAgent
-from app.config import resolve_warrant_selection_settings, settings
+from app.config import MonitoringSettings, resolve_warrant_selection_settings, settings
 from app.db import (
     executions_collection,
     finance_db,
@@ -268,7 +268,16 @@ class Pipeline:
         held_since_map = await self._fetch_held_since(run)
         break_confirmed_symbols = await self._break_confirmed_symbols(run, screening)
         overrides = run.get("config_overrides", {}).get("monitoring", {})
-        mon_cfg = settings.monitoring.model_copy(update=overrides)
+        if overrides:
+            base = settings.monitoring.model_dump()
+            for k, v in overrides.items():
+                if isinstance(v, dict) and isinstance(base.get(k), dict):
+                    base[k] = {**base[k], **v}
+                else:
+                    base[k] = v
+            mon_cfg = MonitoringSettings.model_validate(base)
+        else:
+            mon_cfg = settings.monitoring
         result = await MonitoringAgent(
             settings=mon_cfg,
             max_positions=max_positions,
