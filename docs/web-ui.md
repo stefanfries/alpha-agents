@@ -181,7 +181,7 @@ Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `
 - Two framed rule groups shown side-by-side:
   - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
   - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling, ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
-- **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run. Uses the shared `partials/apply_rerun_btn.html` partial.
+- **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run. Uses the shared `partials/apply_rerun_btn.html` partial. Default variant is `primary`; optional variants are `outline-primary`, `secondary`, and `outline-secondary`.
 - Policy state is persisted to `config_overrides.screening` in the run document
 
 **User actions at approve:** the selection advances to monitoring.
@@ -242,7 +242,7 @@ Entry-candidate columns:
   - Delta min / max (defaults 0.3 / 0.7)
   - Min days to maturity (default 60)
 - **Apply & Re-run** button — persists values to `config_overrides.monitoring.warrant_health` and restarts the monitoring stage. Values survive page refreshes and carry over to subsequent executions.
-- The button uses the shared `partials/apply_rerun_btn.html` partial (same component as the Screening stage).
+- The button uses the shared `partials/apply_rerun_btn.html` partial (same component as the Screening stage). Default variant is `primary`; optional variants are `outline-primary`, `secondary`, and `outline-secondary`.
 
 ---
 
@@ -298,6 +298,7 @@ Below the split panel — **maturity and strike controls**:
 - Target maturity shown in UI equals midpoint `(min + max) / 2` and matches the days-to-expiry scoring target used during selection
 - Target strike factor shown in UI equals midpoint `(min_factor + max_factor) / 2`
 - Clicking **Apply & Re-run** restarts from warrant selection with the updated maturity window
+- The button uses the same shared `partials/apply_rerun_btn.html` component as Screening and Monitoring (default `primary` variant)
 
 **User actions at approve:** selected warrants advance to portfolio construction; retained roll rows are protected from closure via `keep_existing_isins` metadata.
 

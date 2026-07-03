@@ -1,1 +1,3 @@
-<button type="submit" class="btn btn-sm btn-primary">Apply &amp; Re-run</button>
+{# Available button types: primary, outline-primary, secondary, outline-secondary #}
+{% set _apply_rerun_btn_type = apply_rerun_btn_type if apply_rerun_btn_type is defined else "primary" %}
+<button type="submit" class="btn btn-sm btn-{{ _apply_rerun_btn_type }}">Apply &amp; Re-run</button>
