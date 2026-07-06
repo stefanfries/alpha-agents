@@ -22,6 +22,9 @@ class SelectionResult(BaseModel):
     rank_changes: dict[str, list[int | None]]      # sym -> [delta_1W, delta_2W, delta_4W]
     history_labels: list[str]                      # ["1W", "2W", "4W"]
     trend_signals: dict[str, str | None]           # sym -> "NEW" | "HOLD" | "BREAK" | None
+    latest_candle_dates: dict[str, date]           # sym -> date of bars[-1]
+    previous_candle_dates: dict[str, date]         # sym -> date of bars[-2]
+    first_break_candle_dates: dict[str, date]      # sym -> date BREAK was first observed (persisted across runs)
 ```
 
 ## Tools used

@@ -33,7 +33,7 @@ The orchestrator builds `MonitoringInput` from:
   - FinHub `/v1/instruments` fallback resolution (ISIN first, WKN fallback)
 - `held_since_map` from `virtual_depot_transactions` via `_fetch_held_since()`
 - `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()`
-- `break_confirmed_symbols` via `_break_confirmed_symbols()` comparing prior run/candle context
+- `break_confirmed_symbols` via `_break_confirmed_symbols()` — derived from `SelectionResult.first_break_candle_dates` (see below)
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
 
 ## Output
@@ -89,7 +89,7 @@ None directly.
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
   - Otherwise => **KEEP**
 
-**Confirmed BREAK** is derived from two consecutive closed-candle BREAK signals (same underlying, different trading dates).
+**Confirmed BREAK** fires when `SelectionResult.latest_candle_dates[symbol] > SelectionResult.first_break_candle_dates[symbol]` — i.e., at least one new candle has closed since the first BREAK was observed. `first_break_candle_dates` is computed in the Screening stage and persisted to MongoDB (see Orchestrator internals). This mechanism is robust across same-day reruns, public holidays, and weekend gaps: the first-break date is carried forward from prior runs regardless of how many runs were executed between the first BREAK and the confirmation.
 
 **Unconfirmed BREAK** takes precedence: if a BREAK signal fires but hasn't yet confirmed on a second candle, the position is held (not rolled) while waiting for trend confirmation.
 

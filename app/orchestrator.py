@@ -171,9 +171,11 @@ class Pipeline:
         )
         overrides = run.get("config_overrides", {}).get("screening", {})
         screening_cfg = settings.screening.model_copy(update=overrides)
-        return await SecuritySelectionAgent(
+        result = await SecuritySelectionAgent(
             settings=screening_cfg,
         ).run(research_with_bars)
+        result.first_break_candle_dates = await self._compute_first_break_candle_dates(run, result)
+        return result
 
     async def _run_warrant_selection(self, run: dict) -> WarrantSelectionResult:
         execution_id = run["execution_id"]
@@ -315,19 +317,48 @@ class Pipeline:
         return symbol
 
     async def _break_confirmed_symbols(self, run: dict, screening: SelectionResult) -> set[str]:
-        """Confirm BREAK on two consecutive closed candles (same-day reruns don't count)."""
-        previous_break_candles = await self._previous_break_candle_dates(run)
+        """Confirm BREAK when a new candle has closed after the first-BREAK candle.
+
+        `latest > first_break` ensures the confirming candle is from a different trading session
+        than the one where BREAK was first detected, preventing same-run false confirmations.
+        """
         confirmed: set[str] = set()
         for symbol, signal in screening.trend_signals.items():
             if signal != "BREAK":
                 continue
-            previous_candle = screening.previous_candle_dates.get(symbol)
-            if previous_candle and previous_break_candles.get(symbol) == previous_candle:
+            latest = screening.latest_candle_dates.get(symbol)
+            first_break = screening.first_break_candle_dates.get(symbol)
+            if latest and first_break and latest > first_break:
                 confirmed.add(symbol)
         return confirmed
 
-    async def _previous_break_candle_dates(self, run: dict) -> dict[str, date]:
-        """Return prior execution BREAK candle dates by symbol for this quant system."""
+    async def _compute_first_break_candle_dates(self, run: dict, screening: SelectionResult) -> dict[str, date]:
+        """For each currently-BREAK symbol, carry forward the first-BREAK candle date from the
+        previous run, or initialise it to this run's latest candle if this is the first BREAK.
+
+        Carry-forwards are always kept regardless of the current candle date.
+        New initialisations are guarded: a BREAK seen for the first time is only recorded when
+        `latest_candle < today`, ensuring the bar is complete and not still forming intraday.
+        """
+        today = date.today()
+        prev = await self._fetch_previous_first_break_candle_dates(run)
+        result: dict[str, date] = {}
+        for symbol, signal in screening.trend_signals.items():
+            if signal != "BREAK":
+                continue
+            latest = screening.latest_candle_dates.get(symbol)
+            if latest is None:
+                continue
+            if symbol in prev:
+                # Known BREAK: always carry the established first-break date forward
+                result[symbol] = prev[symbol]
+            elif latest < today:
+                # New BREAK: only initialise from a complete (prior-day) candle
+                result[symbol] = latest
+        return result
+
+    async def _fetch_previous_first_break_candle_dates(self, run: dict) -> dict[str, date]:
+        """Return the first_break_candle_dates stored in the most recent previous execution."""
         qs_id = run.get("quant_system_id")
         if not qs_id:
             return {}
@@ -345,11 +376,7 @@ class Pipeline:
         if not screening_data:
             return {}
         previous_screening = SelectionResult.model_validate(screening_data)
-        return {
-            symbol: candle_date
-            for symbol, candle_date in previous_screening.latest_candle_dates.items()
-            if previous_screening.trend_signals.get(symbol) == "BREAK"
-        }
+        return dict(previous_screening.first_break_candle_dates)
 
     async def _fetch_warrant_snapshots(self, warrant_isins: list[str]) -> dict[str, WarrantSnapshot]:
         """Fetch current warrant snapshot data for monitoring health checks."""
