@@ -336,11 +336,9 @@ class Pipeline:
         """For each currently-BREAK symbol, carry forward the first-BREAK candle date from the
         previous run, or initialise it to this run's latest candle if this is the first BREAK.
 
-        Carry-forwards are always kept regardless of the current candle date.
-        New initialisations are guarded: a BREAK seen for the first time is only recorded when
-        `latest_candle < today`, ensuring the bar is complete and not still forming intraday.
+        Same-day confirmation is impossible regardless (latest > first_break is False when both
+        are the same date), so no intraday guard is needed here.
         """
-        today = date.today()
         prev = await self._fetch_previous_first_break_candle_dates(run)
         result: dict[str, date] = {}
         for symbol, signal in screening.trend_signals.items():
@@ -349,12 +347,7 @@ class Pipeline:
             latest = screening.latest_candle_dates.get(symbol)
             if latest is None:
                 continue
-            if symbol in prev:
-                # Known BREAK: always carry the established first-break date forward
-                result[symbol] = prev[symbol]
-            elif latest < today:
-                # New BREAK: only initialise from a complete (prior-day) candle
-                result[symbol] = latest
+            result[symbol] = prev.get(symbol, latest)
         return result
 
     async def _fetch_previous_first_break_candle_dates(self, run: dict) -> dict[str, date]:

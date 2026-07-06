@@ -89,7 +89,7 @@ None directly.
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
   - Otherwise => **KEEP**
 
-**Confirmed BREAK** fires when `SelectionResult.latest_candle_dates[symbol] > SelectionResult.first_break_candle_dates[symbol]` — i.e., at least one new candle has closed since the first BREAK was observed. `first_break_candle_dates` is computed in the Screening stage and persisted to MongoDB (see Orchestrator internals). This mechanism is robust across same-day reruns, public holidays, and weekend gaps: the first-break date is carried forward from prior runs regardless of how many runs were executed between the first BREAK and the confirmation.
+**Confirmed BREAK** fires when `SelectionResult.latest_candle_dates[symbol] > SelectionResult.first_break_candle_dates[symbol]` — i.e., at least one new candle has closed since the first BREAK was observed. `first_break_candle_dates` is computed in the Screening stage and persisted to MongoDB (see Orchestrator internals). This mechanism is robust across same-day reruns, public holidays, and weekend gaps: the first-break date is carried forward from prior runs regardless of how many runs were executed between the first BREAK and the confirmation. Same-day confirmation is structurally impossible because `latest > first_break` is `False` when both equal the same date.
 
 **Unconfirmed BREAK** takes precedence: if a BREAK signal fires but hasn't yet confirmed on a second candle, the position is held (not rolled) while waiting for trend confirmation.
 

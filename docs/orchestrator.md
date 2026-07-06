@@ -160,7 +160,7 @@ When `_run_stage(run_id, stage_name)` is called:
 
 - **`_compute_first_break_candle_dates(run, screening)`** — for each symbol currently showing `trend_signal == "BREAK"`:
   - If the symbol already has a `first_break_candle_dates` entry in the most recent previous execution (`_fetch_previous_first_break_candle_dates`), that date is carried forward unchanged. This preserves the original first-break date across same-day reruns, holidays, and weekend gaps.
-  - If the symbol is newly entering BREAK, the date is initialised to `latest_candle_dates[symbol]`, **but only if `latest_candle < today`** — incomplete intraday bars are never recorded as a first-break candle.
+  - If the symbol is newly entering BREAK, the date is initialised to `latest_candle_dates[symbol]`. No intraday guard is needed: same-day confirmation is structurally impossible because `latest > first_break` is `False` when both equal the same date.
   - Symbols no longer in BREAK are not included (their entry is implicitly cleared).
 - The resulting `first_break_candle_dates` dict is attached to `SelectionResult` and persisted to MongoDB as part of `stages.screening.result`.
 
