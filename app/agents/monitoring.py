@@ -23,16 +23,26 @@ class WarrantSnapshot(BaseModel):
     bid_ask_midprice: float | None = None
 
 
+# BREAK indicator keys in priority order (plan §B, reason priority).
+_BREAK_REASON_LABELS: list[tuple[str, str]] = [
+    ("price_below_ema50", "Price below EMA50"),
+    ("supertrend_bearish", "SuperTrend bearish"),
+    ("ema20_falling", "EMA20 falling"),
+    ("adx_falling", "ADX falling"),
+    ("adx_below", "ADX below threshold"),
+]
+
+
 class MonitoringInput(BaseModel):
     candidates: list[Ticker]                   # from SelectionResult.selected (top-N ranked)
     scores: dict[str, float]                   # underlying_symbol → score
     trend_signals: dict[str, str | None]       # underlying_symbol → "NEW"|"HOLD"|"BREAK"|None
+    policy_results: dict[str, dict[str, bool]] = {}  # underlying_symbol → indicator booleans
     underlying_names: dict[str, str] = {}      # underlying_symbol → display name
     current_holdings: list[Position]           # depot warrant positions (isin+wkn in ticker)
     warrant_underlying_map: dict[str, str]     # warrant_isin → underlying_symbol
     held_since_map: dict[str, date]            # warrant_wkn → most recent BUY date
     warrant_snapshots: dict[str, WarrantSnapshot] = Field(default_factory=dict)
-    break_confirmed_symbols: set[str] = Field(default_factory=set)
     max_positions: int = 15
 
 
@@ -120,27 +130,38 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         return round(sum(components) / len(components), 3)
 
     @staticmethod
+    def _break_reasons(policy_values: dict[str, bool]) -> list[str]:
+        """Return active BREAK rule labels in deterministic priority order."""
+        return [
+            label
+            for key, label in _BREAK_REASON_LABELS
+            if policy_values.get(key, False)
+        ]
+
+    @staticmethod
     def _trend_status(
         *,
         has_trend_signal: bool,
         trend_signal: str | None,
-        is_break_confirmed: bool,
+        break_reasons: list[str],
     ) -> str:
         if not has_trend_signal:
             return "no screening signal"
-        if trend_signal is None:
-            return "BREAK confirmed earlier"
         if trend_signal == "BREAK":
-            return "BREAK confirmed" if is_break_confirmed else "BREAK pending"
-        if trend_signal in {"NEW", "HOLD"}:
-            return trend_signal
-        return "no signal"
+            if not break_reasons:
+                return "trend degraded"
+            primary = break_reasons[0]
+            extra = len(break_reasons) - 1
+            if extra > 0:
+                return f"trend degraded: {primary} (+{extra})"
+            return f"trend degraded: {primary}"
+        # NEW, HOLD, or None (aged-out BREAK) — no active exit signal
+        return "trend intact"
 
     @staticmethod
     def _decide_action(
         *,
         has_exit_signal: bool,
-        is_break_confirmed: bool,
         is_degraded: bool,
         holding_days: int,
         min_holding_days: int,
@@ -148,25 +169,17 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         """Resolve action with trend-first priority, then warrant health.
 
         Priority order:
-        1) Trend check (from screening):
-           - Confirmed BREAK -> SELL
-           - Unconfirmed BREAK -> KEEP (with reason: "break signal, not confirmed yet")
+        1) Active BREAK signal -> SELL immediately.
         2) Warrant health check (only if trend is intact):
            - Degraded + grace met -> ROLL
            - Otherwise -> KEEP
         """
-        # Step 1: Check trend status first
         if has_exit_signal:
-            if is_break_confirmed:
-                return "sell", "trend break confirmed"
-            else:
-                # Unconfirmed BREAK: hold and wait for confirmation
-                return "keep", "break signal, not confirmed yet"
-        
-        # Step 2: Check warrant health only if trend is intact
+            return "sell", "trend break"
+
         if is_degraded and holding_days >= min_holding_days:
             return "roll", None  # reason will be set from degrade_detail
-        
+
         return "keep", None
 
     @staticmethod
@@ -176,17 +189,15 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         is_degraded: bool,
         holding_days: int,
         trend_signal: str | None,
-        is_break_confirmed: bool,
         degrade_detail: str | None,
         warrant_wkn: str,
     ) -> None:
         logger.info(
-            "Monitoring: exit for %s (degraded=%s, held=%d days, signal=%s, confirmed=%s, detail=%s) -> SELL %s",
+            "Monitoring: exit for %s (degraded=%s, held=%d days, signal=%s, detail=%s) -> SELL %s",
             underlying_symbol,
             is_degraded,
             holding_days,
             trend_signal,
-            is_break_confirmed,
             degrade_detail,
             warrant_wkn,
         )
@@ -231,9 +242,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             held_since = input.held_since_map.get(warrant_wkn)
             holding_days = (today - held_since).days if held_since else 9999
 
-            # Check exit signal from screening:
-            # - BREAK: requires candle confirmation across runs
-            # - None: BREAK happened earlier and the signal already aged out
+            # Check exit signal from screening: BREAK fires an immediate SELL.
             has_trend_signal = underlying_sym in input.trend_signals
             trend_signal = input.trend_signals.get(underlying_sym)
             if not has_trend_signal:
@@ -242,8 +251,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                     underlying_sym,
                     warrant_wkn,
                 )
-            has_exit_signal = trend_signal == "BREAK" or (has_trend_signal and trend_signal is None)
-            is_break_confirmed = (has_trend_signal and trend_signal is None) or underlying_sym in input.break_confirmed_symbols
+            has_exit_signal = trend_signal == "BREAK"
+            policy_values = input.policy_results.get(underlying_sym, {})
+            break_reasons = self._break_reasons(policy_values)
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
             is_degraded, degrade_detail = False, None
             if warrant_snapshot:
@@ -266,7 +276,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 trend_status=self._trend_status(
                     has_trend_signal=has_trend_signal,
                     trend_signal=trend_signal,
-                    is_break_confirmed=is_break_confirmed,
+                    break_reasons=break_reasons,
                 ),
                 warrant_health_status=(
                     "unknown"
@@ -278,7 +288,6 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
 
             action, decision_reason = self._decide_action(
                 has_exit_signal=has_exit_signal,
-                is_break_confirmed=is_break_confirmed,
                 is_degraded=is_degraded,
                 holding_days=holding_days,
                 min_holding_days=self._min_holding_days,
@@ -287,18 +296,13 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             match action:
                 case "sell":
                     review.sell_reason = "exit_signal"
-                    review.decision_reason = (
-                        "break signal, confirmed earlier"
-                        if trend_signal is None
-                        else decision_reason
-                    )
+                    review.decision_reason = decision_reason
                     positions_to_sell.append(review)
                     self._log_sell_decision(
                         underlying_symbol=underlying_sym,
                         is_degraded=is_degraded,
                         holding_days=holding_days,
                         trend_signal=trend_signal,
-                        is_break_confirmed=is_break_confirmed,
                         degrade_detail=degrade_detail,
                         warrant_wkn=warrant_wkn,
                     )
@@ -316,11 +320,8 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                         review.decision_reason = decision_reason
                     elif is_degraded:
                         review.decision_reason = "degraded but within grace period"
-                    elif trend_signal in {"NEW", "HOLD"}:
+                    elif has_trend_signal:
                         review.decision_reason = "warrant healthy, trend intact"
-                    elif trend_signal == "BREAK":
-                        # Defensive fallback: keep this explicit if signal semantics ever change.
-                        review.decision_reason = "break signal, not confirmed yet"
                     else:
                         review.decision_reason = "no signal"
                     positions_to_keep.append(review)

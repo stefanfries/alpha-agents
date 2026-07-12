@@ -156,13 +156,7 @@ When `_run_stage(run_id, stage_name)` is called:
 
 ## Screening stage internals
 
-`_run_screening(run)` re-fetches OHLCV bars (not stored in the Research result) and runs `SecuritySelectionAgent`. After the agent returns, the orchestrator enriches the `SelectionResult` with BREAK confirmation state before persisting it:
-
-- **`_compute_first_break_candle_dates(run, screening)`** — for each symbol currently showing `trend_signal == "BREAK"`:
-  - If the symbol already has a `first_break_candle_dates` entry in the most recent previous execution (`_fetch_previous_first_break_candle_dates`), that date is carried forward unchanged. This preserves the original first-break date across same-day reruns, holidays, and weekend gaps.
-  - If the symbol is newly entering BREAK, the date is initialised to `latest_candle_dates[symbol]`. No intraday guard is needed: same-day confirmation is structurally impossible because `latest > first_break` is `False` when both equal the same date.
-  - Symbols no longer in BREAK are not included (their entry is implicitly cleared).
-- The resulting `first_break_candle_dates` dict is attached to `SelectionResult` and persisted to MongoDB as part of `stages.screening.result`.
+`_run_screening(run)` re-fetches OHLCV bars (not stored in the Research result) and runs `SecuritySelectionAgent`. The agent result is persisted directly without post-processing.
 
 ---
 
@@ -215,9 +209,8 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 7. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
 8. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
 9. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
-10. Calls `_break_confirmed_symbols(run, screening)` — derives the set of confirmed-BREAK symbols directly from the persisted `SelectionResult.first_break_candle_dates`: a symbol is confirmed when `latest_candle_dates[symbol] > first_break_candle_dates[symbol]`, meaning at least one new candle has closed since the first BREAK. This is robust across same-day reruns, holidays, and weekend gaps; no cross-run date comparison is needed at monitoring time.
-11. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-12. `MonitoringAgent.run()` evaluates each held position with trend-first priority (confirmed BREAK or aged-out BREAK-to-`None` sells, unconfirmed BREAK keeps, warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
+10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
+11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
 13. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
 14. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
 15. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)

@@ -13,12 +13,12 @@ class MonitoringInput(BaseModel):
     candidates: list[Ticker]               # from SelectionResult.selected (top-N ranked)
     scores: dict[str, float]               # underlying_symbol → score
     trend_signals: dict[str, str | None]   # underlying_symbol → "NEW" | "HOLD" | "BREAK" | None
+    policy_results: dict[str, dict[str, bool]]  # underlying_symbol → indicator booleans
     underlying_names: dict[str, str]       # underlying_symbol -> display name
     current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
     warrant_underlying_map: dict[str, str] # warrant_isin / warrant_wkn -> underlying_symbol
     held_since_map: dict[str, date]        # warrant_wkn → most recent BUY date
     warrant_snapshots: dict[str, WarrantSnapshot]  # held warrant health snapshots
-    break_confirmed_symbols: set[str]      # symbols with candle-confirmed BREAK
     max_positions: int                     # from execution config override or PortfolioSettings
 ```
 
@@ -33,7 +33,7 @@ The orchestrator builds `MonitoringInput` from:
   - FinHub `/v1/instruments` fallback resolution (ISIN first, WKN fallback)
 - `held_since_map` from `virtual_depot_transactions` via `_fetch_held_since()`
 - `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()`
-- `break_confirmed_symbols` via `_break_confirmed_symbols()` — derived from `SelectionResult.first_break_candle_dates` (see below)
+- `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
 
 ## Output
@@ -73,25 +73,23 @@ None directly.
 - Resolve underlying display name from `underlying_names[underlying_symbol]` when available. Name precedence is enforced by orchestrator: universe name via underlying ISIN, then cached fallback name.
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
 - Check exit signal from screening:
-  - `BREAK` = active break signal (still in the short confirmation window)
-  - `None` (`--` in screening UI) = break happened earlier and signal aged out; treated as confirmed earlier break
-  - Missing key in `trend_signals` = no signal available for mapped underlying symbol (not auto-sold)
+  - `BREAK` = active break signal → **immediate SELL** (no confirmation required)
+  - `None` (with key present) = BREAK aged out (>1 bar old); treated as no active exit signal → no sell
+  - Missing key in `trend_signals` = no signal available for mapped underlying symbol → no sell
 - Evaluate warrant health via `_check_warrant_health()` using available snapshot metrics (`spread_pct`, `leverage`, `days_to_maturity`, `delta`).
 - Compute health score via `_monitoring_score()`: weighted 4-component normalization (spread, leverage, maturity, delta)
 - **Resolve action via `_decide_action()` with trend-first priority**:
   
-  **Step 1: Trend check (exit signal)**
-  - `trend_signal is None` (`--`) => **SELL** with reason `"break signal, confirmed earlier"`
-  - `trend_signal == BREAK` and confirmed (`is_break_confirmed`) => **SELL** with reason `"trend break confirmed"`
-  - `trend_signal == BREAK` and not confirmed => **KEEP** with reason `"break signal, not confirmed yet"` (wait for confirmation)
+  **Step 1: Exit signal (trend)**
+  - `trend_signal == BREAK` => **SELL** with reason `"trend break"` (immediate; no confirmation needed)
   
   **Step 2: Warrant health check (only if trend is intact)**
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
   - Otherwise => **KEEP**
 
-**Confirmed BREAK** fires when `SelectionResult.latest_candle_dates[symbol] > SelectionResult.first_break_candle_dates[symbol]` — i.e., at least one new candle has closed since the first BREAK was observed. `first_break_candle_dates` is computed in the Screening stage and persisted to MongoDB (see Orchestrator internals). This mechanism is robust across same-day reruns, public holidays, and weekend gaps: the first-break date is carried forward from prior runs regardless of how many runs were executed between the first BREAK and the confirmation. Same-day confirmation is structurally impossible because `latest > first_break` is `False` when both equal the same date.
+Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold).
 
-**Unconfirmed BREAK** takes precedence: if a BREAK signal fires but hasn't yet confirmed on a second candle, the position is held (not rolled) while waiting for trend confirmation.
+**Active BREAK** fires when `trend_signal == "BREAK"` (signal is at most 1 bar old). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed.
 
 ### Responsibility boundary
 
@@ -123,12 +121,11 @@ Monitoring is classification-only:
 
 #### Step 1: Exit signal (trend)
 
-| Confirmed BREAK | Trend Signal | Action | Reason |
-| --- | --- | --- | --- |
-| ✓ (implicit) | `None` (`--`) with key present | **SELL** | "break signal, confirmed earlier" |
-| ✓ | BREAK | **SELL** | "trend break confirmed" |
-| ✗ | BREAK | **KEEP** | "break signal, not confirmed yet" (wait for 2nd candle) |
-| — | key missing / NEW / HOLD | → Step 2 | Continue to warrant health check |
+| Trend Signal | Action | Reason |
+| --- | --- | --- |
+| `BREAK` | **SELL** | "trend break" |
+| `HOLD` / `NEW` / `None` (with key) | → Step 2 | Continue to warrant health check |
+| key missing | → Step 2 (KEEP) | "no signal" |
 
 #### Step 2: Warrant health (only if trend is intact)
 
@@ -142,9 +139,9 @@ Monitoring is classification-only:
 
 Reason precedence for KEEP rows:
 
-1. If `_decide_action()` returns a reason, use it (e.g., `"break signal, not confirmed yet"`).
+1. If `_decide_action()` returns a reason, use it.
 2. If warrant is degraded but still within grace period, use `"degraded but within grace period"`.
-3. If trend signal is `NEW` or `HOLD`, use `"warrant healthy, trend intact"`.
+3. If trend signal key is present, use `"warrant healthy, trend intact"`.
 4. Otherwise use `"no signal"`.
 
 ### Signal state diagnostics
@@ -156,9 +153,10 @@ Monitoring exposes two underlying screening diagnostics for each reviewed positi
 
 The stage UI derives two user-facing columns from those diagnostics and monitoring checks:
 
-- `Trend status`: `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, `NEW`, `HOLD`, or `no screening signal`
+- `Trend status`: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, or `no screening signal`
+  - Reason priority: Price below EMA50 → SuperTrend bearish → EMA20 falling → ADX falling → ADX below threshold
 - `Warrant health`: `healthy`, `degraded` (with detail), or `unknown`
-- `Decision rationale`: only non-redundant action context (e.g. `break signal, not confirmed yet`), while duplicate degradation text is shown only once under warrant health
+- `Decision rationale`: non-redundant action context (duplicate degradation text is shown only once under warrant health)
 
 ## Configuration (`MonitoringSettings`)
 

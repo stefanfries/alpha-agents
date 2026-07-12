@@ -24,16 +24,10 @@
   {% set unresolved = r.positions_to_keep | selectattr('underlying_symbol', 'equalto', '') | list %}
   {% set rolls = r.positions_to_roll | default([], true) | list %}
   {% macro trend_status(p) %}
-    {% if p.trend_status == "BREAK confirmed" %}
-      <span class="badge bg-danger">BREAK confirmed</span>
-    {% elif p.trend_status == "BREAK confirmed earlier" %}
-      <span class="badge bg-danger bg-opacity-10 text-danger">BREAK confirmed earlier</span>
-    {% elif p.trend_status == "BREAK pending" %}
-      <span class="badge bg-warning text-dark">BREAK pending</span>
-    {% elif p.trend_status == "NEW" %}
-      <span class="badge bg-success">NEW</span>
-    {% elif p.trend_status == "HOLD" %}
-      <span class="badge bg-secondary">HOLD</span>
+    {% if p.trend_status == "trend intact" %}
+      <span class="badge bg-secondary">intact</span>
+    {% elif p.trend_status and p.trend_status.startswith("trend degraded") %}
+      <span class="badge bg-warning text-dark" title="{{ p.trend_status }}">{{ p.trend_status }}</span>
     {% elif p.trend_status == "no screening signal" %}
       <span class="text-muted">no screening signal</span>
     {% else %}

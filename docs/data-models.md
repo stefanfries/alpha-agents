@@ -248,7 +248,6 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below) |
 | `latest_candle_dates` | `dict[str, date]` | Date of the most recent OHLCV bar per ticker |
 | `previous_candle_dates` | `dict[str, date]` | Date of bars[-2] per ticker (second-to-last closed candle) |
-| `first_break_candle_dates` | `dict[str, date]` | Date of the candle on which BREAK was first observed per ticker; persisted across runs for confirmation logic (see Monitoring) |
 
 ### `WarrantSelectionResult`
 

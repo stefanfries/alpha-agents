@@ -174,7 +174,6 @@ class Pipeline:
         result = await SecuritySelectionAgent(
             settings=screening_cfg,
         ).run(research_with_bars)
-        result.first_break_candle_dates = await self._compute_first_break_candle_dates(run, result)
         return result
 
     async def _run_warrant_selection(self, run: dict) -> WarrantSelectionResult:
@@ -268,7 +267,6 @@ class Pipeline:
             for symbol, name in (await self._underlying_names_from_cache(held_identifiers)).items():
                 underlying_names.setdefault(symbol, name)
         held_since_map = await self._fetch_held_since(run)
-        break_confirmed_symbols = await self._break_confirmed_symbols(run, screening)
         overrides = run.get("config_overrides", {}).get("monitoring", {})
         if overrides:
             base = settings.monitoring.model_dump()
@@ -292,7 +290,7 @@ class Pipeline:
             warrant_underlying_map=warrant_underlying_map,
             held_since_map=held_since_map,
             warrant_snapshots=warrant_snapshots,
-            break_confirmed_symbols=break_confirmed_symbols,
+            policy_results=screening.policy_results,
             max_positions=max_positions,
         ))
 
@@ -315,61 +313,6 @@ class Pipeline:
             if base in screening_symbols:
                 return base
         return symbol
-
-    async def _break_confirmed_symbols(self, run: dict, screening: SelectionResult) -> set[str]:
-        """Confirm BREAK when a new candle has closed after the first-BREAK candle.
-
-        `latest > first_break` ensures the confirming candle is from a different trading session
-        than the one where BREAK was first detected, preventing same-run false confirmations.
-        """
-        confirmed: set[str] = set()
-        for symbol, signal in screening.trend_signals.items():
-            if signal != "BREAK":
-                continue
-            latest = screening.latest_candle_dates.get(symbol)
-            first_break = screening.first_break_candle_dates.get(symbol)
-            if latest and first_break and latest > first_break:
-                confirmed.add(symbol)
-        return confirmed
-
-    async def _compute_first_break_candle_dates(self, run: dict, screening: SelectionResult) -> dict[str, date]:
-        """For each currently-BREAK symbol, carry forward the first-BREAK candle date from the
-        previous run, or initialise it to this run's latest candle if this is the first BREAK.
-
-        Same-day confirmation is impossible regardless (latest > first_break is False when both
-        are the same date), so no intraday guard is needed here.
-        """
-        prev = await self._fetch_previous_first_break_candle_dates(run)
-        result: dict[str, date] = {}
-        for symbol, signal in screening.trend_signals.items():
-            if signal != "BREAK":
-                continue
-            latest = screening.latest_candle_dates.get(symbol)
-            if latest is None:
-                continue
-            result[symbol] = prev.get(symbol, latest)
-        return result
-
-    async def _fetch_previous_first_break_candle_dates(self, run: dict) -> dict[str, date]:
-        """Return the first_break_candle_dates stored in the most recent previous execution."""
-        qs_id = run.get("quant_system_id")
-        if not qs_id:
-            return {}
-        previous_run = await executions_collection().find_one(
-            {
-                "quant_system_id": qs_id,
-                "execution_id": {"$ne": run["execution_id"]},
-                "stages.screening.result": {"$exists": True},
-            },
-            sort=[("created_at", -1)],
-        )
-        if not previous_run:
-            return {}
-        screening_data = previous_run.get("stages", {}).get("screening", {}).get("result")
-        if not screening_data:
-            return {}
-        previous_screening = SelectionResult.model_validate(screening_data)
-        return dict(previous_screening.first_break_candle_dates)
 
     async def _fetch_warrant_snapshots(self, warrant_isins: list[str]) -> dict[str, WarrantSnapshot]:
         """Fetch current warrant snapshot data for monitoring health checks."""

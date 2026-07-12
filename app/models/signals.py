@@ -42,7 +42,6 @@ class SelectionResult(BaseModel):
     trend_signals: dict[str, str | None] = {}  # sym → "NEW" | "HOLD" | "BREAK" | None
     latest_candle_dates: dict[str, date] = {}
     previous_candle_dates: dict[str, date] = {}
-    first_break_candle_dates: dict[str, date] = {}  # sym → date BREAK was first observed (persisted across runs)
 
 
 class SelectedWarrant(BaseModel):

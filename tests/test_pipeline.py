@@ -660,13 +660,9 @@ async def test_monitoring_resolves_underlying_via_wkn_fallback_and_sells_on_brea
     async def fake_held_since(_run: dict) -> dict[str, date]:
         return {"WKN1": date.today() - timedelta(days=30)}
 
-    async def fake_break_confirmed(_run: dict, _screening: SelectionResult) -> set[str]:
-        return {"A"}
-
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
-    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A"), Ticker(symbol="B")],
@@ -840,8 +836,8 @@ async def test_monitoring_keeps_non_degraded_without_exit_signal():
 
 
 @pytest.mark.asyncio
-async def test_monitoring_unconfirmed_break_holds_regardless_of_warrant_degradation():
-    """Unconfirmed BREAK takes precedence: hold and wait for confirmation, don't act on warrant health yet."""
+async def test_monitoring_break_sells_immediately_regardless_of_warrant_degradation():
+    """BREAK always triggers immediate SELL; warrant degradation does not change that."""
     agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
 
     result = await agent.run(
@@ -869,10 +865,11 @@ async def test_monitoring_unconfirmed_break_holds_regardless_of_warrant_degradat
         )
     )
 
-    assert len(result.positions_to_sell) == 0
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].sell_reason == "exit_signal"
+    assert result.positions_to_sell[0].decision_reason == "trend break"
     assert len(result.positions_to_roll) == 0
-    assert len(result.positions_to_keep) == 1
-    assert result.positions_to_keep[0].decision_reason == "break signal, not confirmed yet"
+    assert len(result.positions_to_keep) == 0
 
 
 @pytest.mark.asyncio
@@ -894,7 +891,6 @@ async def test_monitoring_confirmed_break_sells_regardless_of_warrant_health_and
             ],
             warrant_underlying_map={"ISIN1": "A"},
             held_since_map={"WKN1": date.today() - timedelta(days=1)},
-            break_confirmed_symbols={"A"},
             warrant_snapshots={
                 "ISIN1": WarrantSnapshot(
                     warrant_isin="ISIN1",
@@ -911,7 +907,8 @@ async def test_monitoring_confirmed_break_sells_regardless_of_warrant_health_and
 
 
 @pytest.mark.asyncio
-async def test_monitoring_holds_break_during_grace_without_candle_confirmation():
+async def test_monitoring_break_sells_immediately_within_grace_period():
+    """Grace period only governs warrant-health ROLL; BREAK always sells immediately."""
     agent = MonitoringAgent(settings=MonitoringSettings(min_holding_days=5), max_positions=5)
 
     result = await agent.run(
@@ -929,13 +926,13 @@ async def test_monitoring_holds_break_during_grace_without_candle_confirmation()
             ],
             warrant_underlying_map={"ISIN1": "A"},
             held_since_map={"WKN1": date.today() - timedelta(days=1)},
-            break_confirmed_symbols=set(),
             max_positions=5,
         )
     )
 
-    assert len(result.positions_to_keep) == 1
-    assert len(result.positions_to_sell) == 0
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].sell_reason == "exit_signal"
+    assert len(result.positions_to_keep) == 0
 
 
 @pytest.mark.asyncio
@@ -991,7 +988,6 @@ async def test_monitoring_sells_break_during_grace_with_candle_confirmation():
             ],
             warrant_underlying_map={"ISIN1": "A"},
             held_since_map={"WKN1": date.today() - timedelta(days=1)},
-            break_confirmed_symbols={"A"},
             max_positions=5,
         )
     )

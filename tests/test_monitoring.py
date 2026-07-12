@@ -19,8 +19,6 @@ from app.models.market import Position, Ticker
 from app.models.signals import (
     MonitoringResult,
     PositionReview,
-    ResearchResult,
-    RollReplacement,
     SelectionResult,
     WarrantSelectionResult,
 )
@@ -300,9 +298,6 @@ async def test_position_review_captures_snapshot_data(monkeypatch):
     async def fake_held_since(_run: dict):
         return {"WKN1": date.today() - timedelta(days=30)}
 
-    async def fake_break_confirmed(_run: dict, _screening: SelectionResult):
-        return set()
-
     async def fake_snapshots(isins: list[str]):
         return {
             "ISIN1": WarrantSnapshot(
@@ -317,7 +312,6 @@ async def test_position_review_captures_snapshot_data(monkeypatch):
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
-    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
     monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
 
     screening = SelectionResult(
@@ -336,7 +330,7 @@ async def test_position_review_captures_snapshot_data(monkeypatch):
     # Should be in keep since trend is HOLD and warrant is not degraded
     assert len(result.positions_to_keep) > 0
     position = result.positions_to_keep[0]
-    
+
     # Verify snapshot data was copied to PositionReview
     assert position.spread_pct == 1.8
     assert position.leverage == 5.5
@@ -349,19 +343,8 @@ async def test_position_review_captures_snapshot_data(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_decision_reason_set_on_sell(monkeypatch):
-    """Test that decision_reason is set correctly on SELL action."""
-    from app.config import MonitoringSettings
+    """BREAK signal alone triggers immediate SELL without confirmation."""
     from app.orchestrator import Pipeline
-
-    # Config to trigger degradation
-    settings = MonitoringSettings(
-        spread_max_pct=1.0,  # threshold to trigger degradation
-        leverage_min=3.0,
-        leverage_max=8.0,
-        days_to_maturity_min=60,
-        delta_min=0.3,
-        delta_max=0.7,
-    )
 
     pipeline = Pipeline()
 
@@ -380,9 +363,6 @@ async def test_decision_reason_set_on_sell(monkeypatch):
     async def fake_held_since(_run: dict):
         return {"WKN1": date.today() - timedelta(days=180)}
 
-    async def fake_break_confirmed(_run: dict, _screening: SelectionResult):
-        return {"A"}  # Confirm break for A
-
     async def fake_snapshots(isins: list[str]):
         return {
             "ISIN1": WarrantSnapshot(
@@ -397,14 +377,13 @@ async def test_decision_reason_set_on_sell(monkeypatch):
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
-    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
     monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A")],
         scores={"A": 1.0},
         rationale={},
-        trend_signals={"A": "BREAK"},  # BREAK signal
+        trend_signals={"A": "BREAK"},
     )
     run = {
         "stages": {"screening": {"result": screening.model_dump(mode="json")}},
@@ -413,10 +392,8 @@ async def test_decision_reason_set_on_sell(monkeypatch):
 
     result = await pipeline._run_monitoring(run)
 
-    # Should be in sell due to BREAK confirmed
-    assert len(result.positions_to_sell) > 0
-    position = result.positions_to_sell[0]
-    assert position.decision_reason == "trend break confirmed"
+    assert len(result.positions_to_sell) == 1
+    assert result.positions_to_sell[0].decision_reason == "trend break"
 
 
 @pytest.mark.asyncio
@@ -441,9 +418,6 @@ async def test_orchestrator_collects_keep_existing_metadata(monkeypatch):
     async def fake_held_since(_run: dict):
         return {"WKN1": date.today() - timedelta(days=30)}
 
-    async def fake_break_confirmed(_run: dict, _screening: SelectionResult):
-        return set()
-
     async def fake_snapshots(isins: list[str]):
         return {
             "ISIN_A": WarrantSnapshot(
@@ -458,7 +432,6 @@ async def test_orchestrator_collects_keep_existing_metadata(monkeypatch):
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
-    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
     monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
 
     screening = SelectionResult(
@@ -482,7 +455,7 @@ async def test_orchestrator_collects_keep_existing_metadata(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_missing_trend_signal_key_does_not_sell():
-    """If symbol is absent from trend_signals, monitoring must not treat it as confirmed earlier BREAK."""
+    """If symbol is absent from trend_signals, monitoring must not sell."""
     agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
     position = Position(
         ticker=Ticker(symbol="WKN1", isin="ISIN1"),
@@ -499,7 +472,6 @@ async def test_missing_trend_signal_key_does_not_sell():
             warrant_underlying_map={"ISIN1": "ASML"},
             held_since_map={},
             warrant_snapshots={},
-            break_confirmed_symbols=set(),
             max_positions=5,
         )
     )
@@ -530,9 +502,6 @@ async def test_run_monitoring_normalizes_dotted_symbol_to_screening_symbol(monke
     async def fake_held_since(_run: dict):
         return {"WKN1": date.today() - timedelta(days=30)}
 
-    async def fake_break_confirmed(_run: dict, _screening: SelectionResult):
-        return set()
-
     async def fake_snapshots(_isins: list[str]):
         return {}
 
@@ -542,7 +511,6 @@ async def test_run_monitoring_normalizes_dotted_symbol_to_screening_symbol(monke
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
-    monkeypatch.setattr(pipeline, "_break_confirmed_symbols", fake_break_confirmed)
     monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_snapshots)
     monkeypatch.setattr(pipeline, "_resolve_underlying_names_from_universe", fake_names_from_universe)
 
@@ -562,3 +530,159 @@ async def test_run_monitoring_normalizes_dotted_symbol_to_screening_symbol(monke
     assert len(result.positions_to_keep) == 1
     assert result.positions_to_keep[0].underlying_symbol == "ASML"
     assert result.positions_to_keep[0].decision_reason == "warrant healthy, trend intact"
+
+
+# ---------------------------------------------------------------------------
+# New tests: immediate BREAK sell + degradation reason rendering
+# ---------------------------------------------------------------------------
+
+class TestImmediateBreakSell:
+    """BREAK signal triggers immediate SELL without any confirmation step."""
+
+    @pytest.mark.asyncio
+    async def test_break_sells_immediately(self):
+        agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+        result = await agent.run(
+            MonitoringInput(
+                candidates=[],
+                scores={},
+                trend_signals={"ASML": "BREAK"},
+                current_holdings=[
+                    Position(
+                        ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                        quantity=Decimal("1"),
+                        avg_cost=Decimal("0"),
+                    )
+                ],
+                warrant_underlying_map={"ISIN1": "ASML"},
+                held_since_map={},
+                max_positions=5,
+            )
+        )
+        assert len(result.positions_to_sell) == 1
+        assert len(result.positions_to_keep) == 0
+        assert result.positions_to_sell[0].decision_reason == "trend break"
+
+    @pytest.mark.asyncio
+    async def test_hold_does_not_sell(self):
+        agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+        result = await agent.run(
+            MonitoringInput(
+                candidates=[],
+                scores={},
+                trend_signals={"ASML": "HOLD"},
+                current_holdings=[
+                    Position(
+                        ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                        quantity=Decimal("1"),
+                        avg_cost=Decimal("0"),
+                    )
+                ],
+                warrant_underlying_map={"ISIN1": "ASML"},
+                held_since_map={},
+                max_positions=5,
+            )
+        )
+        assert len(result.positions_to_sell) == 0
+        assert len(result.positions_to_keep) == 1
+
+    @pytest.mark.asyncio
+    async def test_none_signal_does_not_sell(self):
+        """Aged-out BREAK (None) must NOT trigger a sell in the new design."""
+        agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+        result = await agent.run(
+            MonitoringInput(
+                candidates=[],
+                scores={},
+                trend_signals={"ASML": None},
+                current_holdings=[
+                    Position(
+                        ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                        quantity=Decimal("1"),
+                        avg_cost=Decimal("0"),
+                    )
+                ],
+                warrant_underlying_map={"ISIN1": "ASML"},
+                held_since_map={},
+                max_positions=5,
+            )
+        )
+        assert len(result.positions_to_sell) == 0
+        assert len(result.positions_to_keep) == 1
+
+
+class TestTrendStatus:
+    """Unit tests for _trend_status and _break_reasons."""
+
+    def test_intact_for_hold(self):
+        assert MonitoringAgent._trend_status(
+            has_trend_signal=True, trend_signal="HOLD", break_reasons=[]
+        ) == "trend intact"
+
+    def test_intact_for_new(self):
+        assert MonitoringAgent._trend_status(
+            has_trend_signal=True, trend_signal="NEW", break_reasons=[]
+        ) == "trend intact"
+
+    def test_intact_for_none_with_signal(self):
+        assert MonitoringAgent._trend_status(
+            has_trend_signal=True, trend_signal=None, break_reasons=[]
+        ) == "trend intact"
+
+    def test_no_screening_signal_when_absent(self):
+        assert MonitoringAgent._trend_status(
+            has_trend_signal=False, trend_signal=None, break_reasons=[]
+        ) == "no screening signal"
+
+    def test_degraded_single_reason(self):
+        status = MonitoringAgent._trend_status(
+            has_trend_signal=True,
+            trend_signal="BREAK",
+            break_reasons=["SuperTrend bearish"],
+        )
+        assert status == "trend degraded: SuperTrend bearish"
+
+    def test_degraded_multiple_reasons(self):
+        status = MonitoringAgent._trend_status(
+            has_trend_signal=True,
+            trend_signal="BREAK",
+            break_reasons=["Price below EMA50", "SuperTrend bearish", "EMA20 falling"],
+        )
+        assert status == "trend degraded: Price below EMA50 (+2)"
+
+    def test_degraded_no_reasons_fallback(self):
+        status = MonitoringAgent._trend_status(
+            has_trend_signal=True, trend_signal="BREAK", break_reasons=[]
+        )
+        assert status == "trend degraded"
+
+    def test_break_reasons_priority_order(self):
+        """Price below EMA50 must rank first per plan §B priority."""
+        policy = {
+            "supertrend_bearish": True,
+            "ema20_falling": True,
+            "adx_falling": True,
+            "adx_below": True,
+            "price_below_ema50": True,
+        }
+        reasons = MonitoringAgent._break_reasons(policy)
+        assert reasons[0] == "Price below EMA50"
+        assert len(reasons) == 5
+
+    def test_break_reasons_filters_false(self):
+        policy = {
+            "supertrend_bearish": True,
+            "ema20_falling": False,
+            "price_below_ema50": False,
+        }
+        reasons = MonitoringAgent._break_reasons(policy)
+        assert reasons == ["SuperTrend bearish"]
+
+    def test_break_reasons_from_policy_results_wired_to_trend_status(self):
+        """End-to-end: policy_results → break_reasons → trend_status string."""
+        policy = {"price_below_ema50": True, "adx_below": True}
+        reasons = MonitoringAgent._break_reasons(policy)
+        status = MonitoringAgent._trend_status(
+            has_trend_signal=True, trend_signal="BREAK", break_reasons=reasons
+        )
+        assert status == "trend degraded: Price below EMA50 (+1)"
