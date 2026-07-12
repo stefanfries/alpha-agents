@@ -211,9 +211,9 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 9. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
 10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
 11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
-13. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
-14. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
-15. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
+12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
+13. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
+14. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 

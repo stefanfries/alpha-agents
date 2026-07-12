@@ -119,8 +119,8 @@ Implementation option:
 - Add a small helper in Monitoring to derive active BREAK reasons from screening policy payload for mapped underlying symbol.
 - Select primary reason by deterministic priority order.
 - Build status string:
-  - one reason: trend degraded: <reason>
-  - multiple: trend degraded: <reason> (+N)
+  - one reason: trend degraded: \<reason\>
+  - multiple: trend degraded: \<reason\> (+N)
 
 Reason priority (initial):
 
