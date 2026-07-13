@@ -23,6 +23,17 @@ class FinHubSettings(BaseModel):
 
 class ResearchSettings(BaseModel):
     lookback_days: int = 365
+    # Direct symbol-to-Yahoo overrides for known problematic venue symbols.
+    yfinance_symbol_overrides_by_symbol: dict[str, str] = Field(default_factory=lambda: {
+        "Q23.SW": "BG",         # Bunge Global S.A. (NYSE)
+        "Q23": "BG",            # Bunge Global S.A. (NYSE)
+    })
+    # Used only as a fallback in YFinance OHLCV fetch when the primary symbol
+    # returned no bars. Keys are ISINs, values are Yahoo symbols.
+    yfinance_symbol_overrides_by_isin: dict[str, str] = Field(default_factory=lambda: {
+        "US74743L1008": "BG",      # Bunge Global S.A.
+        "CH0044328745": "CB",      # Chubb Ltd.
+    })
 
 
 class ScreeningSettings(BaseModel):
