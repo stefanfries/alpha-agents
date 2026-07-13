@@ -239,6 +239,8 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "delta_max":            wh_overrides.get("delta_max",            defs.delta_max),
             "min_days_to_maturity": wh_overrides.get("min_days_to_maturity", defs.min_days_to_maturity),
         }
+    if stage == "universe" and request.query_params.get("partial") == "1":
+        return templates.TemplateResponse(request, "stages/partials/universe_stage_body.html", ctx)
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)
 
 

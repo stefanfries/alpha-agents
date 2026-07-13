@@ -41,6 +41,15 @@ async def _real_depots() -> list[dict]:
         return []
 
 
+async def _resolve_depot_type(depot_id: str, depot_type: str) -> str:
+    """Resolve depot_type defensively when the form did not set it."""
+    normalized = (depot_type or "").strip().lower()
+    if normalized in {"real", "virtual"}:
+        return normalized
+    vd = await virtual_depots_collection().find_one({"depot_id": depot_id}, {"_id": 1})
+    return "virtual" if vd else "real"
+
+
 # ---------------------------------------------------------------------------
 # List
 # ---------------------------------------------------------------------------
@@ -78,11 +87,12 @@ async def create_quant_system(
     now = datetime.now(timezone.utc)
     qs_id = uuid.uuid4().hex[:6]
     safe_max_positions = max(1, min(max_positions, 100))
+    resolved_depot_type = await _resolve_depot_type(depot_id=depot_id, depot_type=depot_type)
     await quant_systems_collection().insert_one({
         "quant_system_id": qs_id,
         "name": name.strip(),
         "depot_id": depot_id,
-        "depot_type": depot_type,
+        "depot_type": resolved_depot_type,
         "indices": indices,
         "capital_eur": capital_eur,
         "status": "draft",
@@ -190,12 +200,13 @@ async def save_quant_system(
     status: Annotated[str, Form()] = "draft",
 ) -> RedirectResponse:
     safe_max_positions = max(1, min(max_positions, 100))
+    resolved_depot_type = await _resolve_depot_type(depot_id=depot_id, depot_type=depot_type)
     await quant_systems_collection().update_one(
         {"quant_system_id": qs_id},
         {"$set": {
             "name": name.strip(),
             "depot_id": depot_id,
-            "depot_type": depot_type,
+            "depot_type": resolved_depot_type,
             "indices": indices,
             "capital_eur": capital_eur,
             "config_overrides.portfolio.max_positions": safe_max_positions,

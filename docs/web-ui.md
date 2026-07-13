@@ -19,6 +19,24 @@ Every page shares a base template with:
 - **Left sidebar** (execution pages): pipeline progress indicator showing all 8 stages with status badges (pending / running / awaiting review / approved / error). Clicking a completed stage navigates to its review page.
 - **Main content area**: page-specific content
 
+### Template Organization
+
+Use a two-level partial strategy to keep templates understandable as the UI grows:
+
+- **Global partials**: `app/templates/partials/`
+  - Place fragments reused across multiple features/pages (for example: action bar, shared chart panel, stage sidebar progress).
+- **Feature-local partials**: `app/templates/<feature>/partials/`
+  - Place fragments used only inside one feature area.
+  - Current examples:
+    - `app/templates/stages/partials/` for stage-only fragments (such as HTMX-polled stage body fragments)
+    - `app/templates/quant_systems/partials/` for quant-system form fragments
+
+Rules of thumb:
+
+1. Start local: create a partial in the feature folder first.
+2. Promote to global only when the same fragment is used by 2+ feature areas.
+3. Keep include paths explicit (for example `partials/...` vs `stages/partials/...`) to make ownership obvious during reviews.
+
 ---
 
 ## Quant System management

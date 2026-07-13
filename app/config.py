@@ -18,6 +18,7 @@ class BrokerSettings(BaseModel):
 class FinHubSettings(BaseModel):
     base_url: str = "https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io"
     timeout_s: int = 65  # cold start on scale-to-zero can take 30-60 s
+    instrument_lookup_concurrency: int = 8
 
 
 class ResearchSettings(BaseModel):
@@ -61,8 +62,8 @@ class ScreeningSettings(BaseModel):
 class WarrantSelectionSettings(BaseModel):
     min_days_to_expiry: int = 270   # 9 months
     max_days_to_expiry: int = 450   # 15 months
-    strike_min_factor: float = 0.95 # strike_min = current_price × factor
-    strike_max_factor: float = 1.00 # strike_max = current_price × factor
+    strike_min_factor: float = 0.90 # strike_min = current_price × factor
+    strike_max_factor: float = 1.05 # strike_max = current_price × factor
     atm_band: float = 0.02          # legacy symmetric strike filter (migration fallback)
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
 

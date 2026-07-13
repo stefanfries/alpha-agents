@@ -109,7 +109,20 @@ class Pipeline:
         execution_id = run["execution_id"]
         async with FinHubTool() as finhub, WikipediaIndexTool() as wikipedia:
             await self._wake_finhub(execution_id, finhub, "universe")
-            result = await UniverseAgent(finhub=finhub, wikipedia=wikipedia).run(
+
+            async def on_universe_progress(done: int, total: int) -> None:
+                await update_stage_progress(execution_id, "universe", {
+                    "step": "instruments",
+                    "done": done,
+                    "total": total,
+                    "message": "Resolving instrument mappings…",
+                })
+
+            result = await UniverseAgent(
+                finhub=finhub,
+                wikipedia=wikipedia,
+                on_progress=on_universe_progress,
+            ).run(
                 UniverseInput(indices=run.get("indices", []))
             )
 

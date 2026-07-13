@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 import httpx
 from pydantic import BaseModel
 
 from app.agents.base import Agent
+from app.config import settings
 from app.models.market import Ticker
 from app.models.signals import UniverseResult
 from app.tools.finhub import FinHubTool
@@ -23,9 +25,15 @@ class UniverseInput(BaseModel):
 class UniverseAgent(Agent[UniverseInput, UniverseResult]):
     name = "universe"
 
-    def __init__(self, finhub: FinHubTool, wikipedia: WikipediaIndexTool) -> None:
+    def __init__(
+        self,
+        finhub: FinHubTool,
+        wikipedia: WikipediaIndexTool,
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+    ) -> None:
         self._finhub = finhub
         self._wikipedia = wikipedia
+        self._on_progress = on_progress
 
     async def run(self, input: UniverseInput) -> UniverseResult:
         all_entries: list[tuple[Ticker, str]] = []  # (ticker, source_index_name)
@@ -122,31 +130,56 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
         if not members:
             return []
 
-        sem = asyncio.Semaphore(20)
+        sem = asyncio.Semaphore(max(1, settings.finhub.instrument_lookup_concurrency))
+        total = len(members)
+        done = 0
+        last_reported = 0
+        report_every = max(1, total // 25)
+        progress_lock = asyncio.Lock()
+
+        async def mark_progress() -> None:
+            nonlocal done, last_reported
+            to_report: tuple[int, int] | None = None
+            async with progress_lock:
+                done += 1
+                if (
+                    self._on_progress is not None
+                    and (done - last_reported >= report_every or done == total)
+                ):
+                    last_reported = done
+                    to_report = (done, total)
+            if to_report is not None:
+                await self._on_progress(*to_report)
+
+        if self._on_progress is not None:
+            await self._on_progress(0, total)
 
         async def fetch_ticker(member: dict) -> Ticker | None:
-            isin = member.get("isin")
-            if not isin:
-                return None
-            async with sem:
-                try:
-                    instrument = await retry_call(self._finhub.get_instrument, isin)
-                except Exception:
-                    logger.warning("Failed to fetch instrument for ISIN %s", isin)
+            try:
+                isin = member.get("isin")
+                if not isin:
                     return None
-            if instrument is None:
-                logger.warning("No instrument found for ISIN %s", isin)
-                return None
-            security_type = (instrument.get("details") or {}).get("security_type", "")
-            if security_type == "ADR":
-                self._adr_isins.add(isin)
-                logger.info("ADR included %s (%s) — verify warrant availability at comdirect", isin, member.get("name"))
-            identifiers = instrument.get("global_identifiers") or {}
-            symbol = identifiers.get("symbol_yfinance") or identifiers.get("symbol_comdirect")
-            if not symbol:
-                logger.warning("No yfinance symbol for ISIN %s", isin)
-                return None
-            return Ticker(symbol=symbol, isin=isin, name=member.get("name"))
+                async with sem:
+                    try:
+                        instrument = await retry_call(self._finhub.get_instrument, isin)
+                    except Exception:
+                        logger.warning("Failed to fetch instrument for ISIN %s", isin)
+                        return None
+                if instrument is None:
+                    logger.warning("No instrument found for ISIN %s", isin)
+                    return None
+                security_type = (instrument.get("details") or {}).get("security_type", "")
+                if security_type == "ADR":
+                    self._adr_isins.add(isin)
+                    logger.info("ADR included %s (%s) — verify warrant availability at comdirect", isin, member.get("name"))
+                identifiers = instrument.get("global_identifiers") or {}
+                symbol = identifiers.get("symbol_yfinance") or identifiers.get("symbol_comdirect")
+                if not symbol:
+                    logger.warning("No yfinance symbol for ISIN %s", isin)
+                    return None
+                return Ticker(symbol=symbol, isin=isin, name=member.get("name"))
+            finally:
+                await mark_progress()
 
         results = await asyncio.gather(*[fetch_ticker(m) for m in members], return_exceptions=True)
         tickers: list[Ticker] = []

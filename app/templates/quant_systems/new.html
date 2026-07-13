@@ -92,14 +92,10 @@
             <div class="col-sm-2">
               <button type="button" class="btn btn-sm btn-primary w-100"
                       hx-post="/quant-systems/depots/virtual"
-                      hx-include="#vd-name,#vd-capital"
-                      hx-vals='{"name": "", "starting_capital": ""}'
+                      hx-vals='js:{name: document.getElementById("vd-name").value, starting_capital: document.getElementById("vd-capital").value}'
                       hx-target="#virtual-optgroup"
                       hx-swap="innerHTML"
-                      onclick="this.closest('form').querySelector('[name=depot_type]').value='virtual'"
-                      _="on htmx:configRequest
-                           set event.detail.parameters['name'] to #vd-name.value
-                           set event.detail.parameters['starting_capital'] to #vd-capital.value">
+                      onclick="this.closest('form').querySelector('[name=depot_type]').value='virtual'">
                 Create
               </button>
             </div>
