@@ -47,37 +47,40 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
             else:
                 all_entries.extend((t, index_name) for t in tickers)
 
-        # Deduplicate — ISIN is primary key, symbol is fallback
+        # Deduplicate by both symbol and ISIN to avoid duplicate listings
+        # pointing to the same yfinance symbol (e.g. cross-listed records).
         seen_isins: set[str] = set()
         seen_symbols: set[str] = set()
         source: dict[str, str] = {}
         deduped: list[Ticker] = []
 
         for ticker, index_name in all_entries:
+            if ticker.symbol in seen_symbols:
+                continue
+            if ticker.isin and ticker.isin in seen_isins:
+                continue
+
+            seen_symbols.add(ticker.symbol)
             if ticker.isin:
-                if ticker.isin in seen_isins:
-                    continue
                 seen_isins.add(ticker.isin)
                 source[ticker.isin] = index_name
             else:
-                if ticker.symbol in seen_symbols:
-                    continue
-                seen_symbols.add(ticker.symbol)
                 source[ticker.symbol] = index_name
             deduped.append(ticker)
 
         # Apply extra_tickers
         for ticker in input.extra_tickers:
+            if ticker.symbol in seen_symbols:
+                continue
             if ticker.isin and ticker.isin in seen_isins:
                 continue
-            if not ticker.isin and ticker.symbol in seen_symbols:
-                continue
+
             deduped.append(ticker)
+            seen_symbols.add(ticker.symbol)
             if ticker.isin:
                 seen_isins.add(ticker.isin)
                 source[ticker.isin] = "extra"
             else:
-                seen_symbols.add(ticker.symbol)
                 source[ticker.symbol] = "extra"
 
         # Apply exclude_tickers

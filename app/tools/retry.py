@@ -10,6 +10,7 @@ import logging
 from tenacity import (
     AsyncRetrying,
     before_sleep_log,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -23,7 +24,12 @@ WAIT_MIN_SECONDS = 2.0  # exponential backoff floor: ~2s, then ~4s
 WAIT_MAX_SECONDS = 8.0
 
 
-async def retry_call(fn, *args, **kwargs):
+async def retry_call(
+    fn,
+    *args,
+    non_retry_exceptions: tuple[type[BaseException], ...] = (),
+    **kwargs,
+):
     """Call an async external-API function, retrying on transient failure.
 
     Retries on any ``Exception`` with exponential backoff (~2s, ~4s) and re-raises
@@ -31,10 +37,18 @@ async def retry_call(fn, *args, **kwargs):
 
         candidates = await retry_call(finhub.get_warrants, underlying=isin, ...)
     """
+    retry_policy = (
+        retry_if_exception(
+            lambda exc: isinstance(exc, Exception) and not isinstance(exc, non_retry_exceptions)
+        )
+        if non_retry_exceptions
+        else retry_if_exception_type(Exception)
+    )
+
     return await AsyncRetrying(
         stop=stop_after_attempt(ATTEMPTS),
         wait=wait_exponential(multiplier=1, min=WAIT_MIN_SECONDS, max=WAIT_MAX_SECONDS),
-        retry=retry_if_exception_type(Exception),
+        retry=retry_policy,
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )(fn, *args, **kwargs)

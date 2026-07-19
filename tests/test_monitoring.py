@@ -299,6 +299,7 @@ class TestOrchestrationMetadataFields:
             top3={},
             analyzed_count={},
             skipped=[],
+            skipped_reasons={"A": "no candidates"},
             keep_existing_isins=["ISIN1"],
             roll_underlyings=["A"],
             roll_keep_underlyings=["B"],
@@ -306,6 +307,7 @@ class TestOrchestrationMetadataFields:
         assert result.keep_existing_isins == ["ISIN1"]
         assert result.roll_underlyings == ["A"]
         assert result.roll_keep_underlyings == ["B"]
+        assert result.skipped_reasons == {"A": "no candidates"}
 
     def test_warrant_selection_result_metadata_fields_default_to_empty(self):
         """Test that WarrantSelectionResult metadata fields default to empty lists."""
@@ -318,6 +320,7 @@ class TestOrchestrationMetadataFields:
         assert result.keep_existing_isins == []
         assert result.roll_underlyings == []
         assert result.roll_keep_underlyings == []
+        assert result.skipped_reasons == {}
 
 
 @pytest.mark.asyncio

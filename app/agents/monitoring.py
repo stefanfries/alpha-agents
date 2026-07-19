@@ -227,8 +227,8 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             warrant_isin = pos.ticker.isin or ""
             warrant_wkn = pos.ticker.symbol or ""
 
-            # Resolve underlying symbol from mapping cache (ISIN first, WKN fallback).
-            underlying_sym = input.warrant_underlying_map.get(warrant_isin) or input.warrant_underlying_map.get(warrant_wkn)
+            # Resolve underlying symbol from ISIN mapping.
+            underlying_sym = input.warrant_underlying_map.get(warrant_isin)
             underlying_name = input.underlying_names.get(underlying_sym) if underlying_sym else None
             if underlying_sym is None:
                 # Can't map to underlying — keep as-is (safe default)

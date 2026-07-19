@@ -10,7 +10,7 @@ from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.risk import RiskAgent
 from app.agents.screening import SecuritySelectionAgent
 from app.agents.warrant_selection import WarrantSelectionAgent
-from app.config import MonitoringSettings, resolve_warrant_selection_settings
+from app.config import MonitoringSettings
 from app.models.market import OHLCV, Position, Ticker
 from app.models.signals import ResearchResult, SelectionResult, WarrantSelectionResult
 
@@ -433,6 +433,7 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
         ws_max_months="15",
         ws_strike_min_factor="0.95",
         ws_strike_max_factor="1.00",
+        ws_min_score="0.62",
     )
 
     _, update = fake_collection.calls[0]
@@ -443,6 +444,7 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
         "max_days_to_expiry": 450,
         "strike_min_factor": 0.95,
         "strike_max_factor": 1.0,
+        "min_score": 0.62,
     }
 
 
@@ -458,6 +460,7 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
             captured["max_days"] = kwargs["max_days_to_expiry"]
             captured["strike_min_factor"] = kwargs["strike_min_factor"]
             captured["strike_max_factor"] = kwargs["strike_max_factor"]
+            captured["min_score"] = kwargs["min_score"]
 
         async def run(self, _input: SelectionResult) -> WarrantSelectionResult:
             return WarrantSelectionResult(selected=[], skipped=[])
@@ -490,9 +493,23 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
                 "max_days_to_expiry": 540,
                 "strike_min_factor": 0.96,
                 "strike_max_factor": 1.01,
+                "min_score": 0.55,
             }
         },
         "stages": {
+            "monitoring": {
+                "result": {
+                    "positions_to_sell": [],
+                    "positions_to_keep": [],
+                    "positions_to_roll": [],
+                    "entry_candidates": [{"symbol": "A", "isin": None, "name": None}],
+                    "free_positions": 1,
+                    "excluded_symbols": [],
+                    "keep_existing_isins": [],
+                    "roll_underlyings": [],
+                    "roll_keep_underlyings": [],
+                }
+            },
             "screening": {
                 "result": SelectionResult(
                     selected=[Ticker(symbol="A")],
@@ -517,23 +534,101 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
         "max_days": 540,
         "strike_min_factor": 0.96,
         "strike_max_factor": 1.01,
+        "min_score": 0.55,
     }
 
 
-def test_resolve_warrant_selection_settings_migrates_legacy_default_pair():
-    cfg = resolve_warrant_selection_settings(
-        {"min_days_to_expiry": 270, "max_days_to_expiry": 365}
+@pytest.mark.asyncio
+async def test_warrant_selection_adapts_strike_interval_when_candidate_count_low():
+    class FakeFinHub:
+        def __init__(self) -> None:
+            self.strike_windows: list[tuple[float | None, float | None]] = []
+            self.call_count = 0
+
+        async def get_warrants(self, **kwargs):
+            self.call_count += 1
+            self.strike_windows.append((kwargs.get("strike_min"), kwargs.get("strike_max")))
+            if self.call_count == 1:
+                return [{"isin": "W1"}, {"isin": "W2"}, {"isin": "W3"}]
+            if self.call_count == 2:
+                return [{"isin": "W1"}, {"isin": "W2"}, {"isin": "W3"}, {"isin": "W4"}]
+            return [
+                {"isin": "W1"},
+                {"isin": "W2"},
+                {"isin": "W3"},
+                {"isin": "W4"},
+                {"isin": "W5"},
+                {"isin": "W6"},
+            ]
+
+        async def get_warrant_detail(self, isin: str):
+            return {
+                "isin": isin,
+                "wkn": isin,
+                "market_data": {"spread_percent": 0.5, "bid": 1.0, "ask": 1.1},
+                "analytics": {"leverage": 5.0, "delta": 0.5},
+                "reference_data": {"maturity_date": (date.today() + timedelta(days=330)).isoformat()},
+            }
+
+    finhub = FakeFinHub()
+    agent = WarrantSelectionAgent(
+        finhub=finhub,
+        prices={"A": 100.0},
+        strike_min_factor=0.95,
+        strike_max_factor=1.00,
     )
 
-    assert cfg.min_days_to_expiry == 270
-    assert cfg.max_days_to_expiry == 450
+    result = await agent.run(
+        SelectionResult(
+            selected=[Ticker(symbol="A", isin="ISIN1")],
+            scores={"A": 1.0},
+            rationale={},
+        )
+    )
+
+    assert len(result.selected) == 1
+    assert result.analyzed_count["A"] == 6
+    assert len(finhub.strike_windows) == 3
+    first_min, first_max = finhub.strike_windows[0]
+    third_min, third_max = finhub.strike_windows[2]
+    assert first_min is not None and first_max is not None
+    assert third_min is not None and third_max is not None
+    assert (third_max - third_min) > (first_max - first_min)
 
 
-def test_resolve_warrant_selection_settings_migrates_legacy_atm_band_to_strike_factors():
-    cfg = resolve_warrant_selection_settings({"atm_band": 0.02})
+@pytest.mark.asyncio
+async def test_warrant_selection_skips_when_no_candidate_exceeds_min_score():
+    class FakeFinHub:
+        async def get_warrants(self, **_kwargs):
+            return [{"isin": "W1"}, {"isin": "W2"}]
 
-    assert cfg.strike_min_factor == pytest.approx(0.98)
-    assert cfg.strike_max_factor == pytest.approx(1.02)
+        async def get_warrant_detail(self, isin: str):
+            return {
+                "isin": isin,
+                "wkn": isin,
+                "market_data": {"spread_percent": 8.0, "bid": 1.0, "ask": 1.1},
+                "analytics": {"leverage": None, "delta": None},
+                "reference_data": {"maturity_date": None},
+            }
+
+    agent = WarrantSelectionAgent(
+        finhub=FakeFinHub(),
+        prices={"A": 100.0},
+        min_score=0.99,
+    )
+
+    result = await agent.run(
+        SelectionResult(
+            selected=[Ticker(symbol="A", isin="ISIN1")],
+            scores={"A": 1.0},
+            rationale={},
+        )
+    )
+
+    assert result.selected == []
+    assert result.skipped == ["A"]
+    assert "A" in result.skipped_reasons
+    assert "min score 0.99" in result.skipped_reasons["A"]
 
 
 def test_warrant_selection_scoring_tracks_active_maturity_range():
@@ -640,7 +735,7 @@ async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(mo
 
 
 @pytest.mark.asyncio
-async def test_monitoring_resolves_underlying_via_wkn_fallback_and_sells_on_break(monkeypatch):
+async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkeypatch):
     from app.orchestrator import Pipeline
 
     pipeline = Pipeline()
@@ -655,7 +750,7 @@ async def test_monitoring_resolves_underlying_via_wkn_fallback_and_sells_on_brea
         ]
 
     async def fake_warrant_underlying_map(_run: dict, _current_holdings: list[Position] | None = None) -> dict[str, str]:
-        return {"WKN1": "A"}
+        return {"ISIN1": "A"}
 
     async def fake_held_since(_run: dict) -> dict[str, date]:
         return {"WKN1": date.today() - timedelta(days=30)}

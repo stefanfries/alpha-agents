@@ -6,7 +6,6 @@
 result persistence to MongoDB Atlas, HITL checkpoint pausing, config override application,
 and restart-from-stage logic. It is the sole entry point for starting and advancing runs.
 
-
 ## Stage sequence
 
 ```text
@@ -209,24 +208,21 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 2. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries).
 3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through), with `free_positions = max_positions`.
 4. Builds initial underlying names from screening universe (`SelectionResult.all_tickers` fallback `selected`): `{symbol -> name}`.
-5. Calls `_fetch_warrant_underlying_map(run, holdings)` — layered resolver:
-  last approved warrant-selection map; persisted `warrant_underlying_map` cache;
-  FinHub `/v1/instruments/{identifier}` fallback (`isin` first, then `wkn`).
-  The result can contain both key types (`warrant_isin` and `warrant_wkn`) mapped to `underlying_symbol`.
+5. Calls `_fetch_warrant_underlying_map(run, holdings)` — strict live resolver via FinHub `/v1/instruments/{isin}` only.
+  The result maps `warrant_isin -> underlying_symbol`.
 6. Normalizes mapped underlying symbols to screening symbols before monitoring decisions.
   Example: `ASML.AS` is normalized to `ASML` when `ASML` exists in `screening.trend_signals`.
 7. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
-8. Fills remaining name gaps from cached fallback names only when universe names are unavailable.
-9. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
-10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
-12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
-13. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
-14. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
+8. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
+9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
+10. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
+11. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
+12. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
+13. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 
-- **`_run_warrant_selection`**: reads `monitoring.entry_candidates` (falls back to `screening.selected` if monitoring was skipped).
+- **`_run_warrant_selection`**: reads `monitoring.entry_candidates`.
 - **`_run_portfolio`**: reads `monitoring.positions_to_keep` → builds `kept_warrant_isins` set → passes to `PortfolioConstructionAgent`, which excludes kept warrants from `close_positions`.
 
 ---

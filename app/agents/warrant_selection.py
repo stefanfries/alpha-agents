@@ -53,6 +53,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         max_days_to_expiry: int = 450,
         strike_min_factor: float = 0.95,
         strike_max_factor: float = 1.00,
+        min_score: float = 0.0,
         atm_band_fallback: float = 0.10,
         isin_overrides: dict[str, str] | None = None,
         on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
@@ -64,6 +65,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._max_days = max_days_to_expiry
         self._strike_min_factor = strike_min_factor
         self._strike_max_factor = strike_max_factor
+        self._min_score = min_score
         self._atm_band_fallback = atm_band_fallback
         self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
@@ -86,7 +88,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         done_count = [0]
         active: set[str] = set()
 
-        async def select_one(ticker: Ticker) -> tuple[SelectedWarrant | None, list[SelectedWarrant], int]:
+        async def select_one(ticker: Ticker) -> tuple[SelectedWarrant | None, list[SelectedWarrant], int, str | None]:
             async with underlying_sem:
                 active.add(ticker.symbol)
                 if self._on_progress:
@@ -105,22 +107,37 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
         selected: list[SelectedWarrant] = []
         skipped: list[str] = []
+        skipped_reasons: dict[str, str] = {}
         top3: dict[str, list[SelectedWarrant]] = {}
         analyzed_count: dict[str, int] = {}
         for ticker, result in zip(input.selected, results):
             if isinstance(result, BaseException):
                 logger.warning("Warrant lookup failed for %s: %s", ticker.symbol, result)
                 skipped.append(ticker.symbol)
+                skipped_reasons[ticker.symbol] = "lookup failed"
             elif result is None:
                 skipped.append(ticker.symbol)
             else:
-                best, candidates_top3, count = result
-                selected.append(best)
-                top3[ticker.symbol] = candidates_top3
-                analyzed_count[ticker.symbol] = count
+                best, candidates_top3, count, skip_reason = result
+                if best is None:
+                    skipped.append(ticker.symbol)
+                    if skip_reason:
+                        skipped_reasons[ticker.symbol] = skip_reason
+                    if count:
+                        analyzed_count[ticker.symbol] = count
+                else:
+                    selected.append(best)
+                    top3[ticker.symbol] = candidates_top3
+                    analyzed_count[ticker.symbol] = count
 
         logger.info("Warrant selection: %d selected, %d skipped", len(selected), len(skipped))
-        return WarrantSelectionResult(selected=selected, skipped=skipped, top3=top3, analyzed_count=analyzed_count)
+        return WarrantSelectionResult(
+            selected=selected,
+            skipped=skipped,
+            skipped_reasons=skipped_reasons,
+            top3=top3,
+            analyzed_count=analyzed_count,
+        )
 
     async def _pick_best(
         self,
@@ -128,10 +145,10 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         maturity_from: str,
         maturity_to: str,
         detail_sem: asyncio.Semaphore,
-    ) -> tuple[SelectedWarrant, list[SelectedWarrant], int] | None:
+    ) -> tuple[SelectedWarrant | None, list[SelectedWarrant], int, str | None] | None:
         if not ticker.isin:
             logger.warning("No ISIN for %s — skipping", ticker.symbol)
-            return None
+            return None, [], 0, "missing ISIN"
 
         # Warrant lookup may use a manual override ISIN (e.g. an ADR whose
         # underlying stock carries the warrants). Display + price stay on `ticker`.
@@ -151,14 +168,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             chart_symbol = await self._override_chart_symbol(lookup_isin)
         else:
             price = self._prices.get(ticker.symbol)
-        strike_min = round(price * self._strike_min_factor, 4) if price else None
-        strike_max = round(price * self._strike_max_factor, 4) if price else None
-        if (
-            strike_min is not None
-            and strike_max is not None
-            and strike_min > strike_max
-        ):
-            strike_min, strike_max = strike_max, strike_min
+        factor_min = min(self._strike_min_factor, self._strike_max_factor)
+        factor_max = max(self._strike_min_factor, self._strike_max_factor)
 
         async def fetch_warrants(s_min: float | None, s_max: float | None) -> list[dict[str, Any]] | None:
             try:
@@ -175,17 +186,70 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                 logger.warning("get_warrants failed for %s after retry", ticker.symbol)
                 return None
 
-        candidates = await fetch_warrants(strike_min, strike_max)
-        if candidates is None:
-            return None
+        candidates: list[dict[str, Any]] = []
+        adjustment_count = 0
+        widen_count = 0
+        shrink_count = 0
+        if price:
+            center_factor = (factor_min + factor_max) / 2.0
+            half_width = (factor_max - factor_min) / 2.0
+
+            while adjustment_count < 4:
+                strike_min = round(price * max(0.0, center_factor - half_width), 4)
+                strike_max = round(price * max(0.0, center_factor + half_width), 4)
+                if strike_min > strike_max:
+                    strike_min, strike_max = strike_max, strike_min
+
+                candidates = await fetch_warrants(strike_min, strike_max)
+                if candidates is None:
+                    return None
+
+                count = len(candidates)
+                if count < 5 and widen_count < 2 and half_width > 0:
+                    widen_count += 1
+                    adjustment_count += 1
+                    half_width *= 2.0
+                    logger.info(
+                        "%s: %d candidates (<5) in strike factors %.3f–%.3f, widening interval (pass %d)",
+                        ticker.symbol,
+                        count,
+                        center_factor - (half_width / 2.0),
+                        center_factor + (half_width / 2.0),
+                        widen_count,
+                    )
+                    continue
+
+                if count > 50 and shrink_count < 2 and half_width > 0:
+                    shrink_count += 1
+                    adjustment_count += 1
+                    half_width /= 2.0
+                    logger.info(
+                        "%s: %d candidates (>50) in strike factors %.3f–%.3f, narrowing interval (pass %d)",
+                        ticker.symbol,
+                        count,
+                        center_factor - (half_width * 2.0),
+                        center_factor + (half_width * 2.0),
+                        shrink_count,
+                    )
+                    continue
+
+                break
+        else:
+            candidates = await fetch_warrants(None, None)
+            if candidates is None:
+                return None
 
         if not candidates and price:
             wide_min = round(price * (1 - self._atm_band_fallback), 4)
             wide_max = round(price * (1 + self._atm_band_fallback), 4)
             logger.info(
                 "%s: no warrants in strike-factor range %.3f–%.3f — widening to ±%.0f%% (%.2f–%.2f)",
-                ticker.symbol, self._strike_min_factor, self._strike_max_factor, self._atm_band_fallback * 100,
-                wide_min, wide_max,
+                ticker.symbol,
+                factor_min,
+                factor_max,
+                self._atm_band_fallback * 100,
+                wide_min,
+                wide_max,
             )
             candidates = await fetch_warrants(wide_min, wide_max)
             if candidates is None:
@@ -196,7 +260,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                 "No warrants found for %s (%s) even after widening strike band",
                 ticker.symbol, ticker.isin,
             )
-            return None
+            return None, [], 0, "no candidates in configured maturity/strike range"
 
         logger.info(
             "%s: %d warrant candidates — fetching all details", ticker.symbol, len(candidates)
@@ -220,15 +284,36 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
         if not details:
             logger.warning("%s: all %d detail fetches failed or were capped — skipping", ticker.symbol, len(candidates))
-            return None
+            return None, [], 0, "all detail fetches failed or only capped warrants available"
 
-        scored = sorted(details, key=lambda d: self._score(d, today), reverse=True)
-        best_detail = scored[0]
-        top3_details = scored[:3]
+        scored_with_values = [
+            (detail, self._score(detail, today))
+            for detail in details
+        ]
+        scored_with_values.sort(key=lambda pair: pair[1], reverse=True)
+        qualified = [pair for pair in scored_with_values if pair[1] > self._min_score]
+        if not qualified:
+            top_score = scored_with_values[0][1]
+            logger.info(
+                "%s: %d candidates analyzed, top score %.3f did not exceed min_score %.3f",
+                ticker.symbol,
+                len(scored_with_values),
+                top_score,
+                self._min_score,
+            )
+            return (
+                None,
+                [],
+                len(scored_with_values),
+                f"no candidate exceeded min score {self._min_score:.2f} (best {top_score:.2f})",
+            )
+
+        best_detail, _best_score = qualified[0]
+        top3_details = [detail for detail, _score in qualified[:3]]
 
         best = self._build(ticker, best_detail, today, chart_symbol)
         top3 = [self._build(ticker, d, today, chart_symbol) for d in top3_details]
-        return best, top3, len(details)
+        return best, top3, len(scored_with_values), None
 
     async def _override_chart_symbol(self, lookup_isin: str) -> str | None:
         """yfinance symbol of an override underlying (native-currency price series)."""

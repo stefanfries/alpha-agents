@@ -3,6 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel
+from yfinance.exceptions import YFRateLimitError
 
 from app.agents.base import Agent
 from app.models.market import Ticker
@@ -35,14 +36,21 @@ class ResearchAgent(Agent[ResearchInput, ResearchResult]):
 
         all_bars = await self._tool.fetch_ohlcv_batch(input.tickers, input.lookback_days)
 
-        sem = asyncio.Semaphore(10)
+        # Keep fundamentals fan-out conservative to reduce Yahoo throttling.
+        sem = asyncio.Semaphore(4)
         done: list[int] = [0]
 
         async def fetch_fundamentals_safe(ticker: Ticker) -> tuple[str, dict]:
             async with sem:
                 info: dict = {}
                 try:
-                    info = await retry_call(self._tool.fetch_fundamentals, ticker)
+                    info = await retry_call(
+                        self._tool.fetch_fundamentals,
+                        ticker,
+                        non_retry_exceptions=(YFRateLimitError,),
+                    )
+                except YFRateLimitError:
+                    logger.warning("Yahoo rate limit for fundamentals on %s", ticker.symbol)
                 except Exception:
                     logger.warning("Failed to fetch fundamentals for %s", ticker.symbol, exc_info=True)
             done[0] += 1

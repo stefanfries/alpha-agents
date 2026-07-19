@@ -65,6 +65,7 @@ class SelectedWarrant(BaseModel):
 class WarrantSelectionResult(BaseModel):
     selected: list[SelectedWarrant]
     skipped: list[str]
+    skipped_reasons: dict[str, str] = {}            # symbol → skip reason
     top3: dict[str, list[SelectedWarrant]] = {}       # symbol → up to 3 warrants by score
     analyzed_count: dict[str, int] = {}               # symbol → total candidates evaluated
     # Metadata for monitoring integration

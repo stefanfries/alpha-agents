@@ -226,6 +226,7 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "max_months": max(1, int(round(ws_cfg.max_days_to_expiry / 30))),
             "strike_min_factor": ws_cfg.strike_min_factor,
             "strike_max_factor": ws_cfg.strike_max_factor,
+            "min_score": ws_cfg.min_score,
         }
     if stage == "monitoring" and execution:
         mon_overrides = execution.get("config_overrides", {}).get("monitoring", {})
@@ -309,6 +310,7 @@ async def restart_stage(
     ws_max_months: Annotated[str | None, Form()] = None,
     ws_strike_min_factor: Annotated[str | None, Form()] = None,
     ws_strike_max_factor: Annotated[str | None, Form()] = None,
+    ws_min_score: Annotated[str | None, Form()] = None,
     monitoring_health_submitted: Annotated[str | None, Form()] = None,
     wh_spread_max_pct: Annotated[str | None, Form()] = None,
     wh_leverage_min: Annotated[str | None, Form()] = None,
@@ -436,11 +438,22 @@ async def restart_stage(
         if safe_strike_max_factor < safe_strike_min_factor:
             safe_strike_max_factor = safe_strike_min_factor
 
+        try:
+            parsed_min_score = (
+                float(ws_min_score)
+                if ws_min_score not in (None, "")
+                else 0.0
+            )
+        except ValueError:
+            parsed_min_score = 0.0
+        safe_min_score = max(0.0, min(parsed_min_score, 1.0))
+
         updates["config_overrides.warrant_selection"] = {
             "min_days_to_expiry": safe_min_months * 30,
             "max_days_to_expiry": safe_max_months * 30,
             "strike_min_factor": safe_strike_min_factor,
             "strike_max_factor": safe_strike_max_factor,
+            "min_score": safe_min_score,
         }
 
     if monitoring_health_submitted is not None:

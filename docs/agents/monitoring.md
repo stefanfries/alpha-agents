@@ -16,7 +16,7 @@ class MonitoringInput(BaseModel):
     policy_results: dict[str, dict[str, bool]]  # underlying_symbol → indicator booleans
     underlying_names: dict[str, str]       # underlying_symbol -> display name
     current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
-    warrant_underlying_map: dict[str, str] # warrant_isin / warrant_wkn -> underlying_symbol
+    warrant_underlying_map: dict[str, str] # warrant_isin -> underlying_symbol
     held_since_map: dict[str, date]        # warrant_wkn → most recent BUY date
     warrant_snapshots: dict[str, WarrantSnapshot]  # held warrant health snapshots
     max_positions: int                     # from execution config override or PortfolioSettings
@@ -27,10 +27,7 @@ The orchestrator builds `MonitoringInput` from:
 - `SelectionResult` (stages.screening.result)
 - `underlying_names` from screening universe (`all_tickers` fallback `selected`), then enriched for held rows
 - Current depot snapshot via `_fetch_holdings()` — **excludes zero-quantity positions**
-- `warrant_underlying_map` from layered resolver via `_fetch_warrant_underlying_map()`:
-  - last approved `WarrantSelectionResult`
-  - persisted `warrant_underlying_map` cache
-  - FinHub `/v1/instruments` fallback resolution (ISIN first, WKN fallback)
+- `warrant_underlying_map` via strict live resolver `_fetch_warrant_underlying_map()` using FinHub `/v1/instruments/{isin}`
 - `held_since_map` from `virtual_depot_transactions` via `_fetch_held_since()`
 - `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()`
 - `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
@@ -69,8 +66,8 @@ None directly.
 
 ### For each held position
 
-- Resolve underlying symbol from `warrant_underlying_map[warrant_isin]`, fallback `warrant_underlying_map[warrant_wkn]`. If not found (no mapping available), mark as KEEP with `underlying_symbol=""` (safe default).
-- Resolve underlying display name from `underlying_names[underlying_symbol]` when available. Name precedence is enforced by orchestrator: universe name via underlying ISIN, then cached fallback name.
+- Resolve underlying symbol from `warrant_underlying_map[warrant_isin]`. If not found (no mapping available), mark as KEEP with `underlying_symbol=""` (safe default).
+- Resolve underlying display name from `underlying_names[underlying_symbol]` when available. Name precedence is enforced by orchestrator: universe name via underlying ISIN.
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
 - Check exit signal from screening:
   - `BREAK` = active break signal → **immediate SELL** (no confirmation required)

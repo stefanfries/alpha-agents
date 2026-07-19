@@ -73,11 +73,12 @@ name); only warrant sourcing and the strike chart follow the override.
 
 1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × strike_min_factor .. current_price × strike_max_factor` (default `0.95 .. 1.00`)
 2. For ADR overrides, the `current_price` comes from the FinHub `/quotes` endpoint for the override ISIN; if the quote has no explicit last/current field, the bid/ask midprice is used instead. Otherwise it comes from the research-stage current price map.
-3. If the primary range returns no candidates, retry with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
-4. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use the shared `retry_call()` helper (`app/tools/retry.py`: up to 3 attempts with exponential backoff, roughly 2 s then 4 s) for transient API errors.
-5. Score all successfully fetched details using the scoring model
-6. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
-7. Underlyings with no candidates (neither band) are recorded in `skipped` and excluded from portfolio construction
+3. Adapt strike interval width by candidate count (up to two adjustments each direction): if `<5` candidates, widen interval by doubling width; if `>50`, narrow interval by halving width.
+4. If no candidates remain after adaptation, retry once with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
+5. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use the shared `retry_call()` helper (`app/tools/retry.py`: up to 3 attempts with exponential backoff, roughly 2 s then 4 s) for transient API errors.
+6. Score all successfully fetched details using the scoring model and keep only candidates with `score > min_score`.
+7. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
+8. Underlyings with no suitable candidate are recorded in `skipped` with a reason in `skipped_reasons` and excluded from portfolio construction
 
 Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail fetches share a pool of 5 concurrent connections (`asyncio.Semaphore(5)`). The detail concurrency was reduced from 10 to 5 to avoid triggering Comdirect rate limiting on the FinHub backend when processing large candidate pools (e.g. AMD with 100+ candidates).
 
@@ -106,7 +107,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `max_days_to_expiry` | `450` | Maximum remaining life (15 months) for maturity filter |
 | `strike_min_factor` | `0.95` | Primary strike lower bound factor (`strike_min = current_price × factor`) |
 | `strike_max_factor` | `1.00` | Primary strike upper bound factor (`strike_max = current_price × factor`) |
-| `atm_band` | `0.02` | Legacy symmetric strike half-width (used for migration fallback only) |
+| `min_score` | `0.0` | Minimum accepted score; only warrants with `score > min_score` are eligible |
 | `atm_band_fallback` | `0.10` | Fallback strike filter half-width (±10%) |
 
 **WarrantScoringSettings** (scoring component weights & thresholds, runtime-tunable via `.env`):

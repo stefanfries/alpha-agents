@@ -64,39 +64,12 @@ class WarrantSelectionSettings(BaseModel):
     max_days_to_expiry: int = 450   # 15 months
     strike_min_factor: float = 0.90 # strike_min = current_price × factor
     strike_max_factor: float = 1.05 # strike_max = current_price × factor
-    atm_band: float = 0.02          # legacy symmetric strike filter (migration fallback)
+    min_score: float = 0.0          # keep only warrants with score > min_score
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
 
 
 def resolve_warrant_selection_settings(overrides: dict[str, Any] | None = None) -> WarrantSelectionSettings:
-    """Resolve warrant selection settings while migrating the legacy 9-12 month default.
-
-    Earlier runs persisted the old default as 270/365 days. Treat that exact pair as
-    unset so existing executions pick up the new 9-15 month default automatically.
-    """
-    normalized = dict(overrides or {})
-    if (
-        normalized.get("min_days_to_expiry") == 270
-        and normalized.get("max_days_to_expiry") == 365
-    ):
-        normalized.pop("min_days_to_expiry", None)
-        normalized.pop("max_days_to_expiry", None)
-
-    # Migrate legacy symmetric strike filter to explicit min/max factors.
-    if (
-        "strike_min_factor" not in normalized
-        and "strike_max_factor" not in normalized
-        and "atm_band" in normalized
-    ):
-        try:
-            legacy_band = float(normalized["atm_band"])
-        except (TypeError, ValueError):
-            legacy_band = None
-        if legacy_band is not None:
-            normalized["strike_min_factor"] = max(0.0, 1.0 - legacy_band)
-            normalized["strike_max_factor"] = max(0.0, 1.0 + legacy_band)
-
-    return settings.warrant_selection.model_copy(update=normalized)
+    return settings.warrant_selection.model_copy(update=(overrides or {}))
 
 
 class WarrantScoringSettings(BaseModel):

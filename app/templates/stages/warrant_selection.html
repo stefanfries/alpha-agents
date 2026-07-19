@@ -64,7 +64,7 @@
   </div>
 
 {% elif stage_status == "awaiting_review" %}
-  {% set ws_cfg = warrant_selection_cfg if warrant_selection_cfg is defined else {'min_months': 9, 'max_months': 15} %}
+  {% set ws_cfg = warrant_selection_cfg if warrant_selection_cfg is defined else {'min_months': 9, 'max_months': 15, 'min_score': 0.0} %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
     {% if stage_result %}
       {% set r = stage_result %}
@@ -153,7 +153,17 @@
           </table>
           {% if r.skipped %}
           <div class="alert alert-warning small mt-2">
-            No suitable call warrant found for: {{ r.skipped | join(", ") }}
+            <div class="fw-semibold mb-1">No suitable call warrant found for {{ r.skipped | length }} underlying(s):</div>
+            <ul class="mb-0 ps-3">
+              {% for sym in r.skipped %}
+              <li>
+                <code>{{ sym }}</code>
+                {% if r.skipped_reasons and sym in r.skipped_reasons %}
+                  <span class="text-muted">- {{ r.skipped_reasons[sym] }}</span>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
           </div>
           {% endif %}
         </div>
@@ -226,6 +236,20 @@
                 <input class="form-control form-control-sm" type="text"
                        id="ws_target_strike_factor" value="{{ '%.3f' | format((ws_cfg.strike_min_factor + ws_cfg.strike_max_factor) / 2) }}"
                        readonly style="width:130px">
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="border rounded p-3" style="min-width:220px;flex:1 1 220px">
+            <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Score filter</legend>
+            <div class="d-flex align-items-end gap-3 flex-wrap">
+              <div>
+                <label class="form-label small mb-1" for="ws_min_score">Min score</label>
+                <input class="form-control form-control-sm" type="number" min="0.00" max="1.00" step="0.01"
+                       id="ws_min_score" name="ws_min_score"
+                       value="{{ '%.2f' | format(ws_cfg.min_score if ws_cfg.min_score is defined else 0.0) }}"
+                       style="width:130px">
+                <div class="form-text small">Only scores strictly greater than this value are eligible.</div>
               </div>
             </div>
           </fieldset>
