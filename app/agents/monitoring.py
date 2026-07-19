@@ -159,6 +159,19 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         return "trend intact"
 
     @staticmethod
+    def _trend_status_detail(
+        *,
+        has_trend_signal: bool,
+        trend_signal: str | None,
+        break_reasons: list[str],
+    ) -> str | None:
+        if not has_trend_signal or trend_signal != "BREAK":
+            return None
+        if not break_reasons:
+            return "trend degraded"
+        return "trend degraded:\n" + "\n".join(f"- {r}" for r in break_reasons)
+
+    @staticmethod
     def _decide_action(
         *,
         has_exit_signal: bool,
@@ -274,6 +287,11 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 screening_signal=trend_signal,
                 screening_signal_present=has_trend_signal,
                 trend_status=self._trend_status(
+                    has_trend_signal=has_trend_signal,
+                    trend_signal=trend_signal,
+                    break_reasons=break_reasons,
+                ),
+                trend_status_detail=self._trend_status_detail(
                     has_trend_signal=has_trend_signal,
                     trend_signal=trend_signal,
                     break_reasons=break_reasons,

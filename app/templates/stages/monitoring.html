@@ -27,7 +27,7 @@
     {% if p.trend_status == "trend intact" %}
       <span class="badge bg-secondary">intact</span>
     {% elif p.trend_status and p.trend_status.startswith("trend degraded") %}
-      <span class="badge bg-warning text-dark" title="{{ p.trend_status }}">{{ p.trend_status }}</span>
+      <span class="badge bg-warning text-dark" title="{{ p.trend_status_detail or p.trend_status }}">{{ p.trend_status }}</span>
     {% elif p.trend_status == "no screening signal" %}
       <span class="text-muted">no screening signal</span>
     {% else %}

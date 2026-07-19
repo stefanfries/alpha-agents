@@ -100,6 +100,7 @@ class PositionReview(BaseModel):
     screening_signal: str | None = None
     screening_signal_present: bool | None = None
     trend_status: str | None = None         # derived UI status (NEW/HOLD/BREAK pending/confirmed/...)
+    trend_status_detail: str | None = None  # detailed tooltip text (all active BREAK reasons)
     warrant_health_status: str | None = None  # healthy/degraded/unknown
     warrant_health_reason: str | None = None  # degradation detail, if any
     # Decision info

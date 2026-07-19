@@ -214,6 +214,50 @@ class TestDecisionReason:
         assert result.positions_to_sell[0].decision_reason == "test reason"
 
 
+class TestTrendStatusTooltipDetails:
+    """Tests for detailed trend tooltip text in monitoring results."""
+
+    @pytest.mark.asyncio
+    async def test_break_trend_status_detail_includes_all_reasons(self):
+        settings = MonitoringSettings()
+        agent = MonitoringAgent(settings=settings)
+
+        holding = Position(
+            ticker=Ticker(symbol="AXONWKN", isin="AXONISIN"),
+            quantity=Decimal("1"),
+            avg_cost=Decimal("0"),
+        )
+
+        result = await agent.run(
+            MonitoringInput(
+                candidates=[],
+                scores={"AXON": 1.0},
+                trend_signals={"AXON": "BREAK"},
+                policy_results={
+                    "AXON": {
+                        "supertrend_bearish": True,
+                        "ema20_falling": True,
+                        "adx_below": True,
+                    }
+                },
+                underlying_names={"AXON": "AXON Enterprise"},
+                current_holdings=[holding],
+                warrant_underlying_map={"AXONISIN": "AXON", "AXONWKN": "AXON"},
+                held_since_map={"AXONWKN": date.today() - timedelta(days=30)},
+                warrant_snapshots={},
+                max_positions=15,
+            )
+        )
+
+        assert len(result.positions_to_sell) == 1
+        review = result.positions_to_sell[0]
+        assert review.trend_status == "trend degraded: SuperTrend bearish (+2)"
+        assert review.trend_status_detail is not None
+        assert "SuperTrend bearish" in review.trend_status_detail
+        assert "EMA20 falling" in review.trend_status_detail
+        assert "ADX below threshold" in review.trend_status_detail
+
+
 class TestOrchestrationMetadataFields:
     """Tests for metadata fields on MonitoringResult and WarrantSelectionResult."""
 
