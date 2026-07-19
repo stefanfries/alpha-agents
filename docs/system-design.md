@@ -48,7 +48,7 @@ Universe Res.  Screen. Monitor. Warrant Portfolio Risk  Execution
 
 1. **Input**: An `UniverseSpec` — one or more index names (e.g. `["DAX", "MDAX", "SDAX"]`) — is passed to `Pipeline.run()`
 2. **Universe Agent**: Resolves index names to a flat list of ticker symbols; stores the universe document in MongoDB Atlas
-3. **Research Agent**: Fetches OHLCV candles for every ticker in the universe; resolves yfinance symbols via the **instrument master** (see ADR-007)
+3. **Research Agent**: Fetches OHLCV candles for every ticker in the universe using the `symbol_yfinance` values already resolved upstream by the Universe stage (see ADR-007)
 4. **Stock Selection Agent**: Scores every pre-filtered ticker with three metrics (Trend Quality TQ, short-window TQ-20, and TSI), evaluates configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50), and selects the top-N candidates by TQ; emits `trend_signals` (NEW / HOLD / BREAK) for every scored ticker
 5. **Monitoring Agent**: Reconciles the screening results with the current depot. For each open position, checks whether the underlying has a BREAK trend signal and whether the minimum holding period has elapsed; marks positions for SELL or KEEP. Derives `Free now` capacity and filters the entry candidate list to exclude already-held underlyings. Downstream stages operate only on `entry_candidates`, not the full screening shortlist. (See ADR-011.)
 6. **Warrant Selection Agent**: For each entry candidate, fetches available Call Warrants from the **FinHub API** using configurable maturity and strike-factor filters; scores each warrant using the optionsschein scoring model (spread 40%, leverage 25%, days-to-expiry 20%, delta 15%); returns the best warrant plus a top-3 shortlist per underlying
@@ -57,6 +57,8 @@ Universe Res.  Screen. Monitor. Warrant Portfolio Risk  Execution
 9. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
 
 Each stage result is persisted to MongoDB Atlas before the **human-in-the-loop (HITL) checkpoint**. The user reviews the output and either approves (continuing to the next stage) or rejects (returning to the previous stage with adjusted parameters).
+
+On app startup, executions that were persisted in `running` state are automatically resumed from their `current_stage` to avoid stale in-flight stages after restarts.
 
 ## Human-in-the-loop (HITL) checkpoints
 
@@ -68,7 +70,7 @@ Universe → [✓ review] → Research → [✓ review] → Stock Selection → 
 
 At each `[✓ review]` point:
 
-- The stage output is written to MongoDB Atlas collection `pipeline_runs` under the current `run_id` and `stage` name
+- The stage output is written to MongoDB Atlas collection `executions` under the current `execution_id` and `stage` name
 - The **web UI** (FastAPI + Jinja2 + HTMX, see ADR-008) renders a stage-summary page with charts
 - The user responds: **continue** → advance to next stage; **restart** → return to a named stage (optionally with new config parameters)
 

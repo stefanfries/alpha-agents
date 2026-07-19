@@ -35,7 +35,7 @@ class PortfolioProposal(AgentOutput):
 4. Allocate portfolio weights across the **new** warrant positions according to the configured `sizing_method`
 5. Convert weights to quantities / nominal amounts based on available capital
 6. Return the full proposal including the new/existing/close classification
-7. Persist the `PortfolioProposal` to MongoDB Atlas for the current `run_id`
+7. Persist the `PortfolioProposal` to MongoDB Atlas for the current `execution_id`
 
 ## Sizing methods
 

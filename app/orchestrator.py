@@ -651,7 +651,7 @@ class Pipeline:
                 continue
 
             gids = underlying_inst.get("global_identifiers") or {}
-            underlying_symbol = gids.get("symbol_yfinance") or gids.get("symbol_comdirect")
+            underlying_symbol = gids.get("symbol_yfinance")
             if not underlying_symbol:
                 continue
 

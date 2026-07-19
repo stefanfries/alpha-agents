@@ -334,29 +334,32 @@ Output of `TradeExecutionAgent`. Final pipeline output.
 
 ---
 
-## MongoDB persistence (`models/persistence.py`)
+## MongoDB persistence
 
-### `PipelineRun`
+### `Execution` document (`executions` collection)
 
-Top-level document in Atlas collection `pipeline_runs`. One document per pipeline invocation.
-
-| Field | Type | Description |
-| ----- | ---- | ----------- |
-| `run_id` | `str` | UUID v4 |
-| `started_at` | `datetime` | UTC timestamp |
-| `universe_spec` | `dict` | Serialised `UniverseSpec` input |
-| `config_snapshot` | `dict` | All non-secret config values at time of run |
-| `stages` | `dict[str, StageRecord]` | Keyed by stage name |
-| `status` | `Literal["running", "paused", "completed", "failed"]` | Current run status |
-
-### `StageRecord`
-
-Embedded in `PipelineRun.stages`. One record per completed stage.
+Top-level document in Atlas collection `executions`. One document per Quant System execution.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `stage` | `str` | Stage name (e.g. `"stock_selection"`) |
-| `completed_at` | `datetime` | UTC timestamp |
-| `output` | `dict` | Serialised agent output (Pydantic `.model_dump()`) |
-| `hitl_status` | `Literal["pending", "approved", "rejected"]` | User review status |
-| `hitl_note` | `str \| None` | Optional user comment |
+| `execution_id` | `str` | Short execution identifier (6-char hex) |
+| `quant_system_id` | `str` | Parent Quant System identifier |
+| `created_at` | `datetime` | UTC timestamp |
+| `indices` | `list[str]` | Snapshot from Quant System at execution start |
+| `capital_eur` | `float` | Snapshot from Quant System at execution start |
+| `hitl_mode` | `bool` | Whether stage approvals are required |
+| `config_overrides` | `dict` | Per-stage runtime override values |
+| `current_stage` | `str` | Active stage name |
+| `status` | `Literal["running", "awaiting_review", "complete", "error"]` | Execution status |
+| `stages` | `dict[str, StageState]` | Stage state map keyed by stage name |
+
+### `StageState`
+
+Embedded in `Execution.stages`. One record per stage in the stage sequence.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `status` | `Literal["pending", "running", "awaiting_review", "approved", "error"]` | Stage lifecycle status |
+| `result` | `dict \| None` | Serialized stage output (`model_dump(mode="json")`) |
+| `error` | `str \| None` | Traceback text when status is `error` |
+| `progress` | `dict \| None` | Optional live progress payload for long-running stages |

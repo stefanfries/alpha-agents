@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -10,6 +11,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _client: AsyncIOMotorClient | None = None
+_startup_tasks: set[asyncio.Task] = set()
 
 
 @asynccontextmanager
@@ -19,6 +21,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.db.mongodb_uri:
         _client = AsyncIOMotorClient(settings.db.mongodb_uri)
         await _ensure_indexes()
+        await _resume_running_executions()
         logger.info("MongoDB connected — database: %s", settings.db.db_name)
     else:
         logger.warning("DB__MONGODB_URI not set — MongoDB unavailable; set it in .env")
@@ -134,3 +137,47 @@ async def _ensure_indexes() -> None:
     await warrant_underlying_map_collection().create_index("warrant_isin", sparse=True)
     await warrant_underlying_map_collection().create_index("warrant_wkn", sparse=True)
     await warrant_underlying_map_collection().create_index("checked_at")
+
+
+async def _resume_running_executions() -> None:
+    """Resume in-flight execution stages after app restart.
+
+    Without this recovery, executions that were marked as running before shutdown
+    stay stuck forever because no background task is re-scheduled on startup.
+    """
+    from app.orchestrator import get_pipeline
+
+    coll = executions_collection()
+    pipeline = get_pipeline()
+    resumed = 0
+
+    async for run in coll.find(
+        {"status": "running"},
+        {
+            "_id": 0,
+            "execution_id": 1,
+            "current_stage": 1,
+            "stages": 1,
+        },
+    ):
+        execution_id = run.get("execution_id")
+        stage = run.get("current_stage")
+        if not execution_id or not stage:
+            continue
+
+        stage_status = (run.get("stages", {}).get(stage) or {}).get("status")
+        if stage_status != "running":
+            continue
+
+        logger.warning(
+            "Resuming execution %s at stage %s after startup recovery",
+            execution_id,
+            stage,
+        )
+        task = asyncio.create_task(pipeline.run_stage(execution_id, stage))
+        _startup_tasks.add(task)
+        task.add_done_callback(_startup_tasks.discard)
+        resumed += 1
+
+    if resumed:
+        logger.info("Startup recovery resumed %d running execution(s)", resumed)

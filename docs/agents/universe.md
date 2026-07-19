@@ -26,17 +26,18 @@ class UniverseResult(AgentOutput):
 
 ## Tools used
 
-- `InstrumentApiTool` — queries the `GET /v1/indices/{index_name}` endpoint of the FinHub API; primary source for all supported indices
+- `FinHubTool` — queries `GET /v1/indices/{index_name}` and `GET /v1/instruments/{isin}` from the FinHub API; primary source for all supported indices
 - `WikipediaIndexTool` — scrapes index constituent tables via `pandas.read_html()`; fallback when the FastAPI endpoint is unavailable or the index is not yet covered
 
 ## Behaviour
 
 1. For each index name, attempt resolution via configured source priority (FastAPI first, Wikipedia fallback)
-2. Merge all constituent lists; **deduplicate on ISIN** — if two entries from different indices share the same ISIN, keep one and record the first source in the `source` map
-3. For tickers where no ISIN is available from the source (see notes), attempt ISIN lookup from the `instrument_master` MongoDB collection via `ticker_yfinance` symbol; if still unresolved, record in `missing_isin` and proceed with symbol-only entry
-4. Apply `extra_tickers` additions and `exclude_tickers` removals
-5. Return the final universe with provenance (`source` map keyed by ISIN)
-6. Persist the `UniverseResult` to MongoDB Atlas for the current `run_id`
+2. For FinHub members, resolve each member ISIN via `GET /v1/instruments/{isin}` and require `global_identifiers.symbol_yfinance`
+3. Skip entries where no ISIN is present or `symbol_yfinance` is missing; these are logged as warnings
+4. Merge all constituent lists; **deduplicate on ISIN** — if two entries from different indices share the same ISIN, keep one and record the first source in the `source` map
+5. Apply `extra_tickers` additions and `exclude_tickers` removals
+6. Return the final universe with provenance (`source` map keyed by ISIN, or symbol when ISIN is absent)
+7. Persist the `UniverseResult` to MongoDB Atlas for the current `execution_id`
 
 ## Supported indices
 
@@ -57,28 +58,24 @@ class UniverseResult(AgentOutput):
 
 `GET /v1/indices/{index_name}` on the `fastapi-azure-container-app` service (`https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io`). Returns authoritative Xetra ticker symbols with correct ISIN mapping sourced from Comdirect. This is the primary source for all supported indices.
 
-## Ticker symbol normalisation
+## Ticker symbol handling
 
-Wikipedia sometimes provides Frankfurt (Xetra) suffixes inconsistently. The agent normalises symbols:
-
-- German indices: append `.DE` if no exchange suffix present (e.g. `SAP` → `SAP.DE`)
-- US indices: no suffix
-- Custom logic per index can be injected via a `symbol_normaliser` callable in config
+- FinHub path: the symbol is taken from `global_identifiers.symbol_yfinance` as returned by FinHub.
+- Wikipedia fallback path: symbol formatting follows `WikipediaIndexTool` index-specific parsing rules.
+- No local fallback to `symbol_comdirect` is performed for yfinance symbols.
 
 ## Configuration (via `config.py`)
 
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
-| `universe_source_priority` | `["fastapi", "wikipedia"]` | Ordered list of sources to try |
-| `universe_wikipedia_lang` | `"en"` | Wikipedia language version |
-| `universe_symbol_suffix_map` | `{"DAX": ".DE", "MDAX": ".DE", "SDAX": ".DE", "TecDAX": ".DE"}` | Auto-suffix by index |
+| `finhub.instrument_lookup_concurrency` | `8` | Max concurrent `GET /v1/instruments/{isin}` requests during FinHub universe resolution |
 
 ## Notes
 
-- **ISIN availability by source**: The FastAPI `/v1/indices/{index_name}` endpoint always returns ISINs. Wikipedia includes ISINs in constituent tables for DAX, MDAX, SDAX, TecDAX, NASDAQ-100, and S&P 500; ISIN coverage from Wikipedia is high for the initially supported indices.
-- **Cold start**: The FastAPI container uses Scale to Zero. On the first request of the day, allow up to 30 seconds for the container to start. The `InstrumentApiTool` should configure an HTTP timeout of at least 35 seconds.
-- **Fallback for missing ISINs**: If the source does not provide an ISIN for an entry, the agent queries the `instrument_master` collection by `ticker_yfinance` symbol. Tickers with no ISIN after this fallback are included in `missing_isin` and proceed with `isin=None`; they will be excluded from any downstream step that requires ISIN (warrant search, Comdirect data fetch).
-- **ADR detection**: Members whose `instrument_master` `security_type == "ADR"` are kept in the universe (no longer skipped) and their ISINs collected in `adr_isins`. The orchestrator uses this list to run the ADR-only warrant-availability scan (see ADR-012). The ADR's yfinance `symbol` and price candles are unchanged.
+- **ISIN availability by source**: FinHub index payloads are expected to include ISINs. Wikipedia fallback may provide symbols without ISIN.
+- **Cold start**: The FastAPI container uses Scale to Zero. On the first request of the day, allow up to 30 seconds for the container to start. `FinHubTool` timeout should remain high enough to tolerate cold start.
+- **No local ISIN backfill**: The agent does not query `instrument_master` for missing ISINs.
+- **ADR detection**: Members whose FinHub instrument `details.security_type == "ADR"` are kept in the universe (no longer skipped) and their ISINs collected in `adr_isins`. The orchestrator uses this list to run the ADR-only warrant-availability scan (see ADR-012). The ADR's yfinance `symbol` and price candles are unchanged.
 - **Deduplication rule**: ISIN is the primary key. A stock listed in both DAX and TecDAX is included once; the first source wins in the `source` map.
 - Resolution failures (unknown index names) are reported in `unresolved_indices`; the pipeline continues with whatever could be resolved
 - This agent is intentionally stateless — it produces the same output for the same inputs; results can be cached per `(indices, date)` key

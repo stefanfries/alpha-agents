@@ -6,7 +6,6 @@ from decimal import Decimal
 import yfinance as yf
 from tenacity import retry, retry_if_result, stop_after_attempt, wait_fixed
 
-from app.config import settings
 from app.models.market import OHLCV, Ticker
 from app.tools.base import Tool
 from app.tools.retry import ATTEMPTS, WAIT_SECONDS
@@ -88,51 +87,6 @@ class YFinanceTool(Tool):
         for original_symbol in result:
             self._resolved_yf_symbols[original_symbol] = original_symbol.replace("/", "-")
 
-        missing_symbols = [s for s in symbols if s not in result]
-        if not missing_symbols:
-            return result
-
-        fallback_map: dict[str, tuple[str, str]] = {}
-        for original_symbol in missing_symbols:
-            ticker = symbol_map[original_symbol]
-            candidates: list[tuple[str, str]] = []
-
-            symbol_override = settings.research.yfinance_symbol_overrides_by_symbol.get(original_symbol)
-            if symbol_override:
-                candidates.append((symbol_override, "symbol_override"))
-
-            if ticker.isin:
-                override = settings.research.yfinance_symbol_overrides_by_isin.get(ticker.isin)
-                if override:
-                    candidates.append((override, "isin_override"))
-
-            # Try stripping exchange suffix (e.g. GRMN.SW -> GRMN) for unresolved symbols.
-            if "." in original_symbol:
-                candidates.append((original_symbol.split(".", 1)[0], "suffix_strip"))
-
-            for candidate, source in candidates:
-                yf_symbol = candidate.replace("/", "-")
-                # Keep first candidate per Yahoo symbol to avoid ambiguous remapping.
-                fallback_map.setdefault(yf_symbol, (original_symbol, source))
-                break
-
-        if fallback_map:
-            fallback_download_map = {
-                yf_symbol: original_symbol
-                for yf_symbol, (original_symbol, _source) in fallback_map.items()
-            }
-            fallback_result = await asyncio.to_thread(_download_with_mapping, fallback_download_map)
-            for original_symbol, bars in fallback_result.items():
-                if original_symbol not in result:
-                    result[original_symbol] = bars
-                    source = "unknown"
-                    for _yf_symbol, (mapped_original, mapped_source) in fallback_map.items():
-                        if mapped_original == original_symbol:
-                            source = mapped_source
-                            self._resolved_yf_symbols[original_symbol] = _yf_symbol
-                            break
-                    logger.info("Recovered OHLCV for %s via %s fallback", original_symbol, source)
-
         return result
 
     async def fetch_fundamentals(self, ticker: Ticker) -> dict:
@@ -141,18 +95,6 @@ class YFinanceTool(Tool):
         resolved = self._resolved_yf_symbols.get(ticker.symbol)
         if resolved:
             candidates.append(resolved)
-
-        symbol_override = settings.research.yfinance_symbol_overrides_by_symbol.get(ticker.symbol)
-        if symbol_override:
-            candidates.append(symbol_override.replace("/", "-"))
-
-        if ticker.isin:
-            isin_override = settings.research.yfinance_symbol_overrides_by_isin.get(ticker.isin)
-            if isin_override:
-                candidates.append(isin_override.replace("/", "-"))
-
-        if "." in ticker.symbol:
-            candidates.append(ticker.symbol.split(".", 1)[0].replace("/", "-"))
 
         candidates.append(ticker.symbol.replace("/", "-"))
 

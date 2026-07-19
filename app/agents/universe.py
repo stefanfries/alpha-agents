@@ -173,7 +173,7 @@ class UniverseAgent(Agent[UniverseInput, UniverseResult]):
                     self._adr_isins.add(isin)
                     logger.info("ADR included %s (%s) — verify warrant availability at comdirect", isin, member.get("name"))
                 identifiers = instrument.get("global_identifiers") or {}
-                symbol = identifiers.get("symbol_yfinance") or identifiers.get("symbol_comdirect")
+                symbol = identifiers.get("symbol_yfinance")
                 if not symbol:
                     logger.warning("No yfinance symbol for ISIN %s", isin)
                     return None

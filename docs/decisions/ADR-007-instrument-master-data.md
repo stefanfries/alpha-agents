@@ -19,7 +19,7 @@ Additionally, when fetching live prices or warrant data from Comdirect via the F
 
 ### 1. MongoDB Atlas collection `instrument_master`
 
-Store one document per instrument in a dedicated `instrument_master` collection, separate from `pipeline_runs`. Instrument data is **reference data** (slowly changing, owned by the FinHub API) and must not be mixed with pipeline artefacts.
+Store one document per instrument in a dedicated `instrument_master` collection, separate from `executions`. Instrument data is **reference data** (slowly changing, owned by the FinHub API) and must not be mixed with pipeline artefacts.
 
 **Document `_id`**: ISIN (globally unique under ISO 6166, stable across renames and exchanges).
 
@@ -176,7 +176,7 @@ OpenFIGI is fast enough for batch enrichment (100 ISINs per call) but should not
 ## Consequences
 
 - A `models/instrument.py` module must be added implementing `Instrument`, `GlobalIdentifiers`, and `VenueInfo` Pydantic models
-- The `InstrumentApiTool` must implement `get_by_wkn(wkn)`, `get_by_isin(isin)`, and `get_by_yfinance_symbol(symbol)` methods
+- The FinHub API client layer must support lookups by WKN/ISIN and yfinance symbol where required by pipeline stages
 - An `InstrumentCache` (simple dict, scoped to a pipeline run) avoids redundant API calls per run
 - The FinHub API (`fastapi-azure-container-app`) has implemented:
   - ✅ `GET /v1/instruments/{identifier}` returning `Instrument` with `global_identifiers` (`symbol_yfinance`, `symbol_comdirect`, `figi`, `cusip`, `name_openfigi`), venue dicts (`id_notations_exchange_trading`, `id_notations_life_trading`), and preferred/default notation IDs

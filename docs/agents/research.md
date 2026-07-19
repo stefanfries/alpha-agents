@@ -31,6 +31,7 @@ class ResearchResult(AgentOutput):
 2. Concurrently fetch fundamentals (yfinance `.info`) for each ticker (semaphore: 10 concurrent)
 3. Tickers with no OHLCV data are excluded from output and logged as a warning
 4. Tickers with no fundamentals are kept in output with an empty dict
+5. Symbols are used exactly as provided by `UniverseAgent` (plus slash normalization for Yahoo, e.g. `BRK/B` -> `BRK-B`) — no local suffix-strip or manual symbol override fallback is applied
 
 ## Error handling
 
@@ -42,4 +43,5 @@ class ResearchResult(AgentOutput):
 
 - OHLCV is fetched in a single `yf.download()` batch call for efficiency
 - Fundamentals are fetched concurrently with a semaphore of 10 to avoid rate-limiting
+- Fundamentals lookup tries the previously successful OHLCV Yahoo symbol first (if available), then the ticker's primary symbol
 - A sufficient `lookback_days` value (≥ 200) is required to compute long-period moving averages downstream

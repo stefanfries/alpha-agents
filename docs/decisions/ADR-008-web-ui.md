@@ -55,7 +55,7 @@ Key structural choices:
 - Each HITL checkpoint renders a stage-summary HTML fragment that HTMX loads into the review panel without a full page reload
 - The user approves or restarts by clicking a button — HTMX POSTs to the orchestrator, which advances or rewinds the pipeline and returns the next fragment
 - Pipeline run state is persisted in MongoDB Atlas as before (no change to the persistence model)
-- Charts are rendered on demand by the server: the `/charts/{run_id}/{stage}` endpoint returns a Plotly HTML fragment that HTMX swaps into a `<div>` in the review panel
+- Charts are rendered on demand by the server: execution-scoped chart endpoints under `/quant-systems/{qs_id}/executions/{execution_id}/charts/...` return HTML fragments that the UI swaps into a panel
 
 ## Charting
 

@@ -95,5 +95,5 @@ The `UniverseAgent`'s `universe_source_priority` configuration defaults to `["fa
 - `universe_source_priority` is now `["fastapi", "wikipedia"]` by default
 - `WikipediaIndexTool` is retained as a fallback and must still handle table-index brittleness defensively
 - A `symbol_normaliser` step is still required when Wikipedia is the source (German indices need `.DE` suffix appended)
-- The FastAPI container uses Scale to Zero — allow up to 30 seconds for cold start on the first request of the day; the `InstrumentApiTool` must set an appropriate HTTP timeout
+- The FastAPI container uses Scale to Zero — allow up to 30 seconds for cold start on the first request of the day; the FinHub client (`FinHubTool`) must set an appropriate HTTP timeout
 - Results should be cached for the current trading day to avoid repeated HTTP requests within one session

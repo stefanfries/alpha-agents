@@ -6,13 +6,21 @@
 result persistence to MongoDB Atlas, HITL checkpoint pausing, config override application,
 and restart-from-stage logic. It is the sole entry point for starting and advancing runs.
 
----
 
 ## Stage sequence
 
 ```text
 universe → research → screening → monitoring → warrant_selection → portfolio → risk → execution
 ```
+
+## Startup recovery for running executions
+
+On application startup, the lifespan bootstrapping logic scans MongoDB for executions
+with `status="running"` where `stages.{current_stage}.status="running"` and re-schedules
+`Pipeline.run_stage(execution_id, current_stage)` in background tasks.
+
+This prevents stale "running" stages (for example `warrant_selection`) after process
+restarts, deploys, or local dev server reloads.
 
 Stage names are the canonical identifiers used in MongoDB documents, HTTP routes, and
 log messages throughout the system.
@@ -28,9 +36,9 @@ result before returning. This makes the system resilient to process restarts (Az
 Container Apps scale-to-zero) between HITL reviews.
 
 ```text
-POST /runs                         → create run document, trigger stage "universe"
+POST /quant-systems/{qs_id}/executions          → create execution document, trigger stage "universe"
 stage completes                    → persist result, set status "awaiting_review", return
-POST …/stages/universe/approve     → trigger stage "research"
+POST …/stages/universe/approve                 → trigger stage "research"
 ...
 POST …/stages/execution/approve    → mark run "complete"
 ```
@@ -42,11 +50,11 @@ completes, without waiting for an HTTP approve.
 
 ## MongoDB run document
 
-Each pipeline run is stored as a single document in collection `pipeline_runs`.
+Each pipeline execution is stored as a single document in collection `executions`.
 
 ```json
 {
-  "run_id":          "a3f9c1",
+  "execution_id":    "a3f9c1",
   "created_at":      "2026-05-09T08:00:00Z",
   "indices":         ["DAX", "MDAX"],
   "hitl_mode":       true,
@@ -66,7 +74,7 @@ Each pipeline run is stored as a single document in collection `pipeline_runs`.
 }
 ```
 
-`run_id` is a 6-character hex string derived from a UUID4. Stage `result` fields contain
+`execution_id` is a 6-character hex string derived from a UUID4. Stage `result` fields contain
 the serialised Pydantic model (`.model_dump()`). Results are written atomically using
 MongoDB `$set` on `stages.{stage_name}`.
 
@@ -95,17 +103,18 @@ MongoDB `$set` on `stages.{stage_name}`.
 
 ```python
 class Pipeline:
-    async def create_run(
+    async def create_execution(
         self,
+      qs_id: str,
         indices: list[str],
         capital_eur: float,
         hitl_mode: bool = True,
     ) -> str:
-        """Create a run document in MongoDB and trigger the first stage. Returns run_id."""
+      """Create an execution document in MongoDB and trigger the first stage. Returns execution_id."""
 
   async def approve(
     self,
-    run_id: str,
+    execution_id: str,
         stage: str,
         selection_override: list[str] | None = None,
   ) -> None:
@@ -116,7 +125,7 @@ class Pipeline:
 
     async def restart(
         self,
-        run_id: str,
+        execution_id: str,
         from_stage: str,
         config_overrides: dict,
     ) -> None:
@@ -125,8 +134,8 @@ class Pipeline:
         into the run document, and trigger from_stage.
         """
 
-    async def get_run(self, run_id: str) -> dict:
-        """Return the full run document from MongoDB."""
+    async def get_execution(self, execution_id: str) -> dict:
+      """Return the full execution document from MongoDB."""
 ```
 
 `Pipeline` is instantiated once at application startup and held as a FastAPI dependency.
@@ -135,7 +144,7 @@ class Pipeline:
 
 ## Stage execution internals
 
-When `_run_stage(run_id, stage_name)` is called:
+When `_run_stage(execution_id, stage_name)` is called:
 
 1. Set `stages.{stage_name}.status = "running"` and `run.status = "running"` in MongoDB.
 2. Build the per-run config: merge global `settings` with `run.config_overrides`.
@@ -147,10 +156,10 @@ When `_run_stage(run_id, stage_name)` is called:
    `stages.{stage_name}.completed_at = now()` to MongoDB.
 7. If HITL mode: set `stages.{stage_name}.status = "awaiting_review"`,
    `run.status = "awaiting_review"`, `run.current_stage = stage_name`. Return.
-8. If non-HITL mode: set `stages.{stage_name}.status = "approved"`. Call `_advance(run_id)`.
+8. If non-HITL mode: set `stages.{stage_name}.status = "approved"`. Call `_advance(execution_id)`.
 
-`_advance(run_id)` finds the next `pending` stage in the sequence and calls
-`_run_stage(run_id, next_stage)`, or marks the run `complete` if no stages remain.
+`_advance(execution_id)` finds the next `pending` stage in the sequence and calls
+`_run_stage(execution_id, next_stage)`, or marks the execution `complete` if no stages remain.
 
 ---
 
@@ -241,13 +250,13 @@ implementation stores them all in one dict — key names must not collide across
 
 ## Restart semantics
 
-When `restart(run_id, from_stage, config_overrides)` is called:
+When `restart(execution_id, from_stage, config_overrides)` is called:
 
 1. Merge `config_overrides` into `run.config_overrides` in MongoDB.
 2. Set all stages from `from_stage` onward to `status = "pending"` and clear their
    `result` and `completed_at` fields.
 3. Set `run.current_stage = from_stage`, `run.status = "running"`.
-4. Call `_run_stage(run_id, from_stage)`.
+4. Call `_run_stage(execution_id, from_stage)`.
 
 Stages before `from_stage` are untouched — their approved results remain as inputs.
 
@@ -270,14 +279,14 @@ is to restart from the failed stage (or any earlier stage).
 
 ## FastAPI integration
 
-The orchestrator is exposed via a FastAPI router at prefix `/runs`, mounted in the main
+The orchestrator is exposed via a FastAPI router under `/quant-systems/{qs_id}/executions`, mounted in the main
 `app/main.py`. The router holds a single `Pipeline` instance as a module-level dependency.
 
 ```text
 app/
-  main.py          ← FastAPI app; mounts /runs router and /static
+  main.py          ← FastAPI app; mounts quant-systems/executions routers and /static
   routes/
-    pipeline.py    ← /runs router; calls Pipeline methods
+    pipeline.py    ← execution router; calls Pipeline methods
   templates/       ← Jinja2 templates (see web-ui.md)
 orchestrator.py    ← Pipeline class
 ```

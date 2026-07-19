@@ -72,15 +72,15 @@ Confirmation dialog via `onsubmit`. Redirects to the list on success.
 
 ## Pages
 
-### 1. Run List — `GET /runs`
+### 1. Execution List — `GET /quant-systems/{qs_id}/executions`
 
-Lists all pipeline runs in reverse chronological order.
+Lists executions for one Quant System in reverse chronological order.
 
 **Content:**
 
 | Column | Description |
 | ------ | ----------- |
-| Run ID | Short UUID, links to `GET /runs/{run_id}` |
+| Execution ID | Short UUID, links to `GET /quant-systems/{qs_id}/executions/{execution_id}` |
 | Started | Timestamp |
 | Indices | e.g. `DAX, MDAX` |
 | Status | `running` / `awaiting review` / `complete` / `error` |
@@ -88,31 +88,29 @@ Lists all pipeline runs in reverse chronological order.
 
 **Actions:**
 
-- **New run** button → opens the run-creation form (inline via HTMX or separate page)
+- **New execution** button → starts a pipeline execution for the current Quant System
 
 ---
 
-### 2. New Run Form — `POST /runs`
+### 2. New Execution — `POST /quant-systems/{qs_id}/executions`
 
-A simple form for configuring a new pipeline run. Submitted via standard form POST; on success, redirects to `GET /runs/{run_id}`.
+Starts a new execution using the selected Quant System snapshot (`indices`, `capital_eur`, `config_overrides`). On success, redirects to `GET /quant-systems/{qs_id}/executions/{execution_id}`.
 
 **Fields:**
 
 | Field | Type | Default | Description |
 | ----- | ---- | ------- | ----------- |
-| Indices | Multi-checkbox | DAX checked | Select one or more: DAX, MDAX, SDAX, TecDAX |
-| Capital (EUR) | Number input | `portfolio_capital_eur` from config | Total capital to deploy |
-| HITL mode | Toggle | On | If off, all checkpoints are auto-approved |
+| HITL mode | Toggle | On | If off, approvals are skipped and stages auto-advance |
 
 ---
 
-### 3. Pipeline Run — `GET /runs/{run_id}`
+### 3. Execution Detail — `GET /quant-systems/{qs_id}/executions/{execution_id}`
 
-Redirects to the review page for the current stage (`GET /runs/{run_id}/stages/{current_stage}`).
+Redirects to the review page for the current stage (`GET /quant-systems/{qs_id}/executions/{execution_id}/stages/{current_stage}`).
 
 ---
 
-### 4. Stage Review Pages — `GET /runs/{run_id}/stages/{stage_name}`
+### 4. Stage Review Pages — `GET /quant-systems/{qs_id}/executions/{execution_id}/stages/{stage_name}`
 
 One page per pipeline stage. Each page follows the same structure:
 
@@ -181,7 +179,7 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 | Signal | Recent trend-state signal from the screening state machine: **NEW** (green, fresh signal with 5-bar stickiness) / **HOLD** (yellow, still in trend) / **BREAK** (red, break event with 1-bar follow-through) / — |
 | 1W / 2W / 4W | Rank delta vs prior runs (▲/▼/▶/—) |
 
-Clicking a ticker row calls `GET /runs/{run_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
+Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
 
 **Signal filter** (above the table): checkboxes to show/hide rows by trend signal — All / NEW / HOLD / BREAK / — (no signal). All are checked by default. If **All** is checked, all individual signal checkboxes are automatically checked. If any individual signal checkbox is unchecked, **All** is automatically unchecked.
 
@@ -305,7 +303,7 @@ Right side — two vertically stacked panels:
 - **Orange dashed horizontal line** at the selected warrant's strike price (labelled "Strike")
 - **Orange arrow marker** at the maturity date (labelled "Expiry")
 - Time range selector: 3M / 6M / 1Y (default) / 3Y
-- Loaded via `GET /runs/{run_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings (ADRs), `chart_symbol` plots the override underlying in its native currency so candles and the strike line share one currency (no FX); the strike filter itself is anchored to the override quote's last/current price or, if absent, the bid/ask midprice. Otherwise the underlying symbol is charted.
+- Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings (ADRs), `chart_symbol` plots the override underlying in its native currency so candles and the strike line share one currency (no FX); the strike filter itself is anchored to the override quote's last/current price or, if absent, the bid/ask midprice. Otherwise the underlying symbol is charted.
 
 Below the split panel — **maturity and strike controls**:
 
@@ -427,10 +425,10 @@ A `DRY RUN` badge is shown prominently if `execution_dry_run=True`.
 
 ```text
 User clicks "Approve" →
-  POST /runs/{run_id}/stages/{stage_name}/approve
+  POST /quant-systems/{qs_id}/executions/{execution_id}/stages/{stage_name}/approve
   → orchestrator advances pipeline to next stage
   → next stage runs synchronously (or queued if long)
-  → redirect to GET /runs/{run_id}/stages/{next_stage}
+  → redirect to GET /quant-systems/{qs_id}/executions/{execution_id}/stages/{next_stage}
 ```
 
 For the screening stage, the POST body includes the list of tickers to carry forward (from the checkboxes). Same for warrant selection.
@@ -442,17 +440,17 @@ The action bar includes a **"Restart from..."** dropdown listing all earlier sta
 ```text
 User selects "Restart from: screening" →
   User clicks "Restart" →
-  POST /runs/{run_id}/stages/{stage_name}/restart
+  POST /quant-systems/{qs_id}/executions/{execution_id}/stages/{stage_name}/restart
   Body: { from_stage: "screening" }
   → orchestrator rewinds pipeline to the named stage and re-runs
-  → redirect to GET /runs/{run_id}/stages/screening
+  → redirect to GET /quant-systems/{qs_id}/executions/{execution_id}/stages/screening
 ```
 
-Config overrides are stored per-run in MongoDB Atlas under the run document and do not affect global defaults (`.env` remains the source of truth).
+Config overrides are stored per execution in MongoDB Atlas under the execution document and do not affect global defaults (`.env` remains the source of truth).
 
 ### Config override parameters per stage
 
-Each restart form shows only the parameters relevant to the stage being re-run. All other config values are carried forward unchanged from the original run.
+Each restart form shows only the parameters relevant to the stage being re-run. All other config values are carried forward unchanged from the original execution.
 
 | Stage | Editable parameters |
 | ----- | ------------------- |
@@ -465,7 +463,7 @@ Each restart form shows only the parameters relevant to the stage being re-run. 
 
 The Research stage has no editable parameters — restarting from Research simply re-fetches OHLCV data with the same universe.
 
-Config overrides are merged with the current run config and stored in MongoDB Atlas under the run document. They do not modify the global config.
+Config overrides are merged with the current execution config and stored in MongoDB Atlas under the execution document. They do not modify the global config.
 
 ---
 
@@ -473,18 +471,18 @@ Config overrides are merged with the current run config and stored in MongoDB At
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| `GET` | `/runs` | Run list page |
-| `POST` | `/runs` | Create and start a new run |
-| `GET` | `/runs/{run_id}` | Redirect to current stage review |
-| `GET` | `/runs/{run_id}/stages/{stage}` | Stage review page |
-| `POST` | `/runs/{run_id}/stages/{stage}/approve` | Approve stage; advance pipeline |
-| `POST` | `/runs/{run_id}/stages/{stage}/restart` | Restart from a named stage |
-| `GET` | `/runs/{run_id}/charts/screening/{ticker}` | Lightweight Charts candlestick + indicator fragment |
-| `GET` | `/runs/{run_id}/charts/warrant_selection/{isin}` | Warrant scoring chart fragment (stub) |
-| `GET` | `/runs/{run_id}/charts/portfolio` | Portfolio weight chart fragment (stub) |
-| `GET` | `/runs/{run_id}/charts/risk` | Risk weight chart fragment (stub) |
+| `GET` | `/quant-systems/{qs_id}/executions` | Execution list page |
+| `POST` | `/quant-systems/{qs_id}/executions` | Create and start a new execution |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}` | Redirect to current stage review |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/stages/{stage}` | Stage review page |
+| `POST` | `/quant-systems/{qs_id}/executions/{execution_id}/stages/{stage}/approve` | Approve stage; advance pipeline |
+| `POST` | `/quant-systems/{qs_id}/executions/{execution_id}/stages/{stage}/restart` | Restart from a named stage |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/screening/{ticker}` | Lightweight Charts candlestick + indicator fragment |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}` | Warrant-selection chart fragment |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/portfolio` | Portfolio chart fragment (stub) |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/risk` | Risk chart fragment (stub) |
 
-All `/charts/` endpoints return a Plotly HTML fragment (`full_html=False`) for HTMX insertion. They read data from MongoDB Atlas using `run_id` and the stage name.
+All `/charts/` endpoints return an HTML fragment for inline insertion and read data from MongoDB Atlas using `execution_id` and stage context.
 
 ---
 
@@ -497,7 +495,7 @@ All `/charts/` endpoints return a Plotly HTML fragment (`full_html=False`) for H
 | Portfolio | Donut (position weights) | — (stub) | Page load |
 | Risk | Horizontal bar (position weights + limit line) | — (stub) | Page load |
 
-The screening chart is an HTML fragment returned by the `/charts/screening/{ticker}` endpoint. It embeds all indicator data as a `data-chart` JSON attribute and is initialised client-side by `initDataCharts()` in `base.html`. The Lightweight Charts library is loaded from CDN (`lightweight-charts@4.1.3`). All indicators (EMA, SMA, ADX, SuperTrend via ATR) are computed server-side using TA-Lib before the fragment is returned.
+The screening chart is an HTML fragment returned by the `/charts/screening/{ticker}` endpoint. It embeds all indicator data as a `data-chart` JSON attribute and is initialized client-side by `initDataCharts()` in `base.html`. The Lightweight Charts library is loaded from CDN (`lightweight-charts@4.1.3`). All indicators (EMA, SMA, ADX, SuperTrend via ATR) are computed server-side using TA-Lib before the fragment is returned.
 
 ---
 
@@ -506,13 +504,17 @@ The screening chart is an HTML fragment returned by the `/charts/screening/{tick
 ```text
 templates/
   base.html              ← navbar + sidebar + content block
-  runs/
-    list.html            ← run list table + new run button
-    new_run_form.html    ← new run form (may render as HTMX fragment)
+  executions/
+    list.html            ← execution list table + new execution button
+  quant_systems/
+    list.html            ← quant system list
+    new.html             ← quant system create form
+    edit.html            ← quant system edit form
   stages/
     universe.html
     research.html
     screening.html
+    monitoring.html
     warrant_selection.html
     portfolio.html
     risk.html
@@ -520,7 +522,6 @@ templates/
   partials/
     stage_progress.html  ← sidebar pipeline progress indicator
     action_bar.html      ← approve button + restart dropdown (shared)
-    config_override.html ← config override form (HTMX fragment, loaded on restart)
     chart_panel.html     ← chart container div (target for HTMX chart swaps)
 ```
 

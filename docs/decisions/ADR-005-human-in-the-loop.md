@@ -4,6 +4,9 @@
 
 Superseded by [ADR-008](ADR-008-web-ui.md)
 
+> Historical note: this ADR uses the legacy `pipeline_runs` / `run_id` terminology.
+> Current implementation uses `executions` / `execution_id` under `/quant-systems/{qs_id}/executions/...` (see ADR-010).
+
 ## Context
 
 During development the system should present the output of each pipeline stage to the user for review before proceeding. The user must be able to:
