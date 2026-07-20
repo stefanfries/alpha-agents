@@ -186,10 +186,10 @@ def test_trend_signal_k2_emits_new_before_break_phase():
     assert signal in {"NEW", "HOLD"}
 
 
-def test_trend_signal_k2_emits_break_event_not_sticky_after_two_days():
+def test_trend_signal_k2_keeps_break_visible_for_five_bars_total():
     from app.config import ScreeningSettings
 
-    # k=2 for both NEW and BREAK. BREAK is now an event signal and not sticky for 5 days.
+    # k=2 for both NEW and BREAK. BREAK remains visible for five bars total.
     agent = SecuritySelectionAgent(
         ScreeningSettings(min_adx=90, new_min_true=2, break_min_true=2)
     )
@@ -221,7 +221,7 @@ def test_trend_signal_k2_emits_break_event_not_sticky_after_two_days():
         break_min_true=2,
     )
 
-    assert signal is None
+    assert signal == "BREAK"
 
 
 def test_recent_new_downgrades_to_hold_when_current_bar_fails_selected_policy(monkeypatch):

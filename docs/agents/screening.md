@@ -132,7 +132,7 @@ The stored `trend_signals` value is then derived from the most recent event and 
 | ------ | --------- |
 | `"NEW"` | The most recent signal was `NEW`, it occurred on the current bar or within the last 5 trading bars, and the ticker still passes the NEW rule group |
 | `"HOLD"` | The state machine is currently `IN_TREND`, but the latest `NEW` event is older than 5 trading bars or the current bar no longer qualifies for `NEW` stickiness |
-| `"BREAK"` | The most recent signal was `BREAK` and it occurred on the current bar or the immediately following trading bar |
+| `"BREAK"` | The most recent signal was `BREAK` and it occurred on the current bar or within the last 4 trading bars |
 | `None` | The state machine is `OUT` and there is no recent `BREAK` signal to expose |
 
 This signal is purely observational. It informs entry timing at the screening stage; it does not trigger orders.
