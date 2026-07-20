@@ -270,7 +270,10 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `underlying_name` | `str \| None` | Display name for the underlying (preferred universe name; fallback cached warrant-derived name) |
 | `warrant_isin` | `str` | ISIN of the held warrant |
 | `warrant_wkn` | `str` | WKN of the held warrant (key in depot transactions) |
-| `held_since` | `date \| None` | Date of most recent BUY transaction for this WKN; `None` if unavailable |
+| `held_since` | `date \| None` | Held-since date from latest snapshot position (`held_since_date`); for virtual depots may fall back to most recent BUY transaction; `None` if unavailable |
+| `buy_price` | `float \| None` | Average buy price (`avg_cost`) of the held position |
+| `current_price` | `float \| None` | Current warrant midprice from monitoring snapshot |
+| `performance_pct` | `float \| None` | Percentage performance: `((current_price - buy_price) / buy_price) * 100` |
 | `sell_reason` | `Literal["exit_signal", "warrant_degraded"] \| None` | Reason for SELL decision; `None` when position is KEEP or ROLL |
 | `spread_pct` | `float \| None` | Bid-ask spread as percentage (from warrant snapshot) |
 | `leverage` | `float \| None` | Current leverage ratio (from warrant snapshot) |
@@ -279,7 +282,7 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `monitoring_score` | `float \| None` | Health score 0-1 (weighted 4-component: spread, leverage, maturity, delta) |
 | `screening_signal` | `str \| None` | Resolved screening signal for mapped underlying symbol (`NEW`/`HOLD`/`BREAK`/`None`) |
 | `screening_signal_present` | `bool \| None` | Whether mapped underlying symbol exists as a key in `SelectionResult.trend_signals` |
-| `trend_status` | `str \| None` | UI-ready trend state (`NEW`, `HOLD`, `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, `no screening signal`) |
+| `trend_status` | `str \| None` | UI-ready trend state (`trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no screening signal`) |
 | `warrant_health_status` | `str \| None` | UI-ready health state (`healthy`, `degraded`, `unknown`) |
 | `warrant_health_reason` | `str \| None` | Degradation detail text when health is degraded |
 | `decision_reason` | `str \| None` | Human-readable action rationale (non-redundant with warrant-health detail in UI) |
@@ -335,6 +338,14 @@ Output of `TradeExecutionAgent`. Final pipeline output.
 ---
 
 ## MongoDB persistence
+
+### Finance snapshot integration assumptions (2026-07-20 schema)
+
+- Canonical position fields are `average_purchase_price`, `purchase_price_at_entry`, and `held_since_date`.
+- Legacy fields `purchase_price` and `buy_price_at_entry` are treated as schema violations and should fail fast in runtime parsing.
+- Numeric amount values are stored as strings in nested amount objects (for example `{"value": "123.45", "unit": "EUR"}`) and are explicitly converted to `Decimal` before calculations.
+- `held_since_date` and `purchase_price_at_entry` can be `null`; consumers must handle missing values without crashing.
+- Current holdings are always read from the latest snapshot per depot (`max(recorded_at)`).
 
 ### `Execution` document (`executions` collection)
 

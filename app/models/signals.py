@@ -92,6 +92,9 @@ class PositionReview(BaseModel):
     warrant_isin: str
     warrant_wkn: str
     held_since: date | None = None
+    buy_price: float | None = None
+    current_price: float | None = None
+    performance_pct: float | None = None
     # Health snapshot (from current warrant, if available)
     spread_pct: float | None = None
     leverage: float | None = None

@@ -231,7 +231,10 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 | Symbol | Underlying symbol |
 | Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
 | Warrant WKN | Held warrant |
-| Held since | Most recent BUY date (from virtual depot transactions) |
+| Held since | Held-since date from latest depot snapshot position; for virtual depots, fallback to recent BUY transaction when snapshot value is missing |
+| Buy (EUR) | Average buy price of the current position |
+| Current (EUR) | Current warrant price (bid/ask midprice snapshot) |
+| Perf % | Position performance percentage (`(current - buy) / buy * 100`), green if positive else red |
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
 | Reason | Human-readable decision reason string |

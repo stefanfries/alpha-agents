@@ -103,7 +103,9 @@ updated_at        datetime (UTC)
 depot_id          str          FK → virtual_depots
 current_cash      float        EUR after the triggering operation
 positions         list[dict]   [{wkn, isin, instrument_name, quantity,
-                                 purchase_price, current_value}]
+                                 current_price, current_value,
+                                 average_purchase_price, held_since_date,
+                                 purchase_price_at_entry}]
 recorded_at       datetime (UTC)
 triggered_by      str          execution_id that caused this snapshot
 ```

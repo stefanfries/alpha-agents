@@ -17,7 +17,7 @@ class MonitoringInput(BaseModel):
     underlying_names: dict[str, str]       # underlying_symbol -> display name
     current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
     warrant_underlying_map: dict[str, str] # warrant_isin -> underlying_symbol
-    held_since_map: dict[str, date]        # warrant_wkn → most recent BUY date
+    held_since_map: dict[str, date]        # warrant_wkn -> held-since date
     warrant_snapshots: dict[str, WarrantSnapshot]  # held warrant health snapshots
     max_positions: int                     # from execution config override or PortfolioSettings
 ```
@@ -28,7 +28,9 @@ The orchestrator builds `MonitoringInput` from:
 - `underlying_names` from screening universe (`all_tickers` fallback `selected`), then enriched for held rows
 - Current depot snapshot via `_fetch_holdings()` — **excludes zero-quantity positions**
 - `warrant_underlying_map` via strict live resolver `_fetch_warrant_underlying_map()` using FinHub `/v1/instruments/{isin}`
-- `held_since_map` from `virtual_depot_transactions` via `_fetch_held_since()`
+- `held_since_map` via `_fetch_held_since()`:
+  - real depots: latest `finance.depot_snapshots.positions[].held_since_date`
+  - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
 - `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()`
 - `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
@@ -53,6 +55,7 @@ class MonitoringResult(BaseModel):
 
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
 - Holding context: `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
+- Pricing context: `buy_price` (average buy price), `current_price` (snapshot midprice), `performance_pct`
 - Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity` (all optional float)
 - Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
 - Trend status: `trend_status` (UI-ready status label)
@@ -272,5 +275,5 @@ Guardrail suggestions for the baseline profile:
 ## Known limitations / TODO
 
 - **Re-entry prevention from history**: `re_entry_prevention_days` is stored but the agent does not yet query transaction history to exclude recently-sold underlyings from entry. Currently only currently-held symbols are excluded.
-- **Real depot held-since**: `_fetch_held_since` only reads `virtual_depot_transactions`. For real Comdirect depots the purchase date is not tracked.
+- **Real depot held-since quality**: real depots use `held_since_date` from `finance.depot_snapshots`; if upstream snapshots provide `null`, held-since remains unavailable.
 - **Roll approval controls**: ROLL recommendations are approved at stage level (no per-row accept/reject yet).

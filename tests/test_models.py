@@ -3,6 +3,7 @@ from decimal import Decimal
 from app.agents.monitoring import MonitoringInput, WarrantSnapshot
 from app.config import MonitoringSettings
 from app.models.market import Order, Ticker
+from app.models.quant_system import VirtualDepotPosition
 from app.models.signals import (
     ExecutionPlan,
     MonitoringResult,
@@ -123,3 +124,14 @@ def test_monitoring_input_accepts_warrant_snapshots():
 
     assert "DE000TEST123" in inp.warrant_snapshots
     assert inp.warrant_snapshots["DE000TEST123"].spread_pct == 1.2
+
+
+def test_virtual_depot_position_uses_canonical_snapshot_fields():
+    fields = VirtualDepotPosition.model_fields
+
+    assert "average_purchase_price" in fields
+    assert "purchase_price_at_entry" in fields
+    assert "held_since_date" in fields
+
+    assert "purchase_price" not in fields
+    assert "buy_price_at_entry" not in fields

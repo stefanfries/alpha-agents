@@ -807,6 +807,102 @@ async def test_fetch_holdings_ignores_zero_quantity_positions(monkeypatch):
     assert holdings[0].quantity == Decimal("2")
 
 
+@pytest.mark.asyncio
+async def test_fetch_holdings_maps_average_purchase_price_to_avg_cost(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, _query: dict) -> dict:
+            return {"depot_id": "d1", "depot_type": "virtual"}
+
+    class FakeSnapshotsCollection:
+        async def find_one(self, _query: dict, sort: list[tuple[str, int]]) -> dict:
+            return {
+                "positions": [
+                    {
+                        "isin": "X3",
+                        "wkn": "W3",
+                        "instrument_name": "Test",
+                        "quantity": {"value": "2", "unit": "ST"},
+                        "average_purchase_price": {"value": "12.34", "unit": "EUR"},
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+
+    pipeline = Pipeline()
+    holdings = await pipeline._fetch_holdings({"quant_system_id": "qs1"})
+
+    assert len(holdings) == 1
+    assert holdings[0].avg_cost == Decimal("12.34")
+
+
+@pytest.mark.asyncio
+async def test_fetch_holdings_fails_fast_on_legacy_position_fields(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, _query: dict) -> dict:
+            return {"depot_id": "d1", "depot_type": "virtual"}
+
+    class FakeSnapshotsCollection:
+        async def find_one(self, _query: dict, sort: list[tuple[str, int]]) -> dict:
+            return {
+                "positions": [
+                    {
+                        "isin": "X3",
+                        "wkn": "W3",
+                        "quantity": {"value": "2", "unit": "ST"},
+                        "purchase_price": {"value": "12.34", "unit": "EUR"},
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+
+    pipeline = Pipeline()
+    with pytest.raises(RuntimeError, match="Legacy position fields"):
+        await pipeline._fetch_holdings({"quant_system_id": "qs1"})
+
+
+@pytest.mark.asyncio
+async def test_fetch_held_since_uses_snapshot_held_since_date(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, _query: dict) -> dict:
+            return {"depot_id": "d1", "depot_type": "real"}
+
+    class FakeDepotSnapshotsCollection:
+        async def find_one(self, _query: dict, sort: list[tuple[str, int]]) -> dict:
+            return {
+                "positions": [
+                    {"wkn": "W1", "held_since_date": "2026-01-03"},
+                    {"wkn": "W2", "held_since_date": None},
+                ]
+            }
+
+    class FakeFinanceDB:
+        def __getitem__(self, name: str):
+            if name == "depot_snapshots":
+                return FakeDepotSnapshotsCollection()
+            raise KeyError(name)
+
+    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(orchestrator_module, "finance_db", lambda: FakeFinanceDB())
+
+    pipeline = Pipeline()
+    held_since = await pipeline._fetch_held_since({"quant_system_id": "qs1"})
+
+    assert held_since == {"W1": date(2026, 1, 3)}
+
+
 def test_monitoring_warrant_health_check_flags_threshold_breaches():
     agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
 

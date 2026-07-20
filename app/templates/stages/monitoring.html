@@ -50,6 +50,15 @@
       <span class="text-muted">—</span>
     {% endif %}
   {% endmacro %}
+  {% macro performance_value(p) %}
+    {% if p.performance_pct is none %}
+      <span class="text-muted">—</span>
+    {% elif p.performance_pct >= 0 %}
+      <span class="text-success">{{ "%+.2f%%" | format(p.performance_pct) }}</span>
+    {% else %}
+      <span class="text-danger">{{ "%+.2f%%" | format(p.performance_pct) }}</span>
+    {% endif %}
+  {% endmacro %}
   {% macro decision_rationale(p) %}
     {% if not p.decision_reason %}
       <span class="text-muted">—</span>
@@ -188,22 +197,25 @@
           <h6 class="text-primary mb-2">Roll recommendations</h6>
           <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
             <colgroup>
-              <col style="width:10%">
-              <col style="width:16%">
+              <col style="width:9%">
+              <col style="width:15%">
               <col style="width:7%">
               <col style="width:8%">
+              <col style="width:6%">
+              <col style="width:6%">
+              <col style="width:7%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:6%">
-              <col style="width:12%">
-              <col style="width:8%">
+              <col style="width:10%">
+              <col style="width:7%">
               <col style="width:9%">
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in rolls %}
@@ -212,6 +224,9 @@
                 <td>{{ p.underlying_name or "—" }}</td>
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td class="text-end text-muted small">{{ "%.2f" | format(p.buy_price) if p.buy_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ "%.2f" | format(p.current_price) if p.current_price is not none else "—" }}</td>
+                <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.3f" | format(p.delta) if p.delta is not none else "—" }}</td>
@@ -234,22 +249,25 @@
           <h6 class="text-success mb-2">Incumbent positions (keep)</h6>
           <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
             <colgroup>
-              <col style="width:10%">
-              <col style="width:16%">
+              <col style="width:9%">
+              <col style="width:15%">
               <col style="width:7%">
               <col style="width:8%">
+              <col style="width:6%">
+              <col style="width:6%">
+              <col style="width:7%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:6%">
-              <col style="width:12%">
-              <col style="width:8%">
+              <col style="width:10%">
+              <col style="width:7%">
               <col style="width:9%">
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
@@ -258,6 +276,9 @@
                 <td>{{ p.underlying_name or "—" }}</td>
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td class="text-end text-muted small">{{ "%.2f" | format(p.buy_price) if p.buy_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ "%.2f" | format(p.current_price) if p.current_price is not none else "—" }}</td>
+                <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.3f" | format(p.delta) if p.delta is not none else "—" }}</td>

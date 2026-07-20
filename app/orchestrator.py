@@ -42,8 +42,46 @@ from app.tools.yfinance import YFinanceTool
 
 logger = logging.getLogger(__name__)
 
+_LEGACY_POSITION_FIELDS = frozenset({"purchase_price", "buy_price_at_entry"})
+
 
 class Pipeline:
+    @staticmethod
+    def _assert_canonical_position_schema(position: dict[str, Any]) -> None:
+        legacy_present = sorted(_LEGACY_POSITION_FIELDS.intersection(position.keys()))
+        if legacy_present:
+            raise RuntimeError(
+                "Legacy position fields detected in snapshot: "
+                f"{', '.join(legacy_present)}. Expected canonical fields "
+                "average_purchase_price and purchase_price_at_entry."
+            )
+
+    @staticmethod
+    def _decimal_from_amount_field(container: dict[str, Any], field_name: str) -> Decimal:
+        amount_obj = container.get(field_name)
+        raw = amount_obj.get("value") if isinstance(amount_obj, dict) else amount_obj
+        if raw in (None, ""):
+            return Decimal("0")
+        try:
+            return Decimal(str(raw))
+        except Exception:
+            return Decimal("0")
+
+    @staticmethod
+    def _parse_snapshot_held_since(raw: Any) -> date | None:
+        if raw in (None, ""):
+            return None
+        if isinstance(raw, datetime):
+            return raw.date()
+        if isinstance(raw, date):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return date.fromisoformat(raw)
+            except ValueError:
+                return None
+        return None
+
     def _portfolio_max_positions(self, run: dict) -> int:
         """Resolve max positions from execution config, fallback to global settings."""
         portfolio_cfg = run.get("config_overrides", {}).get("portfolio", {})
@@ -538,24 +576,62 @@ class Pipeline:
         }
 
     async def _fetch_held_since(self, run: dict) -> dict[str, date]:
-        """Return {warrant_wkn → most recent BUY booking_date} for the linked virtual depot."""
+        """Return {warrant_wkn -> held_since_date} using latest snapshot per depot.
+
+        For virtual depots only, missing held_since_date values fall back to BUY
+        transactions when available.
+        """
         qs_id = run.get("quant_system_id")
         if not qs_id:
             return {}
         qs = await quant_systems_collection().find_one({"quant_system_id": qs_id})
-        if not qs or qs.get("depot_type") != "virtual" or not qs.get("depot_id"):
+        if not qs or not qs.get("depot_id"):
             return {}
         depot_id = qs["depot_id"]
-        transactions = await virtual_depot_transactions_collection().find(
-            {"depot_id": depot_id, "transaction_type": "BUY"},
-            sort=[("booking_date", -1)],
-        ).to_list()
+        depot_type = qs.get("depot_type", "virtual")
+
+        if depot_type == "real":
+            snapshot = await finance_db()["depot_snapshots"].find_one(
+                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
+            )
+        else:
+            snapshot = await virtual_depot_snapshots_collection().find_one(
+                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
+            )
+
         held_since: dict[str, date] = {}
-        for txn in transactions:
-            wkn = txn.get("wkn")
-            if wkn and wkn not in held_since:
+        snapshot_wkns: set[str] = set()
+
+        if snapshot:
+            for pos in snapshot.get("positions", []):
+                if not isinstance(pos, dict):
+                    continue
+                self._assert_canonical_position_schema(pos)
+                wkn = pos.get("wkn")
+                if not wkn:
+                    continue
+                snapshot_wkns.add(wkn)
+                held = self._parse_snapshot_held_since(pos.get("held_since_date"))
+                if held and wkn not in held_since:
+                    held_since[wkn] = held
+
+        if depot_type == "virtual":
+            transactions = await virtual_depot_transactions_collection().find(
+                {"depot_id": depot_id, "transaction_type": "BUY"},
+                sort=[("booking_date", -1)],
+            ).to_list()
+            for txn in transactions:
+                wkn = txn.get("wkn")
+                if not wkn or wkn in held_since:
+                    continue
+                if snapshot_wkns and wkn not in snapshot_wkns:
+                    continue
                 bd = txn.get("booking_date")
-                held_since[wkn] = bd.date() if hasattr(bd, "date") else bd
+                if isinstance(bd, datetime):
+                    held_since[wkn] = bd.date()
+                elif isinstance(bd, date):
+                    held_since[wkn] = bd
+
         return held_since
 
     async def _run_portfolio(self, run: dict) -> PortfolioProposal:
@@ -612,20 +688,19 @@ class Pipeline:
 
         holdings: list[Position] = []
         for pos in snapshot.get("positions", []):
+            if not isinstance(pos, dict):
+                continue
+            self._assert_canonical_position_schema(pos)
             isin = pos.get("isin")
             wkn = pos.get("wkn") or isin or ""
-            qty_raw = pos.get("quantity", {})
-            qty = qty_raw.get("value") if isinstance(qty_raw, dict) else qty_raw
-            try:
-                quantity = Decimal(str(qty)) if qty else Decimal("0")
-            except Exception:
-                quantity = Decimal("0")
+            quantity = self._decimal_from_amount_field(pos, "quantity")
             if quantity <= 0:
                 continue
+            avg_cost = self._decimal_from_amount_field(pos, "average_purchase_price")
             holdings.append(Position(
                 ticker=Ticker(symbol=wkn, isin=isin, name=pos.get("instrument_name")),
                 quantity=quantity,
-                avg_cost=Decimal("0"),
+                avg_cost=avg_cost,
             ))
         return holdings
 

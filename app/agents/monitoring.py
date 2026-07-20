@@ -54,6 +54,15 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         self._warrant_health = settings.warrant_health
         self._max_positions = max_positions
 
+    @staticmethod
+    def _price_metrics(pos: Position, warrant_snapshot: WarrantSnapshot | None) -> tuple[float | None, float | None, float | None]:
+        buy_price = float(pos.avg_cost) if pos.avg_cost and pos.avg_cost > 0 else None
+        current_price = warrant_snapshot.bid_ask_midprice if warrant_snapshot else None
+        if buy_price is None or current_price is None or buy_price <= 0:
+            return buy_price, current_price, None
+        performance_pct = ((current_price - buy_price) / buy_price) * 100.0
+        return buy_price, current_price, performance_pct
+
     def _check_warrant_health(
         self,
         warrant_isin: str,
@@ -233,12 +242,16 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             if underlying_sym is None:
                 # Can't map to underlying — keep as-is (safe default)
                 warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
+                buy_price, current_price, performance_pct = self._price_metrics(pos, warrant_snapshot)
                 positions_to_keep.append(PositionReview(
                     underlying_symbol="",
                     underlying_name=None,
                     warrant_isin=warrant_isin,
                     warrant_wkn=warrant_wkn,
                     held_since=input.held_since_map.get(warrant_wkn),
+                    buy_price=buy_price,
+                    current_price=current_price,
+                    performance_pct=performance_pct,
                     spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
                     leverage=warrant_snapshot.leverage if warrant_snapshot else None,
                     delta=warrant_snapshot.delta if warrant_snapshot else None,
@@ -272,6 +285,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             if warrant_snapshot:
                 is_degraded, degrade_detail = self._check_warrant_health(warrant_isin, warrant_snapshot)
             monitoring_score = self._monitoring_score(warrant_snapshot)
+            buy_price, current_price, performance_pct = self._price_metrics(pos, warrant_snapshot)
 
             review = PositionReview(
                 underlying_symbol=underlying_sym,
@@ -279,6 +293,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 warrant_isin=warrant_isin,
                 warrant_wkn=warrant_wkn,
                 held_since=held_since,
+                buy_price=buy_price,
+                current_price=current_price,
+                performance_pct=performance_pct,
                 spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
                 leverage=warrant_snapshot.leverage if warrant_snapshot else None,
                 delta=warrant_snapshot.delta if warrant_snapshot else None,

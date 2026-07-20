@@ -157,6 +157,9 @@ class TestPositionReviewFieldPopulation:
             warrant_isin="ISIN1",
             warrant_wkn="WKN1",
         )
+        assert hasattr(review, "buy_price")
+        assert hasattr(review, "current_price")
+        assert hasattr(review, "performance_pct")
         assert hasattr(review, "spread_pct")
         assert hasattr(review, "leverage")
         assert hasattr(review, "delta")
@@ -164,6 +167,9 @@ class TestPositionReviewFieldPopulation:
         assert hasattr(review, "monitoring_score")
         assert hasattr(review, "decision_reason")
         # Fields should be None by default
+        assert review.buy_price is None
+        assert review.current_price is None
+        assert review.performance_pct is None
         assert review.spread_pct is None
         assert review.leverage is None
         assert review.delta is None
@@ -177,6 +183,9 @@ class TestPositionReviewFieldPopulation:
             underlying_symbol="A",
             warrant_isin="ISIN1",
             warrant_wkn="WKN1",
+            buy_price=6.89,
+            current_price=8.2,
+            performance_pct=19.013,
             spread_pct=1.5,
             leverage=5.0,
             delta=0.5,
@@ -184,12 +193,53 @@ class TestPositionReviewFieldPopulation:
             monitoring_score=0.85,
             decision_reason="warrant healthy, trend intact",
         )
+        assert review.buy_price == 6.89
+        assert review.current_price == 8.2
+        assert review.performance_pct == 19.013
         assert review.spread_pct == 1.5
         assert review.leverage == 5.0
         assert review.delta == 0.5
         assert review.days_to_maturity == 90
         assert review.monitoring_score == 0.85
         assert review.decision_reason == "warrant healthy, trend intact"
+
+    @pytest.mark.asyncio
+    async def test_monitoring_populates_buy_current_and_performance_fields(self):
+        settings = MonitoringSettings()
+        agent = MonitoringAgent(settings=settings, max_positions=5)
+
+        result = await agent.run(
+            MonitoringInput(
+                candidates=[],
+                scores={"PALO": 1.0},
+                trend_signals={"PALO": "HOLD"},
+                policy_results={"PALO": {}},
+                underlying_names={"PALO": "Palo Alto Networks"},
+                current_holdings=[
+                    Position(
+                        ticker=Ticker(symbol="UG7LBL", isin="DE000UG7LBL4"),
+                        quantity=Decimal("17500"),
+                        avg_cost=Decimal("6.89"),
+                    )
+                ],
+                warrant_underlying_map={"DE000UG7LBL4": "PALO"},
+                held_since_map={"UG7LBL": date.today() - timedelta(days=20)},
+                warrant_snapshots={
+                    "DE000UG7LBL4": WarrantSnapshot(
+                        warrant_isin="DE000UG7LBL4",
+                        bid_ask_midprice=8.2,
+                        spread_pct=1.2,
+                    )
+                },
+                max_positions=5,
+            )
+        )
+
+        assert len(result.positions_to_keep) == 1
+        review = result.positions_to_keep[0]
+        assert review.buy_price == pytest.approx(6.89)
+        assert review.current_price == pytest.approx(8.2)
+        assert review.performance_pct == pytest.approx((8.2 - 6.89) / 6.89 * 100.0)
 
 
 class TestDecisionReason:

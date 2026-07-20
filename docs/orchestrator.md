@@ -213,7 +213,8 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 6. Normalizes mapped underlying symbols to screening symbols before monitoring decisions.
   Example: `ASML.AS` is normalized to `ASML` when `ASML` exists in `screening.trend_signals`.
 7. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
-8. Calls `_fetch_held_since(run)` — queries `virtual_depot_transactions` for the most recent BUY per WKN; returns `{wkn -> date}`.
+8. Calls `_fetch_held_since(run)` — builds `{wkn -> date}` from latest snapshot position field `held_since_date`.
+  For virtual depots only, missing snapshot dates fall back to most recent BUY from `virtual_depot_transactions`.
 9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
 10. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
 11. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.

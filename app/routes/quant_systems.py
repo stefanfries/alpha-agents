@@ -19,6 +19,27 @@ templates = Jinja2Templates(directory="app/templates")
 _NO_ID = {"_id": 0}
 
 INDICES = ["DAX", "MDAX", "SDAX", "TecDAX", "EuroStoxx50", "NASDAQ100", "SP500", "FTSE100"]
+_LEGACY_POSITION_FIELDS = frozenset({"purchase_price", "buy_price_at_entry"})
+
+
+def _amount_to_decimal(amount_obj: object) -> Decimal:
+    raw = amount_obj.get("value") if isinstance(amount_obj, dict) else amount_obj
+    if raw in (None, ""):
+        return Decimal("0")
+    try:
+        return Decimal(str(raw))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal("0")
+
+
+def _assert_no_legacy_position_fields(position: dict) -> None:
+    legacy_present = sorted(_LEGACY_POSITION_FIELDS.intersection(position.keys()))
+    if legacy_present:
+        raise RuntimeError(
+            "Legacy position fields detected in depot snapshot: "
+            f"{', '.join(legacy_present)}. Expected canonical fields "
+            "average_purchase_price and purchase_price_at_entry."
+        )
 
 
 async def _real_depots() -> list[dict]:
@@ -133,12 +154,10 @@ async def depot_capital(depot_id: str) -> JSONResponse:
     if snapshot:
         account_name = snapshot.get("account_name")
         for pos in snapshot.get("positions", []):
-            cv = pos.get("current_value") or {}
-            raw = cv.get("value") if isinstance(cv, dict) else cv
-            try:
-                positions_value += Decimal(str(raw)) if raw else Decimal("0")
-            except InvalidOperation:
-                pass
+            if not isinstance(pos, dict):
+                continue
+            _assert_no_legacy_position_fields(pos)
+            positions_value += _amount_to_decimal(pos.get("current_value") or {})
 
     # Latest cash balance — joined via account_name
     cash_value = Decimal("0")
@@ -150,11 +169,7 @@ async def depot_capital(depot_id: str) -> JSONResponse:
         )
         if bal_doc:
             bal = bal_doc.get("balance") or {}
-            raw = bal.get("value") if isinstance(bal, dict) else bal
-            try:
-                cash_value = Decimal(str(raw)) if raw else Decimal("0")
-            except InvalidOperation:
-                pass
+            cash_value = _amount_to_decimal(bal)
 
     total = float(positions_value + cash_value)
     return JSONResponse({"capital_eur": total})

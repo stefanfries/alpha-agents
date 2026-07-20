@@ -16,6 +16,12 @@ class AmountValue(BaseModel):
     unit: str | None = None   # e.g. "EUR" or "ST" (pieces)
 
 
+class PriceAmountValue(AmountValue):
+    """Price amount with optional quote timestamp."""
+
+    price_datetime: str | None = None
+
+
 class QuantSystem(BaseModel):
     quant_system_id: str
     name: str
@@ -39,12 +45,15 @@ class VirtualDepot(BaseModel):
 
 class VirtualDepotPosition(BaseModel):
     position_id: str = ""
-    wkn: str
-    isin: str = ""
-    instrument_name: str = ""
-    quantity: AmountValue        # {"value": "100.0000", "unit": "ST"}
-    purchase_price: AmountValue  # {"value": "123.45", "unit": "EUR"}
-    current_value: AmountValue   # {"value": "13456.78", "unit": "EUR"}
+    wkn: str | None = None
+    isin: str | None = None
+    instrument_name: str | None = None
+    quantity: AmountValue = Field(default_factory=AmountValue)
+    current_price: PriceAmountValue = Field(default_factory=PriceAmountValue)
+    current_value: AmountValue = Field(default_factory=AmountValue)
+    average_purchase_price: AmountValue = Field(default_factory=AmountValue)
+    held_since_date: str | None = None
+    purchase_price_at_entry: AmountValue = Field(default_factory=AmountValue)
 
 
 class VirtualDepotSnapshot(BaseModel):
