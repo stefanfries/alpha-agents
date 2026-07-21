@@ -78,16 +78,16 @@
           {# Build selected rank lookup: only selected symbols get a rank #}
           {% set sel_syms = r.selected | map(attribute='symbol') | list %}
           {% set sel_rank = namespace(n=0) %}
-          <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
+          <table id="screening-table" class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
             <thead class="table-light sticky-top">
               <tr>
-                <th>#</th>
-                <th>Symbol</th>
-                <th>Company</th>
-                <th>ISIN</th>
-                <th title="R² × slope / ATR (60-bar)">TQ-60</th>
-                <th title="R² × slope / ATR (20-bar)">TQ-20</th>
-                <th title="True Strength Index">TSI</th>
+                <th data-sort-key="rank" data-sort-type="number"># <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+                <th data-sort-key="symbol" data-sort-type="text">Symbol <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+                <th data-sort-key="company" data-sort-type="text">Company <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+                <th data-sort-key="isin" data-sort-type="text">ISIN <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+                <th data-sort-key="tq60" data-sort-type="number" title="R² × slope / ATR (60-bar)">TQ-60 <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+                <th data-sort-key="tq20" data-sort-type="number" title="R² × slope / ATR (20-bar)">TQ-20 <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+                <th data-sort-key="tsi" data-sort-type="number" title="True Strength Index">TSI <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
                 <th class="text-center" title="SuperTrend bullish">SuperTr</th>
                 <th class="text-center" title="EMA20 rising">EMA20</th>
                 <th class="text-center" title="ADX &gt; {{ min_adx }}">ADX&gt;</th>
@@ -114,15 +114,17 @@
                 {% set meta.isin = t.isin or "—" %}
               {% endfor %}
               <tr class="{% if selected %}table-success{% elif score <= 0 %}text-muted{% endif %}"
+                  data-selected-rank="{% if selected %}{{ sel_rank.n }}{% else %}999999{% endif %}"
+                  data-symbol="{{ sym }}"
                   style="cursor:pointer"
                   onclick="loadScreeningChart('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
-                <td class="small">{% if selected %}{{ sel_rank.n }}{% else %}—{% endif %}</td>
-                <td><code>{{ sym }}</code></td>
-                <td class="small" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ meta.name }}</td>
-                <td class="small">{{ meta.isin }}</td>
-                <td>{{ "%.3f" | format(score) }}</td>
-                <td>{{ "%.3f" | format(r.tq_short.get(sym, 0)) }}</td>
-                <td>{{ "%.1f" | format(r.tsi.get(sym, 0)) }}</td>
+                <td class="small" data-sort-key="rank" data-sort-value="{% if selected %}{{ sel_rank.n }}{% else %}999999{% endif %}">{% if selected %}{{ sel_rank.n }}{% else %}—{% endif %}</td>
+                <td data-sort-key="symbol" data-sort-value="{{ sym | upper }}"><code>{{ sym }}</code></td>
+                <td class="small" data-sort-key="company" data-sort-value="{{ (meta.name or '') | lower }}" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ meta.name }}</td>
+                <td class="small" data-sort-key="isin" data-sort-value="{{ meta.isin }}">{{ meta.isin }}</td>
+                <td data-sort-key="tq60" data-sort-value="{{ score }}">{{ "%.3f" | format(score) }}</td>
+                <td data-sort-key="tq20" data-sort-value="{{ r.tq_short.get(sym, 0) }}">{{ "%.3f" | format(r.tq_short.get(sym, 0)) }}</td>
+                <td data-sort-key="tsi" data-sort-value="{{ r.tsi.get(sym, 0) }}">{{ "%.1f" | format(r.tsi.get(sym, 0)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("supertrend", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("ema20_rising", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("adx_above", false)) }}</td>
@@ -281,7 +283,127 @@
   <div class="alert alert-secondary">Pending — waiting for Research stage.</div>
 {% endif %}
 
+<style>
+  #screening-table thead th[data-sort-key] {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  #screening-table .sort-indicator {
+    margin-left: 0.25rem;
+    vertical-align: middle;
+  }
+
+  #screening-table .sort-indicator--stack {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 0.7;
+    gap: 2px;
+    font-size: 0.62rem;
+    color: #adb5bd;
+    transform: translateY(-1px);
+  }
+
+  #screening-table .sort-indicator--active {
+    display: inline-block;
+    font-size: 0.78rem;
+    line-height: 1;
+    color: #212529;
+  }
+</style>
+
 <script>
+let screeningSortKey = 'tq60';
+let screeningSortDir = 'desc';
+
+function screeningTableBody() {
+  return document.querySelector('#screening-table tbody');
+}
+
+function parseSortValue(row, key, type) {
+  const cell = row.querySelector(`td[data-sort-key="${key}"]`);
+  if (!cell) return null;
+  const raw = cell.dataset.sortValue ?? '';
+  if (type === 'number') {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  return raw.toLowerCase();
+}
+
+function tieBreakRows(a, b) {
+  const rankA = Number(a.dataset.selectedRank ?? '999999');
+  const rankB = Number(b.dataset.selectedRank ?? '999999');
+  if (rankA !== rankB) return rankA - rankB;
+  const symA = (a.dataset.symbol ?? '').toUpperCase();
+  const symB = (b.dataset.symbol ?? '').toUpperCase();
+  return symA.localeCompare(symB);
+}
+
+function sortScreeningRows(key, type, dir) {
+  const tbody = screeningTableBody();
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const factor = dir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    const av = parseSortValue(a, key, type);
+    const bv = parseSortValue(b, key, type);
+    if (av === null && bv === null) return tieBreakRows(a, b);
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    let cmp = 0;
+    if (type === 'number') cmp = av - bv;
+    else cmp = String(av).localeCompare(String(bv));
+    if (cmp === 0) return tieBreakRows(a, b);
+    return cmp * factor;
+  });
+  for (const row of rows) tbody.appendChild(row);
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll('#screening-table thead th[data-sort-key]').forEach((th) => {
+    const marker = th.querySelector('.sort-indicator');
+    if (!marker) return;
+    const key = th.dataset.sortKey;
+    if (key === screeningSortKey) {
+      marker.classList.remove('sort-indicator--stack');
+      marker.classList.add('sort-indicator--active');
+      marker.textContent = screeningSortDir === 'asc' ? '▲' : '▼';
+      th.setAttribute('aria-sort', screeningSortDir === 'asc' ? 'ascending' : 'descending');
+    } else {
+      marker.classList.remove('sort-indicator--active');
+      marker.classList.add('sort-indicator--stack');
+      marker.innerHTML = '<span>▲</span><span>▼</span>';
+      th.setAttribute('aria-sort', 'none');
+    }
+  });
+}
+
+function initScreeningSort() {
+  const headers = document.querySelectorAll('#screening-table thead th[data-sort-key]');
+  headers.forEach((th) => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      const type = th.dataset.sortType || 'text';
+      if (screeningSortKey === key) {
+        screeningSortDir = screeningSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        screeningSortKey = key;
+        screeningSortDir = key === 'rank' ? 'asc' : 'desc';
+      }
+      sortScreeningRows(screeningSortKey, type, screeningSortDir);
+      updateSortIndicators();
+      applySignalFilter();
+    });
+  });
+
+  const defaultHeader = document.querySelector('#screening-table thead th[data-sort-key="tq60"]');
+  const defaultType = defaultHeader?.dataset.sortType || 'number';
+  sortScreeningRows(screeningSortKey, defaultType, screeningSortDir);
+  updateSortIndicators();
+}
+
 function applySignalFilter(changed = null) {
   const allEl = document.getElementById('filter-all');
   const newEl = document.getElementById('filter-new');
@@ -308,7 +430,9 @@ function applySignalFilter(changed = null) {
   const showHold  = holdEl.checked;
   const showBreak = breakEl.checked;
   const showNone  = noneEl.checked;
-  document.querySelectorAll('tbody tr').forEach(row => {
+  const tbody = screeningTableBody();
+  if (!tbody) return;
+  tbody.querySelectorAll('tr').forEach(row => {
     if (showAll) { row.style.display = ''; return; }
     const sig = row.querySelector('td[data-signal]')?.dataset.signal ?? '';
     const visible = (sig === 'NEW'   && showNew)
@@ -347,5 +471,6 @@ document.querySelectorAll('.new-policy-checkbox, .break-policy-checkbox').forEac
   el.addEventListener('change', syncPolicyBounds);
 });
 syncPolicyBounds();
+initScreeningSort();
 </script>
 {% endblock %}
