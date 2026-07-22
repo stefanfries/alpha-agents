@@ -307,17 +307,32 @@
           <h6 class="mb-2">Entry candidates <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ r.entry_candidates | length }} / {{ r.free_positions }} slots</span></h6>
           <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
             <colgroup>
-              <col style="width:10%">
-              <col style="width:90%">
+              <col style="width:9%">
+              <col style="width:15%">
+              <col style="width:7%">
+              <col style="width:8%">
+              <col style="width:6%">
+              <col style="width:6%">
+              <col style="width:7%">
+              <col style="width:5%">
+              <col style="width:5%">
+              <col style="width:5%">
+              <col style="width:5%">
+              <col style="width:6%">
+              <col style="width:9%">
+              <col style="width:9%">
+              <col style="width:8%">
+              <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th colspan="14"></th></tr>
             </thead>
             <tbody>
               {% for t in r.entry_candidates %}
               <tr>
                 <td><code>{{ t.symbol }}</code></td>
                 <td>{{ t.name or "—" }}</td>
+                <td colspan="14"></td>
               </tr>
               {% endfor %}
             </tbody>
