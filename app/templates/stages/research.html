@@ -67,13 +67,13 @@
     </div>
     <div class="flex-grow-1 overflow-auto" style="min-height:0">
   <div class="table-responsive">
-  <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
+  <table id="research-table" class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
     <thead class="table-light">
       <tr>
-        <th>Symbol</th>
-        <th>Name</th>
-        <th>Sector</th>
-        <th class="text-end">Mkt Cap</th>
+        <th data-sort-key="symbol" data-sort-type="text">Symbol <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+        <th data-sort-key="name" data-sort-type="text">Name <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+        <th data-sort-key="sector" data-sort-type="text">Sector <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
+        <th class="text-end" data-sort-key="mktcap" data-sort-type="number">Mkt Cap <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
         <th class="text-end">Price</th>
         <th>52W Range</th>
         <th class="text-end">Target (n)</th>
@@ -86,10 +86,10 @@
       {% set mc = fund.get("marketCap") or 0 %}
       {% set rec = fund.get("recommendationMean") %}
       <tr>
-        <td><code>{{ ticker.symbol }}</code></td>
-        <td class="small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ fund.get("shortName") or "—" }}</td>
-        <td class="small text-muted">{{ fund.get("sector") or "—" }}</td>
-        <td class="text-end small">
+        <td data-sort-key="symbol" data-sort-value="{{ ticker.symbol | upper }}"><code>{{ ticker.symbol }}</code></td>
+        <td class="small" data-sort-key="name" data-sort-value="{{ (fund.get('shortName') or '') | lower }}" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ fund.get("shortName") or "—" }}</td>
+        <td class="small text-muted" data-sort-key="sector" data-sort-value="{{ (fund.get('sector') or '') | lower }}">{{ fund.get("sector") or "—" }}</td>
+        <td class="text-end small" data-sort-key="mktcap" data-sort-value="{{ mc }}">
           {% if mc >= 1000000000000 %}{{ (mc / 1000000000000) | round(1) }}T
           {% elif mc >= 1000000000 %}{{ (mc / 1000000000) | round(1) }}B
           {% elif mc > 0 %}{{ (mc / 1000000) | round(0) | int }}M
@@ -147,4 +147,101 @@
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for Universe stage.</div>
 {% endif %}
+
+<style>
+  #research-table thead th[data-sort-key] {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  #research-table .sort-indicator {
+    margin-left: 0.25rem;
+    vertical-align: middle;
+  }
+
+  #research-table .sort-indicator--stack {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 0.7;
+    gap: 2px;
+    font-size: 0.62rem;
+    color: #adb5bd;
+    transform: translateY(-1px);
+  }
+
+  #research-table .sort-indicator--active {
+    display: inline-block;
+    font-size: 0.78rem;
+    line-height: 1;
+    color: #212529;
+  }
+</style>
+
+<script>
+let researchSortKey = null;
+let researchSortDir = 'asc';
+
+function parseResearchSortValue(row, key, type) {
+  const cell = row.querySelector(`td[data-sort-key="${key}"]`);
+  if (!cell) return null;
+  const raw = cell.dataset.sortValue ?? '';
+  if (type === 'number') {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  return raw.toLowerCase();
+}
+
+function sortResearchRows(key, type, dir) {
+  const tbody = document.querySelector('#research-table tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const factor = dir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    const av = parseResearchSortValue(a, key, type);
+    const bv = parseResearchSortValue(b, key, type);
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    if (type === 'number') return (av - bv) * factor;
+    return String(av).localeCompare(String(bv)) * factor;
+  });
+  for (const row of rows) tbody.appendChild(row);
+}
+
+function updateResearchSortIndicators() {
+  document.querySelectorAll('#research-table thead th[data-sort-key]').forEach((th) => {
+    const marker = th.querySelector('.sort-indicator');
+    if (!marker) return;
+    const key = th.dataset.sortKey;
+    if (key === researchSortKey) {
+      marker.classList.remove('sort-indicator--stack');
+      marker.classList.add('sort-indicator--active');
+      marker.textContent = researchSortDir === 'asc' ? '▲' : '▼';
+      th.setAttribute('aria-sort', researchSortDir === 'asc' ? 'ascending' : 'descending');
+    } else {
+      marker.classList.remove('sort-indicator--active');
+      marker.classList.add('sort-indicator--stack');
+      marker.innerHTML = '<span>▲</span><span>▼</span>';
+      th.setAttribute('aria-sort', 'none');
+    }
+  });
+}
+
+document.querySelectorAll('#research-table thead th[data-sort-key]').forEach((th) => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sortKey;
+    const type = th.dataset.sortType || 'text';
+    if (researchSortKey === key) {
+      researchSortDir = researchSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      researchSortKey = key;
+      researchSortDir = key === 'mktcap' ? 'desc' : 'asc';
+    }
+    sortResearchRows(researchSortKey, type, researchSortDir);
+    updateResearchSortIndicators();
+  });
+});
+</script>
 {% endblock %}
