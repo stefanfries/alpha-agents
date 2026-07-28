@@ -171,6 +171,24 @@ All four phases delivered in one session (2026-06-22):
 - Only viable once historical simulation data is available
 - Hold until ready to A/B test configs on real performance metrics
 
+## Weight update — 2026-07-28
+
+Following analysis showing that deep-ITM warrants (lower spreads) were systematically outranking ATM/slightly-OTM warrants, the default weights were rebalanced:
+
+| Component | Old weight | New weight |
+| --------- | ---------- | ---------- |
+| Spread | 0.40 | **0.25** |
+| Leverage | 0.25 | 0.25 |
+| Days to expiry | 0.20 | 0.20 |
+| Delta | 0.15 | **0.30** |
+
+Additionally, `_range_adjusted_scoring_config` was extended to also derive `delta_peak` dynamically from the strike-band midpoint:
+`delta_peak = clamp(0.5 − (strike_target − 1.0) × 1.5, 0.1, 0.9)`
+
+This mirrors the existing `days_mean` alignment with the maturity window. With default band 0.90–1.05, `delta_peak` ≈ 0.538.
+
+94 tests passing after change.
+
 ## Resume checklist for next session
 
 All phases complete. If resuming W5:

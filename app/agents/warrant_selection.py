@@ -18,6 +18,11 @@ from app.tools.retry import retry_call
 
 logger = logging.getLogger(__name__)
 
+# Approximate sensitivity of call-warrant delta to strike factor.
+# At ATM (factor=1.0) delta≈0.5; each 0.10 move in strike factor shifts
+# the expected delta by ~0.15 (derived from Black-Scholes with σ≈30%, T≈1yr).
+_STRIKE_DELTA_SENSITIVITY: float = 1.5
+
 
 class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
     name = "warrant_selection"
@@ -27,9 +32,27 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         base_config: WarrantScoringConfig,
         min_days_to_expiry: int,
         max_days_to_expiry: int,
+        strike_min_factor: float | None = None,
+        strike_max_factor: float | None = None,
     ) -> WarrantScoringConfig:
-        if max_days_to_expiry <= min_days_to_expiry:
-            return base_config
+        # Align days scoring with the active maturity search window.
+        if max_days_to_expiry > min_days_to_expiry:
+            days_mean = (min_days_to_expiry + max_days_to_expiry) / 2.0
+            days_sigma = max(base_config.days_sigma, (max_days_to_expiry - min_days_to_expiry) / 4.0)
+        else:
+            days_mean = base_config.days_mean
+            days_sigma = base_config.days_sigma
+
+        # Align delta scoring peak with the midpoint of the strike band.
+        # A call delta decreases as strike moves OTM (factor > 1.0) and increases
+        # as strike moves ITM (factor < 1.0). _STRIKE_DELTA_SENSITIVITY approximates
+        # this relationship for medium-term European calls.
+        if strike_min_factor is not None and strike_max_factor is not None:
+            strike_target = (strike_min_factor + strike_max_factor) / 2.0
+            raw_peak = 0.5 - (strike_target - 1.0) * _STRIKE_DELTA_SENSITIVITY
+            delta_peak = max(0.1, min(0.9, raw_peak))
+        else:
+            delta_peak = base_config.delta_peak
 
         return WarrantScoringConfig(
             spread_weight=base_config.spread_weight,
@@ -38,10 +61,10 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             leverage_mean=base_config.leverage_mean,
             leverage_sigma=base_config.leverage_sigma,
             days_weight=base_config.days_weight,
-            days_mean=(min_days_to_expiry + max_days_to_expiry) / 2.0,
-            days_sigma=max(base_config.days_sigma, (max_days_to_expiry - min_days_to_expiry) / 4.0),
+            days_mean=days_mean,
+            days_sigma=days_sigma,
             delta_weight=base_config.delta_weight,
-            delta_peak=base_config.delta_peak,
+            delta_peak=delta_peak,
             delta_half_width=base_config.delta_half_width,
         )
 
@@ -75,6 +98,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             base_scoring_config,
             min_days_to_expiry,
             max_days_to_expiry,
+            strike_min_factor,
+            strike_max_factor,
         )
 
     async def run(self, input: SelectionResult) -> WarrantSelectionResult:

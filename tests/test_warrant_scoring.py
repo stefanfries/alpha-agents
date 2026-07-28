@@ -22,7 +22,7 @@ class TestScoreSpread:
     def test_zero_spread(self):
         """0% spread yields max contribution."""
         config = WarrantScoringConfig()
-        assert score_spread(0.0, config) == pytest.approx(0.40)
+        assert score_spread(0.0, config) == pytest.approx(0.25)
 
     def test_three_percent_spread(self):
         """3% spread yields min contribution (0.0)."""
@@ -32,7 +32,7 @@ class TestScoreSpread:
     def test_one_point_five_percent_spread(self):
         """1.5% spread yields 50% of weight."""
         config = WarrantScoringConfig()
-        assert score_spread(1.5, config) == pytest.approx(0.20)
+        assert score_spread(1.5, config) == pytest.approx(0.125)
 
     def test_spread_above_cutoff_yields_zero(self):
         """Spread above cutoff yields 0."""
@@ -51,7 +51,7 @@ class TestScoreLeverage:
     def test_leverage_at_mean(self):
         """Leverage at mean (5×) yields max contribution."""
         config = WarrantScoringConfig()
-        assert score_leverage(5.0, config) == pytest.approx(0.25)
+        assert score_leverage(5.0, config) == pytest.approx(0.25)  # leverage_weight unchanged
 
     def test_leverage_zero_or_negative(self):
         """Zero or negative leverage yields 0."""
@@ -115,7 +115,7 @@ class TestScoreDelta:
     def test_delta_at_peak(self):
         """Delta at peak (0.5) yields max contribution."""
         config = WarrantScoringConfig()
-        assert score_delta(0.5, config) == pytest.approx(0.15)
+        assert score_delta(0.5, config) == pytest.approx(0.30)
 
     def test_delta_zero(self):
         """Delta at 0.0 yields 0 (at edge of half-width)."""
@@ -130,8 +130,8 @@ class TestScoreDelta:
     def test_delta_at_peak_plus_quarter_width(self):
         """Delta at peak ± 0.25 yields 50% of weight."""
         config = WarrantScoringConfig()
-        assert score_delta(0.75, config) == pytest.approx(0.075)
-        assert score_delta(0.25, config) == pytest.approx(0.075)
+        assert score_delta(0.75, config) == pytest.approx(0.15)
+        assert score_delta(0.25, config) == pytest.approx(0.15)
 
     def test_none_delta(self):
         """None delta yields 0."""
@@ -160,7 +160,7 @@ class TestComputeWarrantScore:
         delta = 0.5  # at peak
         
         score = compute_warrant_score(spread_pct, leverage, maturity, delta, today, config)
-        expected = 0.40 + 0.25 + 0.20 + 0.15
+        expected = 0.25 + 0.25 + 0.20 + 0.30
         assert score == pytest.approx(expected)
 
     def test_partial_data_warrant(self):
@@ -212,7 +212,7 @@ class TestConfigDefaults:
     def test_config_has_correct_defaults(self):
         """WarrantScoringConfig has expected default values."""
         config = WarrantScoringConfig()
-        assert config.spread_weight == 0.40
+        assert config.spread_weight == 0.25
         assert config.spread_cutoff_pct == 3.0
         assert config.leverage_weight == 0.25
         assert config.leverage_mean == 5.0
@@ -220,7 +220,7 @@ class TestConfigDefaults:
         assert config.days_weight == 0.20
         assert config.days_mean == 315
         assert config.days_sigma == 45.0
-        assert config.delta_weight == 0.15
+        assert config.delta_weight == 0.30
         assert config.delta_peak == 0.5
         assert config.delta_half_width == 0.5
 

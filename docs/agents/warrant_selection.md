@@ -88,12 +88,14 @@ Each warrant receives a continuous composite score in `[0, 1]` from four criteri
 
 | # | Criterion | Weight | Function |
 | - | --------- | ------ | -------- |
-| 1 | **Bid-ask spread** | 40% | Linear: 0% -> 1.0, 3% -> 0.0; clamped at 0 |
+| 1 | **Bid-ask spread** | 25% | Linear: 0% -> 1.0, 3% -> 0.0; clamped at 0 |
 | 2 | **Leverage** | 25% | Gaussian peak at 5x, sigma=3 (sweet spot 3–8x) |
 | 3 | **Days to expiry** | 20% | Gaussian peak at midpoint of active maturity window (default 360 days for 9–15 months), sigma adapts with range width |
-| 4 | **Delta** | 15% | Linear: peak at delta=0.5; penalty proportional to abs(delta - 0.5) |
+| 4 | **Delta** | 30% | Linear: peak at delta derived from strike-band midpoint (ATM = 0.5); penalty proportional to abs(delta - derived_peak) |
 
 Final score = weighted sum. The warrant with the highest score per underlying becomes `selected[i]`.
+
+**Dynamic delta peak:** The scoring `delta_peak` is automatically aligned with the midpoint of the active strike-factor band (mirroring how `days_mean` tracks the maturity window midpoint). The formula is `delta_peak = clamp(0.5 − (strike_target − 1.0) × 1.5, 0.1, 0.9)`, where `strike_target = (strike_min_factor + strike_max_factor) / 2`. With the default band (0.90–1.05, centre 0.975), `delta_peak` ≈ 0.538. The sensitivity constant 1.5 approximates ∂delta/∂strike_factor for a medium-term European call (σ≈30%, T≈1yr).
 
 **Implementation:** Scoring logic is extracted to [app/policies/warrant_scoring.py](../../app/policies/warrant_scoring.py) with pure helper functions (`score_spread`, `score_leverage`, `score_days_to_expiry`, `score_delta`, `compute_warrant_score`, `build_warrant_rationale`) and a `WarrantScoringConfig` dataclass for centralized, reusable evaluation. See [Warrant Scoring Refactor Plan](../warrant-scoring-refactor-plan.md) for architecture and testing details.
 
@@ -114,7 +116,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 
 | Parameter | Default | Description |
 | --------- | ------- | ----------- |
-| `spread_weight` | `0.40` | Weight for spread component in composite score |
+| `spread_weight` | `0.25` | Weight for spread component in composite score |
 | `spread_cutoff_pct` | `3.0` | Spread % at which linear falloff reaches zero |
 | `leverage_weight` | `0.25` | Weight for leverage component |
 | `leverage_mean` | `5.0` | Gaussian peak leverage (sweet spot) |
@@ -122,14 +124,15 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `days_weight` | `0.20` | Weight for days-to-expiry component |
 | `days_mean` | `360` | Base/fallback Gaussian peak days; warrant selection runtime aligns target to midpoint of selected min/max maturity |
 | `days_sigma` | `45.0` | Base/fallback Gaussian sigma; warrant selection runtime widens sigma for wider maturity windows |
-| `delta_weight` | `0.15` | Weight for delta component |
-| `delta_peak` | `0.5` | Linear peak delta (ATM calls) |
+| `delta_weight` | `0.30` | Weight for delta component |
+| `delta_peak` | `0.5` | Base linear peak delta; overridden dynamically by `_range_adjusted_scoring_config` based on strike-band midpoint |
 | `delta_half_width` | `0.5` | Linear falloff half-width (range ~0–1) |
 
 **To tune scoring parameters without redeployment:** Edit `.env` with any of the above params prefixed with `WARRANT_SCORING__`, e.g.:
 
 ```bash
-WARRANT_SCORING__SPREAD_WEIGHT=0.35
+WARRANT_SCORING__SPREAD_WEIGHT=0.25
+WARRANT_SCORING__DELTA_WEIGHT=0.30
 WARRANT_SCORING__LEVERAGE_MEAN=6.0
 WARRANT_SCORING__DAYS_MEAN=360
 ```

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 @dataclass
 class WarrantScoringConfig:
     """Configuration for warrant scoring component weights and parameters."""
-    spread_weight: float = 0.40
+    spread_weight: float = 0.25
     spread_cutoff_pct: float = 3.0
     
     leverage_weight: float = 0.25
@@ -29,7 +29,7 @@ class WarrantScoringConfig:
     days_mean: float = 315  # ~midpoint of 9–12 month window
     days_sigma: float = 45.0
     
-    delta_weight: float = 0.15
+    delta_weight: float = 0.30
     delta_peak: float = 0.5
     delta_half_width: float = 0.5
 
