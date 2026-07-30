@@ -1,4 +1,5 @@
 import pytest
+from starlette.requests import Request
 
 
 @pytest.mark.asyncio
@@ -68,3 +69,85 @@ async def test_depot_capital_fails_fast_on_legacy_position_fields(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Legacy position fields"):
         await quant_systems_module.depot_capital("d1")
+
+
+@pytest.mark.asyncio
+async def test_new_quant_system_form_includes_dow_jones(monkeypatch):
+    from app.routes import quant_systems as quant_systems_module
+
+    class FakeVirtualDepotsCursor:
+        def sort(self, *_args, **_kwargs):
+            return self
+
+        async def to_list(self):
+            return []
+
+    class FakeVirtualDepotsCollection:
+        def find(self, *_args, **_kwargs):
+            return FakeVirtualDepotsCursor()
+
+    async def fake_real_depots() -> list[dict]:
+        return []
+
+    monkeypatch.setattr(quant_systems_module, "_real_depots", fake_real_depots)
+    monkeypatch.setattr(
+        quant_systems_module,
+        "virtual_depots_collection",
+        lambda: FakeVirtualDepotsCollection(),
+    )
+
+    request = Request({"type": "http", "method": "GET", "path": "/quant-systems/new", "headers": []})
+    response = await quant_systems_module.new_quant_system(request)
+
+    assert "indices" in response.context
+    assert "Dow Jones" in response.context["indices"]
+
+
+@pytest.mark.asyncio
+async def test_edit_quant_system_form_includes_dow_jones(monkeypatch):
+    from app.routes import quant_systems as quant_systems_module
+
+    class FakeVirtualDepotsCursor:
+        def sort(self, *_args, **_kwargs):
+            return self
+
+        async def to_list(self):
+            return []
+
+    class FakeVirtualDepotsCollection:
+        def find(self, *_args, **_kwargs):
+            return FakeVirtualDepotsCursor()
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, *_args, **_kwargs):
+            return {
+                "quant_system_id": "qs1",
+                "name": "Test QS",
+                "depot_id": "d1",
+                "depot_type": "virtual",
+                "indices": ["DAX"],
+                "capital_eur": 10_000.0,
+                "status": "draft",
+                "config_overrides": {},
+            }
+
+    async def fake_real_depots() -> list[dict]:
+        return []
+
+    monkeypatch.setattr(quant_systems_module, "_real_depots", fake_real_depots)
+    monkeypatch.setattr(
+        quant_systems_module,
+        "virtual_depots_collection",
+        lambda: FakeVirtualDepotsCollection(),
+    )
+    monkeypatch.setattr(
+        quant_systems_module,
+        "quant_systems_collection",
+        lambda: FakeQuantSystemsCollection(),
+    )
+
+    request = Request({"type": "http", "method": "GET", "path": "/quant-systems/qs1/edit", "headers": []})
+    response = await quant_systems_module.edit_quant_system(request, "qs1")
+
+    assert "indices" in response.context
+    assert "Dow Jones" in response.context["indices"]

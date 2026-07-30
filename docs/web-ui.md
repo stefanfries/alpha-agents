@@ -52,7 +52,7 @@ Wizard form with the following fields (in order):
 | Field | Type | Notes |
 | ----- | ---- | ----- |
 | Name | Text | User-defined strategy name |
-| Indices | Multi-checkbox | DAX, MDAX, SDAX, TecDAX, EuroStoxx50, NASDAQ100, SP500, FTSE100 |
+| Indices | Multi-checkbox | DAX, MDAX, SDAX, TecDAX, EuroStoxx50, NASDAQ100, SP500, FTSE100, Dow Jones |
 | Depot | Select | Real Comdirect depots (from `finance.depot_snapshots`) or virtual paper-trading depots |
 | Capital (EUR) | Number | `min=10000`, `step=1`; **auto-populated** when a real depot is selected (see below) |
 

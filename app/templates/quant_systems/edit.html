@@ -25,8 +25,8 @@
         {% for idx in indices %}
         <div class="form-check">
           <input class="form-check-input" type="checkbox" name="indices" value="{{ idx }}"
-                 id="idx-{{ idx }}" {% if idx in qs.indices %}checked{% endif %}>
-          <label class="form-check-label" for="idx-{{ idx }}">{{ idx }}</label>
+                 id="idx-{{ loop.index0 }}" {% if idx in qs.indices %}checked{% endif %}>
+          <label class="form-check-label" for="idx-{{ loop.index0 }}">{{ idx }}</label>
         </div>
         {% endfor %}
       </div>

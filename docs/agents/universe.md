@@ -58,6 +58,8 @@ class UniverseResult(AgentOutput):
 
 `GET /v1/indices/{index_name}` on the `fastapi-azure-container-app` service (`https://ca-fastapi.yellowwater-786ec0d0.germanywestcentral.azurecontainerapps.io`). Returns authoritative Xetra ticker symbols with correct ISIN mapping sourced from Comdirect. This is the primary source for all supported indices.
 
+Currently used index names include: `DAX`, `MDAX`, `SDAX`, `TecDAX`, `EuroStoxx50`, `NASDAQ100`, `SP500`, `FTSE100`, and `Dow Jones`.
+
 ## Ticker symbol handling
 
 - FinHub path: the symbol is taken from `global_identifiers.symbol_yfinance` as returned by FinHub.

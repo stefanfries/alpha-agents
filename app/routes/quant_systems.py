@@ -18,7 +18,7 @@ templates = Jinja2Templates(directory="app/templates")
 
 _NO_ID = {"_id": 0}
 
-INDICES = ["DAX", "MDAX", "SDAX", "TecDAX", "EuroStoxx50", "NASDAQ100", "SP500", "FTSE100"]
+INDICES = ["DAX", "MDAX", "SDAX", "TecDAX", "EuroStoxx50", "NASDAQ100", "SP500", "FTSE100", "Dow Jones"]
 _LEGACY_POSITION_FIELDS = frozenset({"purchase_price", "buy_price_at_entry"})
 
 
