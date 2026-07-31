@@ -109,7 +109,7 @@ BREAK group rules:
 | Policy key | Condition | Default |
 | ---------- | --------- | ------- |
 | `policy_supertrend_break` | SuperTrend bearish on last bar | on |
-| `policy_ema20_falling_break` | EMA20 not rising | on |
+| `policy_ema20_falling_break` | EMA20[t-2] > EMA20[t-1] > EMA20[t] | on |
 | `policy_adx_below_break` | ADX[-1] <= `min_adx` | on |
 | `policy_adx_falling_break` | ADX[-5:] slope <= 0 | on |
 | `policy_price_below_ema50_break` | Close[-1] <= EMA50[-1] | on |

@@ -87,7 +87,7 @@ None directly.
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
   - Otherwise => **KEEP**
 
-Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold).
+Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold). Here, EMA20 falling means `EMA20[t-2] > EMA20[t-1] > EMA20[t]`.
 
 **Active BREAK** fires when `trend_signal == "BREAK"` (signal is at most 1 bar old). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed.
 
@@ -154,7 +154,7 @@ Monitoring exposes two underlying screening diagnostics for each reviewed positi
 The stage UI derives two user-facing columns from those diagnostics and monitoring checks:
 
 - `Trend status`: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, or `no screening signal`
-  - Reason priority: Price below EMA50 → SuperTrend bearish → EMA20 falling → ADX falling → ADX below threshold
+  - Reason priority: Price below EMA50 → SuperTrend bearish → EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`) → ADX falling → ADX below threshold
 - `Warrant health`: `healthy`, `degraded` (with detail), or `unknown`
 - `Decision rationale`: non-redundant action context (duplicate degradation text is shown only once under warrant health)
 

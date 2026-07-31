@@ -196,7 +196,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 - Two framed rule groups shown side-by-side:
   - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
-  - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling, ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
+  - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`), ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
 - **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run. Uses the shared `partials/apply_rerun_btn.html` partial. Default variant is `primary`; optional variants are `outline-primary`, `secondary`, and `outline-secondary`.
 - Policy state is persisted to `config_overrides.screening` in the run document
 
