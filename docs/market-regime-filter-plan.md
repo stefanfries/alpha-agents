@@ -390,7 +390,7 @@ if market_regime and input.policy_results:
     market_regime.breadth_components = {
         "pct_supertrend_long": round(pct_st, 3),
         "pct_ema20_above_ema50": round(pct_ema, 3),
-        "pct_adx_above_25": round(pct_adx, 3),
+        "pct_adx_above_20": round(pct_adx, 3),
     }
     # Narrow-rally downgrade
     if market_regime.status == "green" and breadth < 0.40:
