@@ -23,6 +23,31 @@ class FinHubSettings(BaseModel):
 
 class ResearchSettings(BaseModel):
     lookback_days: int = 365
+    market_regime_symbols: dict[str, str] = {
+        "DAX":         "^GDAXI",
+        "MDAX":        "^MDAXI",
+        "SDAX":        "^SDAXI",
+        "TecDAX":      "^TECDAX",
+        "EuroStoxx50": "^STOXX50E",
+        "NASDAQ100":   "^NDX",
+        "SP500":       "^GSPC",
+        "FTSE100":     "^FTSE",
+    }
+    market_regime_display_names: dict[str, str] = {
+        "DAX": "DAX",
+        "MDAX": "MDAX",
+        "SDAX": "SDAX",
+        "TecDAX": "TecDAX",
+        "EuroStoxx50": "EuroStoxx50",
+        "NASDAQ100": "Nasdaq 100",
+        "SP500": "S&P 500",
+        "FTSE100": "FTSE 100",
+    }
+    market_regime_lookback: int = 60    # TQ-60 primary window
+    market_regime_tq_green: float = 0.03
+    market_regime_tq_red: float = -0.03
+    market_regime_tq20_green: float = 0.01
+    market_regime_tq20_red: float = -0.01
 
 
 class ScreeningSettings(BaseModel):

@@ -43,6 +43,24 @@
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
     {% if stage_result %}
       {% set r = stage_result %}
+    {% if r.market_regime %}
+      {% set regime = r.market_regime %}
+      {% set rcolor = "success" if regime.status == "green" else ("warning" if regime.status == "yellow" else "danger") %}
+      {% set ricon  = "🟢" if regime.status == "green" else ("🟡" if regime.status == "yellow" else "🔴") %}
+      <div class="alert alert-{{ rcolor }} py-2 px-3 d-flex align-items-center gap-2 mb-3 flex-shrink-0">
+        <span class="fs-6">{{ ricon }}</span>
+        <strong>{{ regime.display_name or regime.symbol }}</strong>
+        <span class="text-muted small ms-1">
+          TQ-60&nbsp;=&nbsp;<code>{{ "%.3f"|format(regime.tq60) }}</code>
+          &nbsp;·&nbsp;
+          TQ-20&nbsp;=&nbsp;<code>{{ "%.3f"|format(regime.tq20) }}</code>
+        </span>
+        <span class="badge bg-{{ rcolor }} bg-opacity-25 text-{{ rcolor }} ms-1">
+          {{ "Uptrend" if regime.status == "green" else ("Sideways" if regime.status == "yellow" else "Downtrend") }}
+        </span>
+        <span class="text-muted small ms-auto">Breadth available after Screening</span>
+      </div>
+    {% endif %}
     <div class="flex-shrink-0 mb-2">
       <div class="row g-3">
         <div class="col-auto">

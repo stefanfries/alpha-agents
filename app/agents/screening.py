@@ -8,7 +8,7 @@ from app.agents.base import Agent
 from app.config import ScreeningSettings
 from app.indicators import supertrend_bands
 from app.models.market import OHLCV
-from app.models.signals import ResearchResult, SelectionResult
+from app.models.signals import MarketRegime, ResearchResult, SelectionResult
 from app.policies.trend_detection import (
     TrendDetectionPolicyConfig,
     bar_indicator_values,
@@ -183,7 +183,39 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             trend_signals=trend_signals,
             latest_candle_dates=latest_candle_dates,
             previous_candle_dates=previous_candle_dates,
+            market_regime=self._enrich_regime(input.market_regime, policy_results),
         )
+
+    # ------------------------------------------------------------------ #
+    # Market regime breadth enrichment                                     #
+    # ------------------------------------------------------------------ #
+
+    def _enrich_regime(
+        self,
+        regime: MarketRegime | None,
+        policy_results: dict[str, dict[str, bool]],
+    ) -> MarketRegime | None:
+        """Attach breadth score to the partial regime from Research; apply narrow-rally downgrade."""
+        if regime is None or not policy_results:
+            return regime
+        n = len(policy_results)
+        pct_st  = sum(1 for v in policy_results.values() if v.get("supertrend"))   / n
+        pct_ema = sum(1 for v in policy_results.values() if v.get("ema20_rising")) / n
+        pct_adx = sum(1 for v in policy_results.values() if v.get("adx_above"))    / n
+        breadth = 0.40 * pct_st + 0.35 * pct_ema + 0.25 * pct_adx
+        regime.breadth_score = round(breadth, 3)
+        regime.breadth_components = {
+            "pct_supertrend_long":  round(pct_st,  3),
+            "pct_ema20_above_ema50": round(pct_ema, 3),
+            "pct_adx_above_25":     round(pct_adx, 3),
+        }
+        # Narrow-rally downgrade: index green but most stocks not trending
+        if regime.status == "green" and breadth < 0.40:
+            regime.status = "yellow"
+            logger.info("Market regime downgraded green→yellow (narrow rally, breadth=%.2f)", breadth)
+        logger.info("Market regime breadth=%.2f (ST=%.0f%% EMA=%.0f%% ADX=%.0f%%)",
+                    breadth, pct_st * 100, pct_ema * 100, pct_adx * 100)
+        return regime
 
     # ------------------------------------------------------------------ #
     # Scoring                                                              #

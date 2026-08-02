@@ -42,6 +42,42 @@
     </span>
   {% endmacro %}
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
+    {% if r.market_regime %}
+      {% set regime = r.market_regime %}
+
+      {% set rcolor = "success" if regime.status == "green" else ("warning" if regime.status == "yellow" else "danger") %}
+      {% set ricon  = "🟢" if regime.status == "green" else ("🟡" if regime.status == "yellow" else "🔴") %}
+      <div class="alert alert-{{ rcolor }} py-2 px-3 d-flex align-items-center gap-2 mb-2 flex-shrink-0 flex-wrap">
+        <span class="fs-6">{{ ricon }}</span>
+        <a href="#" class="link-body-emphasis text-decoration-none"
+           title="Open index chart"
+            onclick="loadScreeningChart('{{ qs_id }}', '{{ execution.execution_id }}', '{{ regime.symbol }}', null, false, true); return false;">
+          <strong>{{ regime.display_name or regime.symbol }}</strong>
+        </a>
+        <span class="text-muted small">
+          TQ-60&nbsp;=&nbsp;<code>{{ "%.3f"|format(regime.tq60) }}</code>
+          &nbsp;·&nbsp;TQ-20&nbsp;=&nbsp;<code>{{ "%.3f"|format(regime.tq20) }}</code>
+          {% if regime.breadth_score is not none %}
+            &nbsp;·&nbsp;Breadth&nbsp;=&nbsp;<code>{{ "%.0f"|format(regime.breadth_score * 100) }}%</code>
+          {% endif %}
+        </span>
+        {% if regime.breadth_components %}
+          <a class="small text-muted ms-1" data-bs-toggle="collapse" href="#regime-breadth-detail" role="button">▾</a>
+        {% endif %}
+        <span class="badge bg-{{ rcolor }} bg-opacity-25 text-{{ rcolor }} ms-auto">
+          {{ "Uptrend" if regime.status == "green" else ("Sideways" if regime.status == "yellow" else "Downtrend") }}
+        </span>
+        {% if regime.breadth_components %}
+          <div class="collapse w-100 mt-2 pt-2 border-top" id="regime-breadth-detail">
+            <div class="d-flex gap-3 small text-muted px-1">
+              <span>SuperTrend Long: <strong>{{ "%.0f"|format(regime.breadth_components.pct_supertrend_long * 100) }}%</strong></span>
+              <span>EMA20 &gt; EMA50: <strong>{{ "%.0f"|format(regime.breadth_components.pct_ema20_above_ema50 * 100) }}%</strong></span>
+              <span>ADX &gt; 25: <strong>{{ "%.0f"|format(regime.breadth_components.pct_adx_above_25 * 100) }}%</strong></span>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
     <div class="flex-shrink-0 d-flex align-items-center gap-3 mb-2">
       <p class="text-muted small mb-0">
         <strong class="text-body">{{ r.selected | length }}</strong> selected of
@@ -284,6 +320,10 @@
 {% endif %}
 
 <style>
+  #chart-panel {
+    margin-top: 0 !important;
+  }
+
   #screening-table thead th[data-sort-key] {
     cursor: pointer;
     user-select: none;

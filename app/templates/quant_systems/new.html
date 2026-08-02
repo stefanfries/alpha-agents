@@ -22,11 +22,11 @@
     <div class="mb-3">
       <label class="form-label fw-semibold">Indices</label>
       <div class="d-flex flex-wrap gap-3">
-        {% for idx in indices %}
+        {% for idx in index_options %}
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="indices" value="{{ idx }}"
-                 id="idx-{{ loop.index0 }}" {% if idx == "DAX" %}checked{% endif %}>
-          <label class="form-check-label" for="idx-{{ loop.index0 }}">{{ idx }}</label>
+          <input class="form-check-input" type="checkbox" name="indices" value="{{ idx.value }}"
+                 id="idx-{{ loop.index0 }}" {% if idx.value == "DAX" %}checked{% endif %}>
+          <label class="form-check-label" for="idx-{{ loop.index0 }}">{{ idx.label }}</label>
         </div>
         {% endfor %}
       </div>

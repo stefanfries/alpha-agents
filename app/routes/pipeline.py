@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 import numpy as np
 import talib
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -37,6 +37,18 @@ def _compute_sma(closes: list[float], dates: list[str], period: int) -> list[dic
 
 def _compute_ema(closes: list[float], dates: list[str], period: int) -> list[dict]:
     return _to_series(dates, talib.EMA(np.array(closes, dtype=float), timeperiod=period))
+
+
+def _compute_regression_segment(closes: list[float], dates: list[str], lookback: int) -> list[dict]:
+    """Linear regression line over the last `lookback` bars only."""
+    if len(closes) < lookback or len(dates) < lookback:
+        return []
+    segment = np.array(closes[-lookback:], dtype=float)
+    x = np.arange(lookback, dtype=float)
+    slope, intercept = np.polyfit(x, segment, 1)
+    fitted = slope * x + intercept
+    seg_dates = dates[-lookback:]
+    return [{"time": seg_dates[i], "value": round(float(fitted[i]), 4)} for i in range(lookback)]
 
 
 def _compute_adx(bars: list[Any], period: int = 14) -> tuple[list[dict], list[dict], list[dict]]:
@@ -524,7 +536,13 @@ async def set_warrant_override(
 # ---------------------------------------------------------------------------
 
 @router.get("/{qs_id}/executions/{execution_id}/charts/screening/{ticker}", response_class=HTMLResponse)
-async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLResponse:
+async def chart_screening(
+    qs_id: str,
+    execution_id: str,
+    ticker: str,
+    signals: int = Query(default=1),
+    regressions: int = Query(default=0),
+) -> HTMLResponse:
     execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
     scr_cfg: dict[str, Any] = {}
     if execution:
@@ -549,13 +567,16 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
         for d, b in zip(dates, bars)
     ]
     adx_data, plus_di, minus_di = _compute_adx(bars)
-    signal_markers = _compute_signal_markers(bars, policy_cfg)
+    signal_markers = _compute_signal_markers(bars, policy_cfg) if signals != 0 else []
+    show_regressions = regressions != 0
     chart_data = json.dumps({
         "ticker":         ticker,
         "ohlcv":          ohlcv,
         "ema20":          _compute_ema(closes, dates, 20),
         "ema50":          _compute_ema(closes, dates, 50),
         "sma200":         _compute_sma(closes, dates, 200),
+        "tq_reg20":       _compute_regression_segment(closes, dates, 20) if show_regressions else [],
+        "tq_reg60":       _compute_regression_segment(closes, dates, 60) if show_regressions else [],
         "adx":            adx_data,
         "plus_di":        plus_di,
         "minus_di":       minus_di,
@@ -563,6 +584,12 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
         "min_adx":        policy_cfg.min_adx,
         "signal_markers": signal_markers,
     })
+    regression_buttons = ""
+    if show_regressions:
+        regression_buttons = (
+            "<button class='btn btn-outline-secondary active' data-indicator='tq_reg20'>TQ-20 LR</button>"
+            "<button class='btn btn-outline-secondary active' data-indicator='tq_reg60'>TQ-60 LR</button>"
+        )
     return HTMLResponse(
         f"<div class='d-flex flex-column gap-1' data-chart='{chart_data}'>"
         f"  <div class='d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1'>"
@@ -578,6 +605,7 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
         f"        <button class='btn btn-outline-secondary active' data-indicator='ema20'>EMA 20</button>"
         f"        <button class='btn btn-outline-secondary' data-indicator='ema50'>EMA 50</button>"
         f"        <button class='btn btn-outline-secondary' data-indicator='sma200'>SMA 200</button>"
+        f"        {regression_buttons}"
         f"        <button class='btn btn-outline-secondary' data-indicator='supertrend'>SuperTrend</button>"
         f"        <button class='btn btn-outline-secondary active' data-indicator='adx'>ADX</button>"
         f"      </div>"
@@ -593,6 +621,12 @@ async def chart_screening(qs_id: str, execution_id: str, ticker: str) -> HTMLRes
 async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: float | None = None, maturity: str | None = None, chart_symbol: str | None = None) -> HTMLResponse:
     # `chart_symbol` overrides the underlying charted (e.g. an ADR's warrants are
     # written on the EUR-listed stock); it keeps candles in the strike currency.
+    execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
+    scr_cfg: dict[str, Any] = {}
+    if execution:
+        scr_cfg = execution.get("config_overrides", {}).get("screening", {})
+    policy_cfg = TrendDetectionPolicyConfig.from_mapping(scr_cfg)
+
     plot_symbol = chart_symbol or ticker
     try:
         t = Ticker(symbol=plot_symbol)
@@ -612,6 +646,7 @@ async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: floa
          "low": float(b.low), "close": float(b.close)}
         for d, b in zip(dates, bars)
     ]
+    signal_markers = _compute_signal_markers(bars, policy_cfg)
     chart_data = json.dumps({
         "ticker":     plot_symbol,
         "ohlcv":      ohlcv,
@@ -622,6 +657,7 @@ async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: floa
         "adx":        [],
         "plus_di":    [],
         "minus_di":   [],
+        "signal_markers": signal_markers,
         "strike":     strike,
         "maturity":   maturity,
     })

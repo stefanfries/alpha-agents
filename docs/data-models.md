@@ -229,6 +229,24 @@ Output of `ResearchAgent`. Input of `StockSelectionAgent`.
 | ----- | ---- | ----------- |
 | `tickers` | `list[Ticker]` | Universe considered |
 | `bars` | `dict[str, list[OHLCV]]` | Historical OHLCV candles keyed by symbol |
+| `fundamentals` | `dict[str, dict]` | Raw fundamentals payload per symbol (yfinance `.info`) |
+| `benchmark_symbol` | `str` | Yahoo index symbol selected from dominant universe source index (for example `^NDX`) |
+| `benchmark_bars` | `list[OHLCV]` | Benchmark index OHLCV bars used for regime computation |
+| `market_regime` | `MarketRegime \| None` | Partial regime context (display name, TQ-60, TQ-20, status, optional breadth fields) |
+
+### `MarketRegime`
+
+Regime snapshot for benchmark index context in Research/Screening.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `symbol` | `str` | Yahoo benchmark symbol (for example `^NDX`) |
+| `display_name` | `str` | Human-friendly index name (for example `Nasdaq 100`) |
+| `tq60` | `float` | Trend quality over 60 bars |
+| `tq20` | `float` | Trend quality over 20 bars |
+| `status` | `"green" \| "yellow" \| "red"` | Regime classification |
+| `breadth_score` | `float \| None` | Optional breadth composite score |
+| `breadth_components` | `dict[str, float]` | Optional breadth metric breakdown |
 
 ### `SelectionResult`
 
@@ -248,6 +266,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below) |
 | `latest_candle_dates` | `dict[str, date]` | Date of the most recent OHLCV bar per ticker |
 | `previous_candle_dates` | `dict[str, date]` | Date of bars[-2] per ticker (second-to-last closed candle) |
+| `market_regime` | `MarketRegime \| None` | Forwarded market regime context for Screening UI |
 
 ### `WarrantSelectionResult`
 

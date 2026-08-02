@@ -22,7 +22,10 @@
             {% else %}<span class="badge bg-light text-dark border">draft</span>{% endif %}
           </div>
           <p class="small text-muted mb-1">
-            <span class="fw-semibold">Indices:</span> {{ qs.indices | join(", ") }}
+            <span class="fw-semibold">Indices:</span>
+            {% for idx in qs.indices %}
+              {{ index_display_names.get(idx, idx) }}{% if not loop.last %}, {% endif %}
+            {% endfor %}
           </p>
           <p class="small text-muted mb-1">
             <span class="fw-semibold">Capital:</span> {{ "%.0f"|format(qs.capital_eur) }} EUR

@@ -52,9 +52,11 @@ Wizard form with the following fields (in order):
 | Field | Type | Notes |
 | ----- | ---- | ----- |
 | Name | Text | User-defined strategy name |
-| Indices | Multi-checkbox | DAX, MDAX, SDAX, TecDAX, EuroStoxx50, NASDAQ100, SP500, FTSE100, Dow Jones |
+| Indices | Multi-checkbox | Canonical values (for storage/pipeline) with backend-provided display labels (for UI), e.g. `NASDAQ100` shown as `Nasdaq 100` |
 | Depot | Select | Real Comdirect depots (from `finance.depot_snapshots`) or virtual paper-trading depots |
 | Capital (EUR) | Number | `min=10000`, `step=1`; **auto-populated** when a real depot is selected (see below) |
+
+Index labels are centralized in the backend route (`app/routes/quant_systems.py`) via a single value->label mapping and reused by New/Edit/List views.
 
 **Depot capital auto-calculation**: selecting a real depot triggers `GET /quant-systems/depot-capital/{depot_id}` via JavaScript `fetch()`. The endpoint returns `{"capital_eur": <total>}` where total = sum of position `current_value` fields from the latest `finance.depot_snapshots` + latest `balance` from `finance.account_balances` (joined via `account_name`). The result is populated into the capital input with a "(auto-calculated from depot)" hint; the value remains editable.
 
@@ -116,7 +118,7 @@ One page per pipeline stage. Each page follows the same structure:
 
 1. **Stage header**: stage name, status badge, timestamp
 2. **Summary panel**: stage-specific data table or key metrics (rendered server-side)
-3. **Chart panel**: Plotly chart(s), loaded on demand via HTMX
+3. **Chart panel**: Lightweight Charts v4 fragments, loaded on demand via `fetch()` / HTMX swaps
 4. **Action bar**: Approve button + Restart dropdown (always at the bottom)
 
 Stage-specific content is described below.
@@ -190,6 +192,14 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 - **Overlay indicators** (toggle buttons): EMA 20 (blue, default on), EMA 50 (orange), SMA 200 (purple), SuperTrend (green/red segments)
 - **ADX sub-pane** (toggle, synchronized scroll/zoom): ADX line (gold), +DI (green), −DI (red), threshold line at `min_adx` (default 20, dashed, lineWidth=2)
 - **Policy signal markers** on the price chart: green ▲ NEW at each bar where all enabled policies first pass; red ▼ BREAK at each bar where they stop passing. Computed server-side over the full 1460-bar history, respecting the current `config_overrides.screening` policy configuration.
+- **Market regime line is clickable**: clicking it loads the corresponding index candle chart in the same right-side panel.
+- **Index chart behavior (regime click path)**:
+  - NEW/BREAK markers are hidden.
+  - TQ regression overlays are available and limited to trailing windows only:
+    - `TQ-20 LR` = linear regression over the last 20 bars
+    - `TQ-60 LR` = linear regression over the last 60 bars
+  - These LR overlays are shown only for index charts, not for normal per-ticker charts.
+- Breadth details (`SuperTrend Long`, `EMA20 > EMA50`, `ADX > 25`) expand/collapse inside the same market regime alert box.
 - All indicators computed server-side with TA-Lib
 
 **Screening policies panel** (above action bar):
@@ -303,6 +313,7 @@ Right side — two vertically stacked panels:
 
 - Candlestick chart powered by Lightweight Charts v4
 - EMA 20/50, SuperTrend
+- NEW/BREAK policy signal markers on price candles (computed server-side from active screening policy config)
 - **Orange dashed horizontal line** at the selected warrant's strike price (labelled "Strike")
 - **Orange arrow marker** at the maturity date (labelled "Expiry")
 - Time range selector: 3M / 6M / 1Y (default) / 3Y
@@ -494,7 +505,7 @@ All `/charts/` endpoints return an HTML fragment for inline insertion and read d
 | Stage | Chart type | Library | Trigger |
 | ----- | ---------- | ------- | ------- |
 | Screening | Interactive candlestick + EMA/SMA overlays + SuperTrend + ADX sub-pane | Lightweight Charts v4 | Click ticker row (vanilla `fetch()`) |
-| Warrant selection | Horizontal bar (criterion scores) | — (stub) | Click warrant row |
+| Warrant selection | Interactive candlestick + EMA overlays + SuperTrend + strike/expiry markers + NEW/BREAK markers | Lightweight Charts v4 | Click warrant row in top-3 panel |
 | Portfolio | Donut (position weights) | — (stub) | Page load |
 | Risk | Horizontal bar (position weights + limit line) | — (stub) | Page load |
 
@@ -528,7 +539,7 @@ templates/
     chart_panel.html     ← chart container div (target for HTMX chart swaps)
 ```
 
-Stage pages extend `base.html` and include `partials/action_bar.html`. Chart routes return raw Plotly HTML (no template — just `HTMLResponse`).
+Stage pages extend `base.html` and include `partials/action_bar.html`. Chart routes return lightweight chart HTML fragments (`HTMLResponse`) with embedded `data-chart` JSON payloads.
 
 ---
 

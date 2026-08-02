@@ -81,6 +81,27 @@
       overlays.ema50.setData(d.ema50);   overlays.ema50.applyOptions({ visible: false });
       overlays.sma200.setData(d.sma200); overlays.sma200.applyOptions({ visible: false });
 
+      if (d.tq_reg20 && d.tq_reg20.length) {
+        overlays.tq_reg20 = chart.addLineSeries({
+          color: '#00BCD4',
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        overlays.tq_reg20.setData(d.tq_reg20);
+      }
+      if (d.tq_reg60 && d.tq_reg60.length) {
+        overlays.tq_reg60 = chart.addLineSeries({
+          color: '#8BC34A',
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Dotted,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        overlays.tq_reg60.setData(d.tq_reg60);
+      }
+
       // Strike price line (warrant charts)
       if (d.strike != null) {
         candles.createPriceLine({
@@ -186,12 +207,21 @@
       });
     }
 
-    function loadScreeningChart(qsId, executionId, ticker, row) {
-      row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
-      row.classList.add('table-active');
+    function loadScreeningChart(qsId, executionId, ticker, row, includeSignals, includeRegressions) {
+      if (includeSignals === undefined) includeSignals = true;
+      if (includeRegressions === undefined) includeRegressions = false;
+      if (row) {
+        row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
+        row.classList.add('table-active');
+      }
       var panel = document.getElementById('chart-panel');
       panel.innerHTML = '<p class="text-muted text-center small mt-4">Loading…</p>';
-      fetch('/quant-systems/' + qsId + '/executions/' + executionId + '/charts/screening/' + ticker)
+      var url = '/quant-systems/' + qsId + '/executions/' + executionId + '/charts/screening/' + encodeURIComponent(ticker);
+      var params = [];
+      if (!includeSignals) params.push('signals=0');
+      if (includeRegressions) params.push('regressions=1');
+      if (params.length) url += '?' + params.join('&');
+      fetch(url)
         .then(function(r) { return r.text(); })
         .then(function(html) {
           panel.innerHTML = html;
@@ -367,5 +397,6 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

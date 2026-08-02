@@ -25,6 +25,7 @@ class SelectionResult(BaseModel):
     latest_candle_dates: dict[str, date]           # sym -> date of bars[-1]
     previous_candle_dates: dict[str, date]         # sym -> date of bars[-2]
     first_break_candle_dates: dict[str, date]      # sym -> date BREAK was first observed (persisted across runs)
+    market_regime: MarketRegime | None = None      # forwarded regime context for Screening UI banner
 ```
 
 ## Tools used

@@ -102,7 +102,9 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 
 ## User interface
 
-The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). The user reviews each stage's output in a browser, then clicks to approve or restart. The screening stage features interactive **Lightweight Charts v4** candlestick charts loaded on demand when the user clicks a ticker row. Charts include EMA 20/50, SMA 200, SuperTrend, and a synchronized ADX sub-pane; all indicators are computed server-side with TA-Lib. The warrant selection stage shows a split-panel layout: a main table ordered by screening rank, a top-3 warrant detail panel (shown on row click), and an underlying stock chart with strike and maturity markers.
+The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). The user reviews each stage's output in a browser, then clicks to approve or restart. The screening stage features interactive **Lightweight Charts v4** candlestick charts loaded on demand when the user clicks a ticker row. Charts include EMA 20/50, SMA 200, SuperTrend, and a synchronized ADX sub-pane; all indicators are computed server-side with TA-Lib. The market-regime header in Screening is clickable and loads the benchmark index chart; this index view hides NEW/BREAK markers and can show trailing TQ regression overlays (20/60 bars only). The warrant selection stage shows a split-panel layout: a main table ordered by screening rank, a top-3 warrant detail panel (shown on row click), and an underlying stock chart with strike and maturity markers plus NEW/BREAK markers.
+
+For a concise list of recent functional/documentation changes, see the **Session updates (2026-08-02)** section in [README.md](../README.md).
 
 ## Deployment
 

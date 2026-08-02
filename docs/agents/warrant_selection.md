@@ -149,6 +149,7 @@ The warrant selection stage page shows:
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
 - **Strike controls** (below table): configurable strike min/max factors plus a read-only target strike factor field showing the midpoint of the selected strike range.
 - **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.
+- **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, NEW/BREAK signal markers (derived from active screening policy config), a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.
 
 Monitoring integration note:
 

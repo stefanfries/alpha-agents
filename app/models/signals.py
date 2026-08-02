@@ -7,6 +7,16 @@ from pydantic import BaseModel, Field
 from app.models.market import OHLCV, Order, Position, Ticker
 
 
+class MarketRegime(BaseModel):
+    symbol: str
+    display_name: str = ""  # human-readable index name, e.g. "NASDAQ 100"
+    tq60: float
+    tq20: float
+    status: Literal["green", "yellow", "red"]
+    breadth_score: float | None = None
+    breadth_components: dict[str, float] = {}
+
+
 class TrendStatus(str, Enum):
     ESTABLISHED_UP   = "established_up"    # Gate 1 bullish + Gate 2 confirmed
     STARTING_UP      = "starting_up"       # Gate 1 bullish, Gate 2 not yet confirmed
@@ -27,6 +37,9 @@ class ResearchResult(BaseModel):
     tickers: list[Ticker]
     bars: dict[str, list[OHLCV]]
     fundamentals: dict[str, dict]
+    benchmark_symbol: str = ""
+    benchmark_bars: list[OHLCV] = []
+    market_regime: MarketRegime | None = None
 
 
 class SelectionResult(BaseModel):
@@ -42,6 +55,7 @@ class SelectionResult(BaseModel):
     trend_signals: dict[str, str | None] = {}  # sym → "NEW" | "HOLD" | "BREAK" | None
     latest_candle_dates: dict[str, date] = {}
     previous_candle_dates: dict[str, date] = {}
+    market_regime: MarketRegime | None = None
 
 
 class SelectedWarrant(BaseModel):

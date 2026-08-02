@@ -207,18 +207,35 @@ class Pipeline:
 
         async with YFinanceTool() as yf:
             result = await ResearchAgent(tool=yf, on_progress=on_progress).run(
-                ResearchInput(tickers=universe.tickers, lookback_days=settings.research.lookback_days)
+                ResearchInput(
+                    tickers=universe.tickers,
+                    lookback_days=settings.research.lookback_days,
+                    universe_source=universe.source,
+                )
             )
         # OHLCV bars are excluded from the stored document — 500+ tickers × 365 bars
         # exceeds MongoDB's 16 MB BSON limit. Bars are re-fetched in the screening stage.
-        return ResearchResult(tickers=result.tickers, bars={}, fundamentals=result.fundamentals)
+        # benchmark_bars are also stripped; benchmark_symbol and market_regime are kept.
+        return ResearchResult(
+            tickers=result.tickers,
+            bars={},
+            fundamentals=result.fundamentals,
+            benchmark_symbol=result.benchmark_symbol,
+            benchmark_bars=[],
+            market_regime=result.market_regime,
+        )
 
     async def _run_screening(self, run: dict) -> SelectionResult:
         research = ResearchResult.model_validate(run["stages"]["research"]["result"])
         async with YFinanceTool() as yf:
             bars = await yf.fetch_ohlcv_batch(research.tickers, settings.research.lookback_days)
         research_with_bars = ResearchResult(
-            tickers=research.tickers, bars=bars, fundamentals=research.fundamentals
+            tickers=research.tickers,
+            bars=bars,
+            fundamentals=research.fundamentals,
+            benchmark_symbol=research.benchmark_symbol,
+            benchmark_bars=[],          # benchmark bars not needed here; regime came from Research
+            market_regime=research.market_regime,
         )
         overrides = run.get("config_overrides", {}).get("screening", {})
         screening_cfg = settings.screening.model_copy(update=overrides)

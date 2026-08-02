@@ -18,8 +18,23 @@ templates = Jinja2Templates(directory="app/templates")
 
 _NO_ID = {"_id": 0}
 
-INDICES = ["DAX", "MDAX", "SDAX", "TecDAX", "EuroStoxx50", "NASDAQ100", "SP500", "FTSE100", "Dow Jones"]
+INDEX_DISPLAY_NAMES: dict[str, str] = {
+    "DAX": "DAX",
+    "MDAX": "MDAX",
+    "SDAX": "SDAX",
+    "TecDAX": "TecDAX",
+    "EuroStoxx50": "EuroStoxx50",
+    "NASDAQ100": "Nasdaq 100",
+    "SP500": "S&P 500",
+    "FTSE100": "FTSE 100",
+    "Dow Jones": "Dow Jones",
+}
+INDICES = list(INDEX_DISPLAY_NAMES.keys())
 _LEGACY_POSITION_FIELDS = frozenset({"purchase_price", "buy_price_at_entry"})
+
+
+def _index_options() -> list[dict[str, str]]:
+    return [{"value": value, "label": label} for value, label in INDEX_DISPLAY_NAMES.items()]
 
 
 def _amount_to_decimal(amount_obj: object) -> Decimal:
@@ -78,7 +93,10 @@ async def _resolve_depot_type(depot_id: str, depot_type: str) -> str:
 @router.get("", response_class=HTMLResponse)
 async def list_quant_systems(request: Request) -> HTMLResponse:
     qs_list = await quant_systems_collection().find({}, _NO_ID).sort("created_at", -1).to_list()
-    return templates.TemplateResponse(request, "quant_systems/list.html", {"qs_list": qs_list})
+    return templates.TemplateResponse(request, "quant_systems/list.html", {
+        "qs_list": qs_list,
+        "index_display_names": INDEX_DISPLAY_NAMES,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +111,7 @@ async def new_quant_system(request: Request) -> HTMLResponse:
         "real_depots": real_depots,
         "virtual_depots": virtual_depots,
         "indices": INDICES,
+        "index_options": _index_options(),
     })
 
 
@@ -200,6 +219,7 @@ async def edit_quant_system(request: Request, qs_id: str) -> HTMLResponse:
         "real_depots": real_depots,
         "virtual_depots": virtual_depots,
         "indices": INDICES,
+        "index_options": _index_options(),
     })
 
 

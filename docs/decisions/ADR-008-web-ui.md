@@ -41,7 +41,7 @@ Pure Python, quick to prototype, built-in chart support. However:
 - **FastAPI** serves HTML pages and HTML *fragments* (partial renders)
 - **Jinja2** templates handle all HTML generation server-side — no client-side rendering
 - **HTMX** is a small JavaScript library included via a single `<script>` tag; it enables dynamic page updates via HTML attributes (`hx-get`, `hx-post`, `hx-swap`) without the developer writing any JavaScript
-- Charts are rendered server-side by **Plotly** (interactive HTML `<div>`) or **mplfinance** (PNG/SVG served inline) and swapped into the page by HTMX
+- Chart fragments are rendered server-side as HTML with embedded `data-chart` payloads and drawn client-side with **Lightweight Charts v4**
 
 **Verdict: Best fit.** Stays entirely within Python, integrates naturally with FastAPI, and supports the fragment-based interaction pattern that HTMX is designed for.
 
@@ -61,19 +61,19 @@ Key structural choices:
 
 | Library | Output format | Interactivity | Recommendation |
 | ------- | ------------- | ------------- | -------------- |
-| **Plotly** (`plotly`) | Self-contained HTML `<div>` with embedded JS | Full (zoom, pan, hover, crosshair) | **Preferred** for web |
-| **mplfinance** | PNG or SVG rendered to a byte buffer | Static | Fallback for specialised chart types not supported by Plotly |
+| **Lightweight Charts v4** | HTML fragment + `data-chart` JSON payload | Full (zoom, pan, crosshair, range toggles, indicator toggles) | **Current implementation** |
+| **mplfinance** | PNG or SVG rendered to a byte buffer | Static | Optional fallback for specialised chart types |
 
-Plotly charts are generated in the FastAPI route handler via `plotly.graph_objects.Figure.to_html(full_html=False)` and returned as an HTML fragment. HTMX inserts the fragment into the page. No file I/O or base64 encoding required.
+Chart fragments are generated in FastAPI route handlers (`HTMLResponse`) and include indicator/marker series in `data-chart`. The browser initializes the chart via shared JS (`initDataCharts()` in `base.html`).
 
-mplfinance charts can be used for chart types not available in Plotly (e.g. custom candlestick styles). They are rendered to a PNG byte buffer via `io.BytesIO`, base64-encoded, and embedded as `<img src="data:image/png;base64,...">`.
+mplfinance charts can be used for specialised static chart outputs. They are rendered to a PNG byte buffer via `io.BytesIO`, base64-encoded, and embedded as `<img src="data:image/png;base64,...">`.
 
 ## Technology additions
 
 | Package | Purpose |
 | ------- | ------- |
 | `jinja2` | Server-side HTML templating |
-| `plotly` | Interactive candlestick and indicator charts |
+| `lightweight-charts` (CDN) | Interactive candlestick and indicator charts |
 | `mplfinance` | Static chart fallback (optional) |
 | HTMX (CDN) | Dynamic HTML fragment swapping; no install required |
 

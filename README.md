@@ -109,6 +109,22 @@ Capital is configured per Quant System (not globally). When a real Comdirect dep
 | [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-010) |
 | [docs/decisions/ADR-010-quant-system-redesign.md](docs/decisions/ADR-010-quant-system-redesign.md) | Quant System + Execution model; depot capital auto-calculation |
 
+## Session updates (2026-08-02)
+
+- Centralized index display labels for Quant System UI (single backend value->label mapping). Example: `NASDAQ100` is rendered as `Nasdaq 100` while canonical values remain unchanged for storage/pipeline logic.
+- Market regime display names are now also centralized in `ResearchSettings` and used when building `market_regime.display_name`.
+- Market regime classification updated to dual-threshold confirmation:
+      - Green: `TQ-60 >= 0.03` and `TQ-20 >= 0.01`
+      - Red: `TQ-60 <= -0.03` and `TQ-20 <= -0.01`
+      - Otherwise Yellow
+- Screening chart UX updates:
+      - Clicking the market regime line opens the index chart.
+      - Index chart hides NEW/BREAK markers.
+      - Index chart supports `TQ-20 LR` and `TQ-60 LR` overlays (last 20/60 bars only).
+      - LR overlays are shown only for index charts, not for normal ticker-row charts.
+- Warrant Selection right-panel candle chart now also shows NEW/BREAK signal markers (computed from active screening policy config).
+- Market regime breadth details collapse now opens inside the same market regime alert box.
+
 ## Safety defaults
 
 - `EXECUTION_DRY_RUN=true` — no live orders are submitted unless explicitly disabled
