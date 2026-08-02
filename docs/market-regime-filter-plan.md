@@ -327,9 +327,6 @@ is what matters for a stock-selection strategy.
 **No new data required.** The Screening agent already computes SuperTrend, EMA20, EMA50,
 and ADX for every ticker. Breadth is just an aggregation of results already in memory.
 
-Use a dedicated breadth ADX threshold that is independent from stock entry/exit policy
-thresholds (`ScreeningSettings.market_regime_breadth_adx_threshold`, default `25.0`).
-
 ### Formula
 
 For each ticker $i$ in the screened universe ($N$ stocks), compute a **trend-health score**:
@@ -387,15 +384,13 @@ if market_regime and input.policy_results:
     n = len(input.policy_results)
     pct_st  = sum(1 for v in input.policy_results.values() if v.get("supertrend"))    / n
     pct_ema = sum(1 for v in input.policy_results.values() if v.get("ema20_rising"))  / n
-  adx_threshold = settings.screening.market_regime_breadth_adx_threshold
-  pct_adx = sum(1 for sym in input.policy_results if latest_adx(input.bars[sym]) > adx_threshold) / n
+    pct_adx = sum(1 for v in input.policy_results.values() if v.get("adx_above"))     / n
     breadth = 0.40 * pct_st + 0.35 * pct_ema + 0.25 * pct_adx
     market_regime.breadth_score = round(breadth, 3)
     market_regime.breadth_components = {
         "pct_supertrend_long": round(pct_st, 3),
         "pct_ema20_above_ema50": round(pct_ema, 3),
-    "pct_adx_above_threshold": round(pct_adx, 3),
-    "adx_threshold": adx_threshold,
+        "pct_adx_above_25": round(pct_adx, 3),
     }
     # Narrow-rally downgrade
     if market_regime.status == "green" and breadth < 0.40:

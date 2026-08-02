@@ -72,7 +72,7 @@
             <div class="d-flex gap-3 small text-muted px-1">
               <span>SuperTrend Long: <strong>{{ "%.0f"|format(regime.breadth_components.pct_supertrend_long * 100) }}%</strong></span>
               <span>EMA20 &gt; EMA50: <strong>{{ "%.0f"|format(regime.breadth_components.pct_ema20_above_ema50 * 100) }}%</strong></span>
-              <span>ADX &gt; {{ regime.breadth_components.adx_threshold|default(25) }}: <strong>{{ "%.0f"|format(regime.breadth_components.pct_adx_above_threshold * 100) }}%</strong></span>
+              <span>ADX &gt; 25: <strong>{{ "%.0f"|format(regime.breadth_components.pct_adx_above_25 * 100) }}%</strong></span>
             </div>
           </div>
         {% endif %}

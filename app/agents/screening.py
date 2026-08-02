@@ -32,7 +32,6 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         self._lookback_regression_short = cfg.lookback_regression_short
         self._tsi_fast = cfg.tsi_fast
         self._tsi_slow = cfg.tsi_slow
-        self._market_regime_breadth_adx_threshold = cfg.market_regime_breadth_adx_threshold
         self._trend_policy = TrendDetectionPolicyConfig(
             min_adx=cfg.min_adx,
             policy_supertrend=cfg.policy_supertrend,
@@ -184,7 +183,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             trend_signals=trend_signals,
             latest_candle_dates=latest_candle_dates,
             previous_candle_dates=previous_candle_dates,
-            market_regime=self._enrich_regime(input.market_regime, policy_results, input.bars),
+            market_regime=self._enrich_regime(input.market_regime, policy_results),
         )
 
     # ------------------------------------------------------------------ #
@@ -195,7 +194,6 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         self,
         regime: MarketRegime | None,
         policy_results: dict[str, dict[str, bool]],
-        bars_by_symbol: dict[str, list[OHLCV]],
     ) -> MarketRegime | None:
         """Attach breadth score to the partial regime from Research; apply narrow-rally downgrade."""
         if regime is None or not policy_results:
@@ -203,20 +201,13 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         n = len(policy_results)
         pct_st  = sum(1 for v in policy_results.values() if v.get("supertrend"))   / n
         pct_ema = sum(1 for v in policy_results.values() if v.get("ema20_rising")) / n
-        adx_threshold = float(self._market_regime_breadth_adx_threshold)
-        adx_passes = 0
-        for symbol in policy_results:
-            adx_val = self._latest_adx(bars_by_symbol.get(symbol, []))
-            if adx_val is not None and adx_val > adx_threshold:
-                adx_passes += 1
-        pct_adx = adx_passes / n
+        pct_adx = sum(1 for v in policy_results.values() if v.get("adx_above"))    / n
         breadth = 0.40 * pct_st + 0.35 * pct_ema + 0.25 * pct_adx
         regime.breadth_score = round(breadth, 3)
         regime.breadth_components = {
             "pct_supertrend_long":  round(pct_st,  3),
             "pct_ema20_above_ema50": round(pct_ema, 3),
-            "pct_adx_above_threshold": round(pct_adx, 3),
-            "adx_threshold": round(adx_threshold, 2),
+            "pct_adx_above_25":     round(pct_adx, 3),
         }
         # Narrow-rally downgrade: index green but most stocks not trending
         if regime.status == "green" and breadth < 0.40:
@@ -225,17 +216,6 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         logger.info("Market regime breadth=%.2f (ST=%.0f%% EMA=%.0f%% ADX=%.0f%%)",
                     breadth, pct_st * 100, pct_ema * 100, pct_adx * 100)
         return regime
-
-    def _latest_adx(self, bars: list[OHLCV], period: int = 14) -> float | None:
-        if len(bars) < period + 1:
-            return None
-        highs = np.array([float(b.high) for b in bars])
-        lows = np.array([float(b.low) for b in bars])
-        closes = np.array([float(b.close) for b in bars])
-        adx = talib.ADX(highs, lows, closes, timeperiod=period)
-        if len(adx) == 0 or np.isnan(adx[-1]):
-            return None
-        return float(adx[-1])
 
     # ------------------------------------------------------------------ #
     # Scoring                                                              #
