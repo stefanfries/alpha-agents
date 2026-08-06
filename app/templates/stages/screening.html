@@ -107,8 +107,8 @@
         </div>
       </div>
     </div>
-    <div class="flex-grow-1 overflow-auto" style="min-height:0">
-      <div class="row h-100">
+    <div class="flex-grow-1 overflow-hidden" style="min-height:0">
+      <div class="row h-100" style="min-height:0">
         <div class="col-lg-7 h-100 d-flex flex-column">
           <div class="flex-grow-1 overflow-auto" style="min-height:0">
           {# Build selected rank lookup: only selected symbols get a rank #}
@@ -160,7 +160,7 @@
                 <td class="small" data-sort-key="isin" data-sort-value="{{ meta.isin }}">{{ meta.isin }}</td>
                 <td data-sort-key="tq60" data-sort-value="{{ score }}">{{ "%.3f" | format(score) }}</td>
                 <td data-sort-key="tq20" data-sort-value="{{ r.tq_short.get(sym, 0) }}">{{ "%.3f" | format(r.tq_short.get(sym, 0)) }}</td>
-                <td data-sort-key="tsi" data-sort-value="{{ r.tsi.get(sym, 0) }}">{{ "%.1f" | format(r.tsi.get(sym, 0)) }}</td>
+                <td data-sort-key="tsi" data-sort-value="{{ r.tsi.get(sym, 0) }}">{{ "%.2f" | format(r.tsi.get(sym, 0)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("supertrend", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("ema20_rising", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("adx_above", false)) }}</td>
@@ -187,8 +187,10 @@
           </table>
           </div>
         </div>
-        <div class="col-lg-5">
-          {% include "partials/chart_panel.html" %}
+        <div class="col-lg-5 h-100 d-flex flex-column" style="min-height:0">
+          <div class="flex-grow-1 overflow-auto" style="min-height:0">
+            {% include "partials/chart_panel.html" %}
+          </div>
         </div>
       </div>
     </div>
