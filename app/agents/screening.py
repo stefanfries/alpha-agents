@@ -82,6 +82,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         rationale: dict[str, str] = {}
         policy_results: dict[str, dict[str, bool]] = {}
         trend_signals: dict[str, str | None] = {}
+        last_break_age_bars: dict[str, int] = {}
         latest_candle_dates: dict[str, date] = {}
         previous_candle_dates: dict[str, date] = {}
         candidate_symbols: set[str] = set()
@@ -126,13 +127,23 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 min_true=self._new_min_true,
             )
 
-            trend_signals[symbol] = self._trend_signal(
+            trend_signal = self._trend_signal(
                 bars,
                 new_enabled,
                 break_enabled,
                 new_min_true=self._new_min_true,
                 break_min_true=self._break_min_true,
             )
+            break_age = self._last_break_age(
+                bars,
+                new_enabled,
+                break_enabled,
+                new_min_true=self._new_min_true,
+                break_min_true=self._break_min_true,
+            )
+            trend_signals[symbol] = trend_signal
+            if break_age is not None:
+                last_break_age_bars[symbol] = break_age
 
             policy_detail = " | ".join(
                 f"{k}={'✓' if v else '✗'}" for k, v in policies.items()
@@ -181,6 +192,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             rank_changes=rank_changes,
             history_labels=history_labels,
             trend_signals=trend_signals,
+            last_break_age_bars=last_break_age_bars,
             latest_candle_dates=latest_candle_dates,
             previous_candle_dates=previous_candle_dates,
             market_regime=self._enrich_regime(input.market_regime, policy_results),
@@ -273,6 +285,40 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         new_min_true: int | None,
         break_min_true: int | None,
     ) -> str | None:
+        signal, _ = self._trend_signal_and_break_age(
+            bars,
+            new_enabled,
+            break_enabled,
+            new_min_true,
+            break_min_true,
+        )
+        return signal
+
+    def _last_break_age(
+        self,
+        bars: list[OHLCV],
+        new_enabled: dict[str, bool],
+        break_enabled: dict[str, bool],
+        new_min_true: int | None,
+        break_min_true: int | None,
+    ) -> int | None:
+        _, last_break_age = self._trend_signal_and_break_age(
+            bars,
+            new_enabled,
+            break_enabled,
+            new_min_true,
+            break_min_true,
+        )
+        return last_break_age
+
+    def _trend_signal_and_break_age(
+        self,
+        bars: list[OHLCV],
+        new_enabled: dict[str, bool],
+        break_enabled: dict[str, bool],
+        new_min_true: int | None,
+        break_min_true: int | None,
+    ) -> tuple[str | None, int | None]:
         """State machine over full bar history → NEW / BREAK / HOLD / None.
 
         Transitions: OUT -[NEW]-> IN_TREND -[BREAK]-> OUT.
@@ -304,6 +350,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         state = "OUT"
         last_signal: str | None = None
         last_signal_bar = -1
+        last_break_bar = -1
 
         for i in range(1, n):
             pn, pb = _bar_passes(i)
@@ -315,19 +362,21 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 state = "OUT"
                 last_signal = "BREAK"
                 last_signal_bar = i
+                last_break_bar = i
             prev_pn, prev_pb = pn, pb
 
         age = n - 1 - last_signal_bar  # 0 = fired on current (last) bar
+        last_break_age = (n - 1 - last_break_bar) if last_break_bar >= 0 else None
         current_passes_new = prev_pn
         if last_signal == "NEW" and age <= 5 and current_passes_new:
-            return "NEW"
+            return "NEW", last_break_age
         # Expose BREAK for up to five consecutive days/candles including the
         # event bar so the screening UI keeps the recent break visible longer.
         if last_signal == "BREAK" and age <= 4:
-            return "BREAK"
+            return "BREAK", last_break_age
         if state == "IN_TREND":
-            return "HOLD"
-        return None
+            return "HOLD", last_break_age
+        return None, last_break_age
 
     def _evaluate_policies(self, bars: list[OHLCV]) -> dict[str, bool]:
         series = build_trend_indicator_series(

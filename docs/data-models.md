@@ -264,6 +264,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below) |
+| `last_break_age_bars` | `dict[str, int]` | Per-ticker bars since the most recent BREAK event (present even when `trend_signals[symbol]` is `None`) |
 | `latest_candle_dates` | `dict[str, date]` | Date of the most recent OHLCV bar per ticker |
 | `previous_candle_dates` | `dict[str, date]` | Date of bars[-2] per ticker (second-to-last closed candle) |
 | `market_regime` | `MarketRegime \| None` | Forwarded market regime context for Screening UI |
@@ -301,7 +302,7 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `monitoring_score` | `float \| None` | Health score 0-1 (weighted 4-component: spread, leverage, maturity, delta) |
 | `screening_signal` | `str \| None` | Resolved screening signal for mapped underlying symbol (`NEW`/`HOLD`/`BREAK`/`None`) |
 | `screening_signal_present` | `bool \| None` | Whether mapped underlying symbol exists as a key in `SelectionResult.trend_signals` |
-| `trend_status` | `str \| None` | UI-ready trend state (`trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no screening signal`) |
+| `trend_status` | `str \| None` | UI-ready trend state (`trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no signal, last BREAK X bars ago`, `no screening signal`) |
 | `warrant_health_status` | `str \| None` | UI-ready health state (`healthy`, `degraded`, `unknown`) |
 | `warrant_health_reason` | `str \| None` | Degradation detail text when health is degraded |
 | `decision_reason` | `str \| None` | Human-readable action rationale (non-redundant with warrant-health detail in UI) |

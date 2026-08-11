@@ -53,6 +53,7 @@ class SelectionResult(BaseModel):
     rank_changes: dict[str, list[int | None]] = {}  # sym → [delta_1w, delta_2w]
     history_labels: list[str] = []
     trend_signals: dict[str, str | None] = {}  # sym → "NEW" | "HOLD" | "BREAK" | None
+    last_break_age_bars: dict[str, int] = {}  # sym → bars since most recent BREAK event
     latest_candle_dates: dict[str, date] = {}
     previous_candle_dates: dict[str, date] = {}
     market_regime: MarketRegime | None = None

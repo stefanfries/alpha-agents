@@ -22,9 +22,9 @@ class SelectionResult(BaseModel):
     rank_changes: dict[str, list[int | None]]      # sym -> [delta_1W, delta_2W, delta_4W]
     history_labels: list[str]                      # ["1W", "2W", "4W"]
     trend_signals: dict[str, str | None]           # sym -> "NEW" | "HOLD" | "BREAK" | None
+    last_break_age_bars: dict[str, int]            # sym -> bars since most recent BREAK event
     latest_candle_dates: dict[str, date]           # sym -> date of bars[-1]
     previous_candle_dates: dict[str, date]         # sym -> date of bars[-2]
-    first_break_candle_dates: dict[str, date]      # sym -> date BREAK was first observed (persisted across runs)
     market_regime: MarketRegime | None = None      # forwarded regime context for Screening UI banner
 ```
 
@@ -137,6 +137,8 @@ The stored `trend_signals` value is then derived from the most recent event and 
 | `None` | The state machine is `OUT` and there is no recent `BREAK` signal to expose |
 
 This signal is purely observational. It informs entry timing at the screening stage; it does not trigger orders.
+
+Additionally, `last_break_age_bars` stores the distance (in bars) to the most recent BREAK event, even when `trend_signals[symbol]` has already aged out to `None`. Monitoring uses this for explanatory UI text only.
 
 ### Policy persistence
 

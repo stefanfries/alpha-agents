@@ -37,6 +37,7 @@ class MonitoringInput(BaseModel):
     candidates: list[Ticker]                   # from SelectionResult.selected (top-N ranked)
     scores: dict[str, float]                   # underlying_symbol → score
     trend_signals: dict[str, str | None]       # underlying_symbol → "NEW"|"HOLD"|"BREAK"|None
+    last_break_age_bars: dict[str, int] = {}   # underlying_symbol → bars since latest BREAK
     policy_results: dict[str, dict[str, bool]] = {}  # underlying_symbol → indicator booleans
     underlying_names: dict[str, str] = {}      # underlying_symbol → display name
     current_holdings: list[Position]           # depot warrant positions (isin+wkn in ticker)
@@ -152,6 +153,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         *,
         has_trend_signal: bool,
         trend_signal: str | None,
+        last_break_age_bars: int | None = None,
         break_reasons: list[str],
     ) -> str:
         if not has_trend_signal:
@@ -164,6 +166,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             if extra > 0:
                 return f"trend degraded: {primary} (+{extra})"
             return f"trend degraded: {primary}"
+        if trend_signal is None and last_break_age_bars is not None:
+            bar_word = "bar" if last_break_age_bars == 1 else "bars"
+            return f"no signal, last BREAK {last_break_age_bars} {bar_word} ago"
         # NEW, HOLD, or None (aged-out BREAK) — no active exit signal
         return "trend intact"
 
@@ -278,6 +283,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                     warrant_wkn,
                 )
             has_exit_signal = trend_signal == "BREAK"
+            last_break_age = input.last_break_age_bars.get(underlying_sym)
             policy_values = input.policy_results.get(underlying_sym, {})
             break_reasons = self._break_reasons(policy_values)
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
@@ -306,6 +312,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 trend_status=self._trend_status(
                     has_trend_signal=has_trend_signal,
                     trend_signal=trend_signal,
+                    last_break_age_bars=last_break_age,
                     break_reasons=break_reasons,
                 ),
                 trend_status_detail=self._trend_status_detail(

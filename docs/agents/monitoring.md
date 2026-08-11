@@ -13,6 +13,7 @@ class MonitoringInput(BaseModel):
     candidates: list[Ticker]               # from SelectionResult.selected (top-N ranked)
     scores: dict[str, float]               # underlying_symbol → score
     trend_signals: dict[str, str | None]   # underlying_symbol → "NEW" | "HOLD" | "BREAK" | None
+  last_break_age_bars: dict[str, int]    # underlying_symbol -> bars since most recent BREAK
     policy_results: dict[str, dict[str, bool]]  # underlying_symbol → indicator booleans
     underlying_names: dict[str, str]       # underlying_symbol -> display name
     current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
@@ -33,6 +34,7 @@ The orchestrator builds `MonitoringInput` from:
   - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
 - `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()`
 - `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
+- `last_break_age_bars` forwarded from `SelectionResult.last_break_age_bars` (used for aged-out BREAK explanation text)
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
 
 ## Output
@@ -154,6 +156,7 @@ Monitoring exposes two underlying screening diagnostics for each reviewed positi
 The stage UI derives two user-facing columns from those diagnostics and monitoring checks:
 
 - `Trend status`: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, or `no screening signal`
+- `Trend status`: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no signal, last BREAK X bars ago`, or `no screening signal`
   - Reason priority: Price below EMA50 → SuperTrend bearish → EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`) → ADX falling → ADX below threshold
 - `Warrant health`: `healthy`, `degraded` (with detail), or `unknown`
 - `Decision rationale`: non-redundant action context (duplicate degradation text is shown only once under warrant health)

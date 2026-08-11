@@ -339,6 +339,7 @@ class Pipeline:
             candidates=screening.selected,
             scores=screening.scores,
             trend_signals=screening.trend_signals,
+            last_break_age_bars=screening.last_break_age_bars,
             underlying_names=underlying_names,
             current_holdings=current_holdings,
             warrant_underlying_map=warrant_underlying_map,
