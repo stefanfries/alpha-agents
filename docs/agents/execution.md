@@ -22,12 +22,11 @@ None — order submission to Comdirect requires interactive 2FA authentication p
 
 ## Behaviour
 
-1. Compare approved positions against current holdings (read from MongoDB Atlas)
-2. Compute the delta (required trade) for each position
-3. For positions where delta is below a minimum threshold → `skipped` (avoid unnecessary churn)
-4. For positions requiring a trade → construct an `Order` with all details needed for manual placement and add to `orders`
-5. In dry-run mode (default): return the `ExecutionPlan` without any broker interaction
-6. Display the `ExecutionPlan` in the HITL checkpoint; the user places orders manually via Comdirect web or mobile app
+1. Convert `close_positions` into SELL orders first
+2. Convert risk-approved positions into BUY orders
+3. For positions where the allocation is below the minimum threshold → `skipped` (avoid unnecessary churn)
+4. In dry-run mode (default): return the `ExecutionPlan` without any broker interaction
+5. Display the `ExecutionPlan` in the HITL checkpoint; the user places SELL orders before BUY orders manually via Comdirect web or mobile app
 
 ## Configuration (via `config.py`)
 

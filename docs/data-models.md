@@ -318,7 +318,7 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 | `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger and/or degraded-but-not-roll-eligible positions |
 | `positions_to_roll` | `list[PositionReview]` | Degraded warrants classified as roll candidates (replacement selection occurs downstream) |
 | `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |
-| `free_positions` | `int` | `max_positions − len(current_holdings)` (`Free now`; capital recycling deferred) |
+| `free_positions` | `int` | `max_positions − len(current_holdings) + len(positions_to_sell)` (`Free now`, including confirmed sells) |
 | `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling + rolling); blocked from entry in this run |
 | `keep_existing_isins` | `list[str]` | Reserved metadata for downstream stages |
 | `roll_underlyings` | `list[str]` | Underlying symbols classified as roll candidates |
@@ -345,6 +345,7 @@ Output of `RiskAgent`. Input of `TradeExecutionAgent`.
 | `approved_positions` | `list[Position]` | Positions that passed risk checks |
 | `rejected_positions` | `list[Position]` | Positions blocked by risk limits |
 | `risk_notes` | `dict[str, str]` | Reason for each rejection |
+| `close_positions` | `list[Position]` | Positions carried through for SELL order generation |
 
 ### `ExecutionPlan`
 

@@ -45,7 +45,7 @@ class MonitoringResult(BaseModel):
     positions_to_keep: list[PositionReview]  # HOLD decisions
     positions_to_roll: list[PositionReview]  # ROLL candidates (classification only)
     entry_candidates: list[Ticker]           # filtered and capped to free_positions
-    free_positions: int                      # max_positions − len(current_holdings)
+    free_positions: int                      # max_positions − len(current_holdings) + confirmed sells
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
     # Metadata for warrant selection integration:
     keep_existing_isins: list[str]
@@ -104,10 +104,10 @@ Monitoring is classification-only:
 ### Entry candidate selection
 
 - **Max positions resolution**: `max_positions` is first resolved from execution `config_overrides.portfolio.max_positions` (if set); otherwise defaults to global `settings.portfolio.max_positions`. This allows per-execution tuning.
-- `free_positions = max(0, max_positions − len(current_holdings))`
+- `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))`
   - When `current_holdings` is empty, `free_positions = max_positions` (full capacity available)
   - Note: Holdings with quantity ≤ 0 are excluded from the count by `_fetch_holdings()`
-- Capital freed by sells is **not** recycled within the same run (deferred approach — prevents same-run whipsawing).
+- Confirmed SELL positions free slots within the same run. ROLL positions do not, because they remain occupied until replacement selection succeeds.
 - `excluded_symbols` = all held underlying symbols (kept + selling).
 - `entry_candidates` = `[t for t in candidates if t.symbol not in excluded_symbols][:free_positions]`
 

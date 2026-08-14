@@ -153,6 +153,7 @@ class RiskAssessment(BaseModel):
     approved_positions: list[Position]
     rejected_positions: list[Position]
     risk_notes: dict[str, str]
+    close_positions: list[Position] = Field(default_factory=list)
 
 
 class ExecutionPlan(BaseModel):

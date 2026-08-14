@@ -130,7 +130,7 @@ class MonitoringResult(BaseModel):
     positions_to_sell: list[PositionReview]
     positions_to_keep: list[PositionReview]
     entry_candidates: list[Ticker]      # top-N filtered, capped to free_positions
-    free_positions: int                 # max_positions − len(current_holdings)
+   free_positions: int                 # max_positions − len(current_holdings) + confirmed sells
     excluded_symbols: list[str]         # all held underlyings (kept + selling)
 ```
 
@@ -140,7 +140,7 @@ class MonitoringResult(BaseModel):
 | ----- | ----------- | ------ |
 | `sell_reason` includes `"warrant_degraded"` | Only `"exit_signal"` supported | Warrant health checks require FinHub calls; deferred |
 | `positions_to_keep: list[str]` (symbols) | `list[PositionReview]` | Richer — carries warrant ISIN for downstream Portfolio use |
-| Capital recycling within run | Deferred (free_positions = max − current) | Simpler; avoids same-run whipsawing |
+| Capital recycling within run | Confirmed sells free slots immediately; rolls remain occupied | Allows replacement entries while preventing roll capacity from being double-counted |
 | Re-entry prevention from history | Not yet implemented | Requires transaction history join; `re_entry_prevention_days` stored for future use |
 
 ---
@@ -151,4 +151,4 @@ class MonitoringResult(BaseModel):
 2. **Exit signal computation**: the Monitoring stage needs price/indicator data for each *currently held* underlying. Does the existing `YFinanceTool` + `indicators.py` cover this, or does it need a dedicated lightweight fetch?
 3. **Grace period on warrant degradation**: should `min_holding_days` also apply when the warrant (not the underlying) degrades? Probably not — a bad spread should trigger sell immediately.
 4. **Partial exits**: for now, assume all-or-nothing per position (sell full position). Partial sizing can be added later.
-5. **Capital recycling within same run**: decide whether freed capital from sells is immediately available for buys in the same execution, or whether it is deferred to the next run. Simplest: defer to next run (avoids same-day roundtrip naturally).
+5. **Capital recycling within same run**: resolved — confirmed sells free capacity immediately; rolls remain occupied until replacement selection succeeds.

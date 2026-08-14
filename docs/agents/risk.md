@@ -15,6 +15,7 @@ class RiskAssessment(AgentOutput):
     approved_positions: list[Position]
     rejected_positions: list[Position]
     risk_notes: dict[str, str]          # Reason for each rejection
+    close_positions: list[Position]     # Positions to sell; passed through unchanged
 ```
 
 ## Tools used
@@ -27,6 +28,7 @@ None — all risk checks are rule-based against configured limits.
 2. Positions that pass all checks → `approved_positions`
 3. Positions that breach any rule → `rejected_positions` with the violated rule recorded in `risk_notes`
 4. Re-normalise weights across approved positions if any were rejected
+5. Pass `close_positions` through to execution for SELL order generation
 
 ## Risk rules (configurable)
 

@@ -50,4 +50,5 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
             approved_positions=approved,
             rejected_positions=rejected,
             risk_notes=notes,
+            close_positions=input.close_positions,
         )

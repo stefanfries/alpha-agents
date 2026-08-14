@@ -156,8 +156,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         ranked_symbols = sorted(
             candidate_symbols, key=lambda s: scores.get(s, 0.0), reverse=True
         )[: self._top_n]
-        ranked_set = set(ranked_symbols)
-        selected = [t for t in input.tickers if t.symbol in ranked_set]
+        tickers_by_symbol = {ticker.symbol: ticker for ticker in input.tickers}
+        selected = [tickers_by_symbol[symbol] for symbol in ranked_symbols]
 
         rank_changes, history_labels = self._rank_changes(input, scores)
 

@@ -376,10 +376,10 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 case _:
                     raise ValueError(f"Unknown monitoring action: {action}")
 
-        # Free slots: capital is NOT recycled within the same run (deferred approach)
-        # Positions being sold don't free up slots until the next run
+        # Confirmed sells free slots for new entries in this run. Rolls do not,
+        # because they remain occupied until replacement selection succeeds.
         n_held = len(input.current_holdings)
-        free_positions = max(0, self._max_positions - n_held)
+        free_positions = max(0, self._max_positions - n_held + len(positions_to_sell))
 
         # Entry candidates: screening candidates not already held (kept or being sold)
         excluded_symbols = sorted(all_held_underlyings)

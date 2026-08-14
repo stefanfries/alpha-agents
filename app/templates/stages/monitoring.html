@@ -89,7 +89,6 @@
     <div class="flex-shrink-0 mb-3">
       {% set max_positions = execution.get('config_overrides', {}).get('portfolio', {}).get('max_positions', 15) %}
       {% set current_positions = (r.positions_to_keep | default([], true) | length) + (r.positions_to_sell | default([], true) | length) + (rolls | length) %}
-      {% set free_after_sells = r.free_positions + (r.positions_to_sell | length) %}
       <div class="row g-3">
         <div class="col-auto">
           <div class="card text-center px-4 py-3 shadow-sm border-secondary">
@@ -125,12 +124,6 @@
           <div class="card text-center px-4 py-3 shadow-sm border-primary">
             <div class="fs-3 fw-bold text-primary">{{ r.free_positions }}</div>
             <div class="text-muted small">Free now</div>
-          </div>
-        </div>
-        <div class="col-auto">
-          <div class="card text-center px-4 py-3 shadow-sm border-info">
-            <div class="fs-3 fw-bold text-info">{{ free_after_sells }}</div>
-            <div class="text-muted small">Free after sells</div>
           </div>
         </div>
         <div class="col-auto">

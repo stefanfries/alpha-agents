@@ -25,6 +25,15 @@ class TradeExecutionAgent(Agent[RiskAssessment, ExecutionPlan]):
         orders: list[Order] = []
         skipped: list[Position] = []
 
+        for position in input.close_positions:
+            orders.append(Order(
+                ticker=position.ticker,
+                side="sell",
+                quantity=position.quantity,
+                order_type=self._order_type,  # type: ignore[arg-type]
+                limit_price=None,
+            ))
+
         for position in input.approved_positions:
             allocated_eur = float(position.quantity)
             if allocated_eur < self._min_trade_eur:

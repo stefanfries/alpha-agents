@@ -16,7 +16,7 @@ This document is advisory only and does not change runtime behavior.
 - Held underlyings are excluded from same-run entry candidates.
 - Direct SELL decisions are driven by BREAK signals.
 - Warrant degradation can produce ROLL recommendations.
-- Capacity recycling is deferred to later runs.
+- Confirmed SELL capacity is recycled within the same run; sold underlyings remain excluded from entries.
 
 ## Design Principles
 

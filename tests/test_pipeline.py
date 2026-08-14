@@ -32,6 +32,49 @@ async def test_screening_filters_low_market_cap():
 
 
 @pytest.mark.asyncio
+async def test_screening_selected_preserves_score_order():
+    from app.config import ScreeningSettings
+
+    agent = SecuritySelectionAgent(ScreeningSettings(top_n=2))
+    tickers = [Ticker(symbol="LOW"), Ticker(symbol="HIGH")]
+    bars = {
+        ticker.symbol: _make_synthetic_bars(ticker, [100.0 + i for i in range(70)])
+        for ticker in tickers
+    }
+
+    agent._trend_quality = lambda ticker_bars, _lookback: (
+        0.5 if ticker_bars[0].ticker.symbol == "LOW" else 1.0
+    )
+    agent._tsi = lambda _bars: 0.0
+    agent._evaluate_policies = lambda _bars: {
+        "supertrend": True,
+        "supertrend_bearish": False,
+        "ema20_rising": True,
+        "ema20_falling": False,
+        "adx_above": True,
+        "adx_below": False,
+        "adx_rising": True,
+        "adx_falling": False,
+        "price_above_ema50": True,
+        "price_below_ema50": False,
+        "tq60_above": True,
+        "tq20_above": True,
+    }
+    agent._trend_signal = lambda *args, **kwargs: None
+    agent._last_break_age = lambda *args, **kwargs: None
+
+    result = await agent.run(
+        ResearchResult(
+            tickers=tickers,
+            bars=bars,
+            fundamentals={symbol: {"marketCap": 1_000_000_000} for symbol in ("LOW", "HIGH")},
+        )
+    )
+
+    assert [ticker.symbol for ticker in result.selected] == ["HIGH", "LOW"]
+
+
+@pytest.mark.asyncio
 async def test_portfolio_equal_weights():
     tickers = [Ticker(symbol=s) for s in ["A", "B", "C", "D"]]
     agent = PortfolioConstructionAgent(capital_eur=10_000, sizing_method="equal", max_position_weight=0.5)
@@ -775,6 +818,8 @@ async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkey
     assert len(result.positions_to_sell) == 1
     assert result.positions_to_sell[0].underlying_symbol == "A"
     assert result.positions_to_sell[0].sell_reason == "exit_signal"
+    assert result.free_positions == 5
+    assert [t.symbol for t in result.entry_candidates] == ["B"]
 
 
 @pytest.mark.asyncio

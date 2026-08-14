@@ -220,9 +220,8 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 **Summary intent:**
 
-- `Free now` reflects current run capacity (`max_positions − current_holdings`)
-- `Free after sells` is projected capacity (`free_now + sell_count`) for user orientation
-- Capital recycling remains deferred for the current run; entry candidates are still capped by `Free now`
+- `Free now` reflects current run capacity (`max_positions − current_holdings + confirmed_sells`)
+- Confirmed SELL positions are already included in `Free now`; there is no separate projected capacity card
 
 **Unresolved mapping warning:**
 

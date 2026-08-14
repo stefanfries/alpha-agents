@@ -218,7 +218,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
 10. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
 11. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
-12. Calculates `free_positions = max(0, max_positions − len(current_holdings))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
+12. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
 13. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
