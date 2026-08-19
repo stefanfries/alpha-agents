@@ -41,11 +41,11 @@ Each agent has a single responsibility, consumes a typed Pydantic input contract
 | **Universe** | Resolves index names (DAX, MDAX, …) to a flat, deduplicated list of ticker symbols |
 | **Research** | Fetches OHLCV candle data for the full universe via yfinance |
 | **Stock Selection** | Scores every ticker with Trend Quality (TQ), TQ-20, and TSI; selects top-N that pass configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50) |
-| **Monitoring** | Reconciles screening candidates with current holdings; classifies KEEP, SELL, and ROLL decisions; confirmed sells free slots for same-run entries |
+| **Monitoring** | Reconciles screening candidates with current holdings; classifies KEEP, SELL, and ROLL decisions; BREAK-triggered sells free slots for same-run entries |
 | **Warrant Selection** | Finds Call Warrants per selected underlying via FinHub; scores by spread, leverage, days-to-expiry, and delta; returns best warrant + top-3 shortlist per underlying |
 | **Portfolio Construction** | Allocates capital across the warrant shortlist; diffs against current Comdirect holdings to identify new trades |
 | **Risk** | Validates proposed positions against configurable risk limits; rejects positions that violate them |
-| **Trade Execution** | Produces SELL orders for confirmed closes followed by BUY orders for approved entries (dry-run by default) |
+| **Trade Execution** | Produces SELL orders for BREAK-triggered closes followed by BUY orders for approved entries (dry-run by default) |
 
 ## Tech stack
 
@@ -108,7 +108,7 @@ Capital is configured per Quant System (not globally). When a real Comdirect dep
 | [docs/agents/portfolio.md](docs/agents/portfolio.md) | Portfolio Construction Agent spec |
 | [docs/agents/risk.md](docs/agents/risk.md) | Risk Agent spec |
 | [docs/agents/execution.md](docs/agents/execution.md) | Trade Execution Agent spec |
-| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-011) |
+| [docs/decisions/](docs/decisions/) | Architecture Decision Records (ADR-001 through ADR-012) |
 | [docs/decisions/ADR-010-quant-system-redesign.md](docs/decisions/ADR-010-quant-system-redesign.md) | Quant System + Execution model; depot capital auto-calculation |
 
 ## Session updates (2026-08-02)

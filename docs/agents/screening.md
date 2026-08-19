@@ -110,11 +110,11 @@ BREAK group rules:
 | Policy key | Condition | Default |
 | ---------- | --------- | ------- |
 | `policy_supertrend_break` | SuperTrend bearish on last bar | on |
-| `policy_ema20_falling_break` | EMA20[t-2] > EMA20[t-1] > EMA20[t] | on |
+| `policy_ema20_falling_break` | EMA20[t] < EMA20[t-1] | on |
 | `policy_adx_below_break` | ADX[-1] <= `min_adx` | on |
-| `policy_adx_falling_break` | ADX[-5:] slope <= 0 | on |
+| `policy_adx_falling_break` | ADX[-5:] slope <= 0 | off |
 | `policy_price_below_ema50_break` | Close[-1] <= EMA50[-1] | on |
-| `break_min_true` | Required true count among active BREAK rules (`None` = all) | `None` |
+| `break_min_true` | Required true count among active BREAK rules (`None` = all) | `1` |
 
 If zero candidates result, the user can relax NEW rules in HITL and re-run screening without creating a new run.
 
@@ -176,6 +176,6 @@ The agent compares the current TQ ranking against prior rankings stored in the d
 | `policy_supertrend_break` | `True` | Enable SuperTrend bearish BREAK rule |
 | `policy_ema20_falling_break` | `True` | Enable EMA20 falling BREAK rule |
 | `policy_adx_below_break` | `True` | Enable ADX-below-threshold BREAK rule |
-| `policy_adx_falling_break` | `True` | Enable ADX-falling BREAK rule |
+| `policy_adx_falling_break` | `False` | Enable ADX-falling BREAK rule |
 | `policy_price_below_ema50_break` | `True` | Enable price-below-EMA50 BREAK rule |
-| `break_min_true` | `None` | Required true BREAK rules (`None` = all active BREAK rules) |
+| `break_min_true` | `1` | Required true BREAK rules (`None` = all active BREAK rules) |

@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-For each stock selected by the `SecuritySelectionAgent`, find available Call Warrants (Optionsscheine) via the FinHub API, score them using a systematic multi-criteria model, and return the best warrant plus a top-3 shortlist per underlying. This is the fourth pipeline stage.
+For each stock selected by the `SecuritySelectionAgent`, find available Call Warrants (Optionsscheine) via the FinHub API, score them using a systematic multi-criteria model, and return the best warrant plus a top-3 shortlist per underlying. This stage runs after Monitoring and before Portfolio Construction.
 
 ## Input
 

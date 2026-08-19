@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Validate the proposed portfolio against risk limits. Reject or adjust positions that breach configured thresholds. This is the fifth pipeline stage and the last gate before execution.
+Validate the proposed portfolio against risk limits. Reject or adjust positions that breach configured thresholds. This stage runs after Portfolio Construction and is the last gate before Execution.
 
 ## Input
 
