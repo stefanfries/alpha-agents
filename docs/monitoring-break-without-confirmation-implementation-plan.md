@@ -1,7 +1,5 @@
 # Monitoring BREAK Without Confirmation - Implementation Plan
 
-> Historical implementation plan. This work is complete; the current behavior is documented in `docs/agents/monitoring.md` and `docs/monitoring-enhancement-plan.md`.
-
 Status: Completed 2026-07-12
 Date: 2026-07-07
 Owner: Monitoring + Screening pipeline

@@ -187,11 +187,16 @@ def bar_indicator_values(
         else False
     )
     ema20_falling = (
-        bool(float(series.ema20[idx]) < float(series.ema20[idx - 1]))
-        if idx >= 1
+        bool(
+            float(series.ema20[idx - 2])
+            > float(series.ema20[idx - 1])
+            > float(series.ema20[idx])
+        )
+        if idx >= 2
         and not (
             np.isnan(series.ema20[idx])
             or np.isnan(series.ema20[idx - 1])
+            or np.isnan(series.ema20[idx - 2])
         )
         else False
     )

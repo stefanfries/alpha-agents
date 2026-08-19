@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Reconcile current depot holdings with screening signals and warrant health before new entries are selected. Determine which held positions should be kept, sold, or rolled, and which screening candidates are eligible for entry. This stage runs after Screening and before Warrant Selection.
+Reconcile current depot holdings with screening signals and warrant health before new entries are selected. Determine which held positions should be kept, sold, or rolled, and which screening candidates are eligible for entry. This is the fourth pipeline stage.
 
 ## Input
 
@@ -45,7 +45,7 @@ class MonitoringResult(BaseModel):
     positions_to_keep: list[PositionReview]  # HOLD decisions
     positions_to_roll: list[PositionReview]  # ROLL candidates (classification only)
     entry_candidates: list[Ticker]           # filtered and capped to free_positions
-    free_positions: int                      # max_positions − len(current_holdings) + positions_to_sell
+    free_positions: int                      # max_positions − len(current_holdings) + confirmed sells
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
     # Metadata for warrant selection integration:
     keep_existing_isins: list[str]
@@ -76,7 +76,7 @@ None directly.
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
 - Check exit signal from screening:
   - `BREAK` = active break signal → **immediate SELL** (no confirmation required)
-  - `None` (with key present) = BREAK aged out (more than 4 bars old); treated as no active exit signal → no sell
+  - `None` (with key present) = BREAK aged out (>1 bar old); treated as no active exit signal → no sell
   - Missing key in `trend_signals` = no signal available for mapped underlying symbol → no sell
 - Evaluate warrant health via `_check_warrant_health()` using available snapshot metrics (`spread_pct`, `leverage`, `days_to_maturity`, `delta`).
 - Compute health score via `_monitoring_score()`: weighted 4-component normalization (spread, leverage, maturity, delta)
@@ -89,9 +89,9 @@ None directly.
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
   - Otherwise => **KEEP**
 
-Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold). Here, EMA20 falling means `EMA20[t] < EMA20[t-1]`.
+Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold). Here, EMA20 falling means `EMA20[t-2] > EMA20[t-1] > EMA20[t]`.
 
-**Active BREAK** fires when `trend_signal == "BREAK"` (the signal remains visible for the event bar and the following 4 bars). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed.
+**Active BREAK** fires when `trend_signal == "BREAK"` (signal is at most 1 bar old). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed.
 
 ### Responsibility boundary
 
@@ -107,7 +107,7 @@ Monitoring is classification-only:
 - `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))`
   - When `current_holdings` is empty, `free_positions = max_positions` (full capacity available)
   - Note: Holdings with quantity ≤ 0 are excluded from the count by `_fetch_holdings()`
-- BREAK-triggered SELL positions free slots within the same run. ROLL positions do not, because they remain occupied until replacement selection succeeds.
+- Confirmed SELL positions free slots within the same run. ROLL positions do not, because they remain occupied until replacement selection succeeds.
 - `excluded_symbols` = all held underlying symbols (kept + selling).
 - `entry_candidates` = `[t for t in candidates if t.symbol not in excluded_symbols][:free_positions]`
 
@@ -155,8 +155,9 @@ Monitoring exposes two underlying screening diagnostics for each reviewed positi
 
 The stage UI derives two user-facing columns from those diagnostics and monitoring checks:
 
+- `Trend status`: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, or `no screening signal`
 - `Trend status`: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no signal, last BREAK X bars ago`, or `no screening signal`
-  - Reason priority: Price below EMA50 → SuperTrend bearish → EMA20 falling (`EMA20[t] < EMA20[t-1]`) → ADX falling → ADX below threshold
+  - Reason priority: Price below EMA50 → SuperTrend bearish → EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`) → ADX falling → ADX below threshold
 - `Warrant health`: `healthy`, `degraded` (with detail), or `unknown`
 - `Decision rationale`: non-redundant action context (duplicate degradation text is shown only once under warrant health)
 

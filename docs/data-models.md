@@ -314,11 +314,11 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `positions_to_sell` | `list[PositionReview]` | Positions with an active trend exit (`BREAK`) |
+| `positions_to_sell` | `list[PositionReview]` | Positions with confirmed trend exit (`BREAK` confirmed or aged-out `--` for mapped symbol) |
 | `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger and/or degraded-but-not-roll-eligible positions |
 | `positions_to_roll` | `list[PositionReview]` | Degraded warrants classified as roll candidates (replacement selection occurs downstream) |
 | `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |
-| `free_positions` | `int` | `max_positions − len(current_holdings) + len(positions_to_sell)` (`Free now`, including BREAK-triggered sells) |
+| `free_positions` | `int` | `max_positions − len(current_holdings) + len(positions_to_sell)` (`Free now`, including confirmed sells) |
 | `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling + rolling); blocked from entry in this run |
 | `keep_existing_isins` | `list[str]` | Reserved metadata for downstream stages |
 | `roll_underlyings` | `list[str]` | Underlying symbols classified as roll candidates |

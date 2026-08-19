@@ -229,31 +229,6 @@ def test_trend_signal_k2_emits_new_before_break_phase():
     assert signal in {"NEW", "HOLD"}
 
 
-def test_ema20_falling_triggers_on_one_bar_decline():
-    from app.policies.trend_detection import (
-        TrendDetectionPolicyConfig,
-        bar_indicator_values,
-        build_trend_indicator_series,
-    )
-
-    ticker = Ticker(symbol="SYN")
-    bars = _make_synthetic_bars(ticker, [100.0 + i for i in range(70)] + [168.0, 167.0])
-    policy_cfg = TrendDetectionPolicyConfig()
-    series = build_trend_indicator_series(bars, policy_cfg)
-    series.ema20[-2] = 10.0
-    series.ema20[-1] = 9.0
-
-    values = bar_indicator_values(
-        len(bars) - 1,
-        series,
-        policy_cfg,
-        lookback_regression=60,
-        lookback_regression_short=20,
-    )
-
-    assert values["ema20_falling"] is True
-
-
 def test_trend_signal_k2_keeps_break_visible_for_five_bars_total():
     from app.config import ScreeningSettings
 

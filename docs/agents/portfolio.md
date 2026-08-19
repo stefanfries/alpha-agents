@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-Allocate capital across the warrant shortlist and determine which positions require a trade by comparing the proposed portfolio against current holdings. This stage runs after Warrant Selection and before Risk.
+Allocate capital across the warrant shortlist and determine which positions require a trade by comparing the proposed portfolio against current holdings. This is the fourth pipeline stage.
 
 ## Input
 

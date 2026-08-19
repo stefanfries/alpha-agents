@@ -485,16 +485,16 @@ Adjustment runbook (single-variable changes only):
 
 **Evaluation order:**
 
-1. **Trend health first** — Is an active BREAK signal present?
+1. **Trend health first** — Is BREAK confirmed on consecutive closed candles?
     - YES → **SELL** (exit immediately, independent of grace period and warrant health)
-2. **If no active BREAK is present**, evaluate warrant health:
+2. **If trend is not confirmed broken**, evaluate warrant health:
     - Warrant degraded + roll grace met → **ROLL** (replace warrant, stay in trade)
     - Warrant degraded + roll grace not met → **HOLD** (avoid immediate post-entry churn)
     - Warrant healthy → **HOLD**
 
 **Matrix:**
 
-| Active BREAK | Warrant Degraded | Roll Grace Met | Action |
+| Confirmed BREAK | Warrant Degraded | Roll Grace Met | Action |
 | --- | --- | --- | --- |
 | ✓ | ✓ | any | **SELL** (trend broken) |
 | ✓ | ✗ | any | **SELL** (trend broken) |
@@ -502,11 +502,11 @@ Adjustment runbook (single-variable changes only):
 | ✗ | ✓ | ✗ | **HOLD** (degraded but still in roll grace) |
 | ✗ | ✗ | any | **HOLD** (healthy and trend intact) |
 
-**BREAK timing:**
+**Candle confirmation rule:**
 
-- BREAK is acted on in the same run in which the screening state machine emits it.
-- No cross-run or consecutive-candle confirmation is required.
-- A BREAK remains visible in screening for the event bar and the following four bars; monitoring sells only while it is active.
+- Same-day re-runs do not count as confirmation.
+- Confirmed BREAK requires two consecutive closed-candle BREAK signals.
+- Implementation compares the previous run's BREAK candle date with the current run's previous candle date.
 
 **Rationale:**
 

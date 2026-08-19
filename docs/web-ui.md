@@ -206,7 +206,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 - Two framed rule groups shown side-by-side:
   - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
-  - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling (`EMA20[t] < EMA20[t-1]`), ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
+  - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`), ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
 - **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run. Uses the shared `partials/apply_rerun_btn.html` partial. Default variant is `primary`; optional variants are `outline-primary`, `secondary`, and `outline-secondary`.
 - Policy state is persisted to `config_overrides.screening` in the run document
 
@@ -247,7 +247,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
 | Reason | Human-readable decision reason string |
-| Trend status | User-facing trend state: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no signal, last BREAK X bars ago`, or `no screening signal` |
+| Trend status | User-facing trend state: `NEW`, `HOLD`, `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, or `no screening signal` |
 | Warrant health | Health status derived from monitoring checks: `healthy`, `degraded` (+ detail), or `unknown` |
 
 Entry-candidate columns:

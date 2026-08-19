@@ -29,8 +29,6 @@ class ResearchResult(AgentOutput):
 
 - `YFinanceTool` — fetches OHLCV daily bars (batch) and fundamentals (per-ticker) via yfinance
 
-OHLCV downloads request `auto_adjust=True`. The application uses the OHLC values returned by Yahoo for indicators and charts; split actions are not separately normalized in the application.
-
 ## Behaviour
 
 1. Fetch `lookback_days` of daily OHLCV candles for all tickers in one batch call
