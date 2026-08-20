@@ -70,6 +70,8 @@ class ScreeningSettings(BaseModel):
     policy_tq20_above: bool = True
     policy_tq60_min: float = 0.05
     policy_tq20_min: float = 0.0
+    policy_tsi_above: bool = True
+    policy_tsi_new_min: float = 25.0
     # Threshold for NEW pass: at least k selected NEW policies true.
     # None means all selected NEW policies must pass.
     new_min_true: int | None = None
@@ -79,6 +81,8 @@ class ScreeningSettings(BaseModel):
     policy_adx_below_break: bool = True
     policy_adx_falling_break: bool = False
     policy_price_below_ema50_break: bool = True
+    policy_tsi_below_break: bool = True
+    policy_tsi_break_max: float = 20.0
     # Threshold for BREAK pass: at least k selected BREAK policies true.
     # None means all selected BREAK policies must pass.
     break_min_true: int | None = 1

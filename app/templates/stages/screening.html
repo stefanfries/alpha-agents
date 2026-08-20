@@ -250,6 +250,14 @@
                            name="policy_tq20_min" id="policy_tq20_min"
                            value="{{ pol_cfg.get('policy_tq20_min', '0.0') }}" placeholder="0.0" style="width:72px">
                   </div>
+                  <div class="form-check form-check-inline mb-0" style="display:flex;align-items:center;gap:0.5rem">
+                    <input class="form-check-input new-policy-checkbox" type="checkbox" name="policy_tsi_above" id="pol_tsi"
+                          {% if pol_cfg.get("policy_tsi_above", true) %}checked{% endif %}>
+                    <label class="form-check-label small" for="pol_tsi">TSI &gt;</label>
+                    <input class="form-control form-control-sm" type="number" step="1" min="-100" max="100"
+                           name="policy_tsi_new_min" id="policy_tsi_new_min"
+                           value="{{ pol_cfg.get('policy_tsi_new_min', '25') }}" placeholder="25" style="width:72px">
+                  </div>
                   <div class="d-inline-flex align-items-center gap-2">
                       <label class="small text-muted mb-0" for="new_min_true">Minimum of selected</label>
                              <input class="form-control form-control-sm w-auto" type="number" min="1" max="7"
@@ -286,6 +294,14 @@
                     <input class="form-check-input break-policy-checkbox" type="checkbox" name="policy_price_below_ema50_break" id="pol_ema50_brk"
                            {% if pol_cfg.get("policy_price_below_ema50_break", true) %}checked{% endif %}>
                     <label class="form-check-label small" for="pol_ema50_brk">Price &lt; EMA50</label>
+                  </div>
+                  <div class="form-check form-check-inline mb-0" style="display:flex;align-items:center;gap:0.5rem">
+                    <input class="form-check-input break-policy-checkbox" type="checkbox" name="policy_tsi_below_break" id="pol_tsi_brk"
+                          {% if pol_cfg.get("policy_tsi_below_break", true) %}checked{% endif %}>
+                    <label class="form-check-label small" for="pol_tsi_brk">TSI &lt;</label>
+                    <input class="form-control form-control-sm" type="number" step="1" min="-100" max="100"
+                           name="policy_tsi_break_max" id="policy_tsi_break_max"
+                           value="{{ pol_cfg.get('policy_tsi_break_max', '20') }}" placeholder="20" style="width:72px">
                   </div>
                   <div class="d-inline-flex align-items-center gap-2">
                       <label class="small text-muted mb-0" for="break_min_true">Minimum of selected</label>

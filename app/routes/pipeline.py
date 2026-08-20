@@ -310,12 +310,16 @@ async def restart_stage(
     policy_tq20_above: Annotated[str | None, Form()] = None,
     policy_tq60_min: Annotated[str | None, Form()] = None,
     policy_tq20_min: Annotated[str | None, Form()] = None,
+    policy_tsi_above: Annotated[str | None, Form()] = None,
+    policy_tsi_new_min: Annotated[str | None, Form()] = None,
     new_min_true: Annotated[str | None, Form()] = None,
     policy_supertrend_break: Annotated[str | None, Form()] = None,
     policy_ema20_falling_break: Annotated[str | None, Form()] = None,
     policy_adx_below_break: Annotated[str | None, Form()] = None,
     policy_adx_falling_break: Annotated[str | None, Form()] = None,
     policy_price_below_ema50_break: Annotated[str | None, Form()] = None,
+    policy_tsi_below_break: Annotated[str | None, Form()] = None,
+    policy_tsi_break_max: Annotated[str | None, Form()] = None,
     break_min_true: Annotated[str | None, Form()] = None,
     maturity_range_submitted: Annotated[str | None, Form()] = None,
     ws_min_months: Annotated[str | None, Form()] = None,
@@ -362,12 +366,26 @@ async def restart_stage(
             parsed_tq20_min = float(policy_tq20_min) if policy_tq20_min not in (None, "") else 0.0
         except (ValueError, TypeError):
             parsed_tq20_min = 0.0
+        try:
+            parsed_tsi_new_min = float(policy_tsi_new_min) if policy_tsi_new_min not in (None, "") else 25.0
+        except (ValueError, TypeError):
+            parsed_tsi_new_min = 25.0
+        try:
+            parsed_tsi_break_max = float(policy_tsi_break_max) if policy_tsi_break_max not in (None, "") else 20.0
+        except (ValueError, TypeError):
+            parsed_tsi_break_max = 20.0
         if not np.isfinite(parsed_tq60_min):
             parsed_tq60_min = 0.05
         if not np.isfinite(parsed_tq20_min):
             parsed_tq20_min = 0.0
+        if not np.isfinite(parsed_tsi_new_min):
+            parsed_tsi_new_min = 25.0
+        if not np.isfinite(parsed_tsi_break_max):
+            parsed_tsi_break_max = 20.0
         parsed_tq60_min = max(0.0, min(parsed_tq60_min, 1.0))
         parsed_tq20_min = max(0.0, min(parsed_tq20_min, 1.0))
+        parsed_tsi_new_min = max(-100.0, min(parsed_tsi_new_min, 100.0))
+        parsed_tsi_break_max = max(-100.0, min(parsed_tsi_break_max, 100.0))
         new_selected = sum(
             [
                 policy_supertrend is not None,
@@ -377,6 +395,7 @@ async def restart_stage(
                 policy_price_above_ema50 is not None,
                 policy_tq60_above is not None,
                 policy_tq20_above is not None,
+                policy_tsi_above is not None,
             ]
         )
         break_selected = sum(
@@ -386,6 +405,7 @@ async def restart_stage(
                 policy_adx_below_break is not None,
                 policy_adx_falling_break is not None,
                 policy_price_below_ema50_break is not None,
+                policy_tsi_below_break is not None,
             ]
         )
         safe_new_min = None
@@ -404,12 +424,16 @@ async def restart_stage(
             "policy_tq20_above": policy_tq20_above is not None,
             "policy_tq60_min": parsed_tq60_min,
             "policy_tq20_min": parsed_tq20_min,
+            "policy_tsi_above": policy_tsi_above is not None,
+            "policy_tsi_new_min": parsed_tsi_new_min,
             "new_min_true": safe_new_min,
             "policy_supertrend_break": policy_supertrend_break is not None,
             "policy_ema20_falling_break": policy_ema20_falling_break is not None,
             "policy_adx_below_break": policy_adx_below_break is not None,
             "policy_adx_falling_break": policy_adx_falling_break is not None,
             "policy_price_below_ema50_break": policy_price_below_ema50_break is not None,
+            "policy_tsi_below_break": policy_tsi_below_break is not None,
+            "policy_tsi_break_max": parsed_tsi_break_max,
             "break_min_true": safe_break_min,
         }
 

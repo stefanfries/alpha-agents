@@ -43,15 +43,21 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             policy_tq20_above=cfg.policy_tq20_above,
             policy_tq60_min=cfg.policy_tq60_min,
             policy_tq20_min=cfg.policy_tq20_min,
+            policy_tsi_above=cfg.policy_tsi_above,
+            policy_tsi_new_min=cfg.policy_tsi_new_min,
             new_min_true=cfg.new_min_true,
             policy_supertrend_break=cfg.policy_supertrend_break,
             policy_ema20_falling_break=cfg.policy_ema20_falling_break,
             policy_adx_below_break=cfg.policy_adx_below_break,
             policy_adx_falling_break=cfg.policy_adx_falling_break,
             policy_price_below_ema50_break=cfg.policy_price_below_ema50_break,
+            policy_tsi_below_break=cfg.policy_tsi_below_break,
+            policy_tsi_break_max=cfg.policy_tsi_break_max,
             break_min_true=cfg.break_min_true,
             supertrend_period=cfg.supertrend_period,
             supertrend_multiplier=cfg.supertrend_multiplier,
+            tsi_fast=cfg.tsi_fast,
+            tsi_slow=cfg.tsi_slow,
         )
 
         # Keep existing attributes for compatibility with logs/tests during transition.
@@ -67,11 +73,15 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         self._policy_tq20_above = self._trend_policy.policy_tq20_above
         self._policy_tq60_min = self._trend_policy.policy_tq60_min
         self._policy_tq20_min = self._trend_policy.policy_tq20_min
+        self._policy_tsi_above = self._trend_policy.policy_tsi_above
+        self._policy_tsi_new_min = self._trend_policy.policy_tsi_new_min
         self._policy_ema20_falling_break = self._trend_policy.policy_ema20_falling_break
         self._policy_supertrend_break = self._trend_policy.policy_supertrend_break
         self._policy_adx_below_break = self._trend_policy.policy_adx_below_break
         self._policy_adx_falling_break = self._trend_policy.policy_adx_falling_break
         self._policy_price_below_ema50_break = self._trend_policy.policy_price_below_ema50_break
+        self._policy_tsi_below_break = self._trend_policy.policy_tsi_below_break
+        self._policy_tsi_break_max = self._trend_policy.policy_tsi_break_max
         self._new_min_true = self._trend_policy.new_min_true
         self._break_min_true = self._trend_policy.break_min_true
 

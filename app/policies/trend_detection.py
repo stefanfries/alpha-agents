@@ -26,6 +26,8 @@ class TrendDetectionPolicyConfig:
     policy_tq20_above: bool = True
     policy_tq60_min: float = 0.05
     policy_tq20_min: float = 0.0
+    policy_tsi_above: bool = True
+    policy_tsi_new_min: float = 25.0
     new_min_true: int | None = None
 
     # BREAK (exit) detection policies
@@ -34,11 +36,15 @@ class TrendDetectionPolicyConfig:
     policy_adx_below_break: bool = True
     policy_adx_falling_break: bool = False
     policy_price_below_ema50_break: bool = True
+    policy_tsi_below_break: bool = True
+    policy_tsi_break_max: float = 20.0
     break_min_true: int | None = 1
 
     # Indicator settings used by marker computation
     supertrend_period: int = 10
     supertrend_multiplier: float = 3.0
+    tsi_fast: int = 13
+    tsi_slow: int = 25
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any] | None) -> "TrendDetectionPolicyConfig":
@@ -54,12 +60,16 @@ class TrendDetectionPolicyConfig:
             policy_tq20_above=_as_bool(src.get("policy_tq20_above"), True),
             policy_tq60_min=_as_float(src.get("policy_tq60_min"), 0.05),
             policy_tq20_min=_as_float(src.get("policy_tq20_min"), 0.0),
+            policy_tsi_above=_as_bool(src.get("policy_tsi_above"), True),
+            policy_tsi_new_min=_as_float(src.get("policy_tsi_new_min"), 25.0),
             new_min_true=_as_optional_int(src.get("new_min_true")),
             policy_supertrend_break=_as_bool(src.get("policy_supertrend_break"), True),
             policy_ema20_falling_break=_as_bool(src.get("policy_ema20_falling_break"), True),
             policy_adx_below_break=_as_bool(src.get("policy_adx_below_break"), True),
             policy_adx_falling_break=_as_bool(src.get("policy_adx_falling_break"), False),
             policy_price_below_ema50_break=_as_bool(src.get("policy_price_below_ema50_break"), True),
+            policy_tsi_below_break=_as_bool(src.get("policy_tsi_below_break"), True),
+            policy_tsi_break_max=_as_float(src.get("policy_tsi_break_max"), 20.0),
             break_min_true=(
                 _as_optional_int(src.get("break_min_true"))
                 if "break_min_true" in src
@@ -67,6 +77,8 @@ class TrendDetectionPolicyConfig:
             ),
             supertrend_period=_as_int(src.get("supertrend_period"), 10),
             supertrend_multiplier=_as_float(src.get("supertrend_multiplier"), 3.0),
+            tsi_fast=_as_int(src.get("tsi_fast"), 13),
+            tsi_slow=_as_int(src.get("tsi_slow"), 25),
         )
 
     def entry_enabled_rules(self) -> dict[str, bool]:
@@ -78,6 +90,7 @@ class TrendDetectionPolicyConfig:
             "price_above_ema50": self.policy_price_above_ema50,
             "tq60_above": self.policy_tq60_above,
             "tq20_above": self.policy_tq20_above,
+            "tsi_above": self.policy_tsi_above,
         }
 
     def exit_enabled_rules(self) -> dict[str, bool]:
@@ -87,6 +100,7 @@ class TrendDetectionPolicyConfig:
             "adx_below": self.policy_adx_below_break,
             "adx_falling": self.policy_adx_falling_break,
             "price_below_ema50": self.policy_price_below_ema50_break,
+            "tsi_below": self.policy_tsi_below_break,
         }
 
 
@@ -98,6 +112,7 @@ class TrendIndicatorSeries:
     adx: np.ndarray
     atr20: np.ndarray
     st_bull: np.ndarray
+    tsi: np.ndarray
 
 
 def build_trend_indicator_series(
@@ -113,6 +128,7 @@ def build_trend_indicator_series(
     ema50 = talib.EMA(close, timeperiod=50)
     adx_vals = talib.ADX(high, low, close, timeperiod=14)
     atr20 = talib.ATR(high, low, close, timeperiod=20)
+    tsi = _tsi_series(close, policy_cfg.tsi_fast, policy_cfg.tsi_slow)
     final_upper, final_lower = supertrend_fn(
         high,
         low,
@@ -142,7 +158,22 @@ def build_trend_indicator_series(
         adx=adx_vals,
         atr20=atr20,
         st_bull=st_bull,
+        tsi=tsi,
     )
+
+
+def _tsi_series(close: np.ndarray, fast: int, slow: int) -> np.ndarray:
+    """True Strength Index over the full series (double-smoothed momentum)."""
+    n = len(close)
+    if n < 2:
+        return np.full(n, np.nan)
+    pc = np.diff(close).astype(float)
+    ds_pc = talib.EMA(talib.EMA(pc, timeperiod=fast), timeperiod=slow)
+    ds_abs = talib.EMA(talib.EMA(np.abs(pc), timeperiod=fast), timeperiod=slow)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tsi = 100.0 * ds_pc / ds_abs
+    tsi[ds_abs == 0.0] = np.nan
+    return np.concatenate(([np.nan], tsi))  # align to close's length (pc is one shorter)
 
 
 def trend_quality_at_index(
@@ -205,6 +236,9 @@ def bar_indicator_values(
     )
     tq60 = trend_quality_at_index(series.close, series.atr20, idx, lookback_regression)
     tq20 = trend_quality_at_index(series.close, series.atr20, idx, lookback_regression_short)
+    tsi_val = float(series.tsi[idx])
+    tsi_above = not np.isnan(tsi_val) and tsi_val > policy_cfg.policy_tsi_new_min
+    tsi_below = not np.isnan(tsi_val) and tsi_val < policy_cfg.policy_tsi_break_max
 
     return {
         "supertrend": bool(series.st_bull[idx]),
@@ -219,6 +253,8 @@ def bar_indicator_values(
         "price_below_ema50": not price_above_ema50,
         "tq60_above": tq60 > policy_cfg.policy_tq60_min,
         "tq20_above": tq20 > policy_cfg.policy_tq20_min,
+        "tsi_above": tsi_above,
+        "tsi_below": tsi_below,
     }
 
 

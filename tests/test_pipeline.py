@@ -59,6 +59,8 @@ async def test_screening_selected_preserves_score_order():
         "price_below_ema50": False,
         "tq60_above": True,
         "tq20_above": True,
+        "tsi_above": True,
+        "tsi_below": False,
     }
     agent._trend_signal = lambda *args, **kwargs: None
     agent._last_break_age = lambda *args, **kwargs: None
@@ -287,6 +289,8 @@ def test_recent_new_downgrades_to_hold_when_current_bar_fails_selected_policy(mo
             return ema20
         if timeperiod == 50:
             return ema50
+        if timeperiod in (13, 25):
+            return np.zeros(len(close), dtype=float)
         raise AssertionError(f"unexpected EMA period {timeperiod}")
 
     monkeypatch.setattr(screening_module.talib, "EMA", fake_ema)
@@ -356,12 +360,16 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         policy_tq20_above=None,
         policy_tq60_min="0.07",
         policy_tq20_min="0.02",
+        policy_tsi_above="on",
+        policy_tsi_new_min="30",
         new_min_true="99",
         policy_supertrend_break="on",
         policy_ema20_falling_break=None,
         policy_adx_below_break="on",
         policy_adx_falling_break=None,
         policy_price_below_ema50_break=None,
+        policy_tsi_below_break=None,
+        policy_tsi_break_max="15",
         break_min_true="0",
     )
 
@@ -383,12 +391,16 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         "policy_tq20_above": False,
         "policy_tq60_min": 0.07,
         "policy_tq20_min": 0.02,
-        "new_min_true": 5,
+        "policy_tsi_above": True,
+        "policy_tsi_new_min": 30.0,
+        "new_min_true": 6,
         "policy_supertrend_break": True,
         "policy_ema20_falling_break": False,
         "policy_adx_below_break": True,
         "policy_adx_falling_break": False,
         "policy_price_below_ema50_break": False,
+        "policy_tsi_below_break": False,
+        "policy_tsi_break_max": 15.0,
         "break_min_true": 1,
     }
 
@@ -429,12 +441,16 @@ async def test_restart_stage_clamps_tq_thresholds_and_handles_invalid(monkeypatc
         policy_tq20_above="on",
         policy_tq60_min="9.9",
         policy_tq20_min="invalid",
+        policy_tsi_above="on",
+        policy_tsi_new_min="invalid",
         new_min_true="2",
         policy_supertrend_break="on",
         policy_ema20_falling_break="on",
         policy_adx_below_break="on",
         policy_adx_falling_break="on",
         policy_price_below_ema50_break="on",
+        policy_tsi_below_break="on",
+        policy_tsi_break_max="invalid",
         break_min_true="2",
     )
 
