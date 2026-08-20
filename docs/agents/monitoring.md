@@ -76,14 +76,15 @@ None directly.
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).
 - Check exit signal from screening:
   - `BREAK` = active break signal → **immediate SELL** (no confirmation required)
-  - `None` (with key present) = BREAK aged out (>1 bar old); treated as no active exit signal → no sell
+  - `None` with `last_break_age_bars[symbol]` present = BREAK aged out of the active-display window (>4 bars old), but the screening state machine has already settled to `OUT` — treated as an exit signal → **SELL** (same reason as active BREAK)
+  - `None` with no `last_break_age_bars` entry = no break on record for this symbol → no sell
   - Missing key in `trend_signals` = no signal available for mapped underlying symbol → no sell
 - Evaluate warrant health via `_check_warrant_health()` using available snapshot metrics (`spread_pct`, `leverage`, `days_to_maturity`, `delta`).
 - Compute health score via `_monitoring_score()`: weighted 4-component normalization (spread, leverage, maturity, delta)
 - **Resolve action via `_decide_action()` with trend-first priority**:
   
   **Step 1: Exit signal (trend)**
-  - `trend_signal == BREAK` => **SELL** with reason `"trend break"` (immediate; no confirmation needed)
+  - `trend_signal == BREAK`, or `trend_signal is None` with a known `last_break_age_bars` (aged-out BREAK) => **SELL** with reason `"trend break"` (immediate; no confirmation needed)
   
   **Step 2: Warrant health check (only if trend is intact)**
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
@@ -91,7 +92,7 @@ None directly.
 
 Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold). Here, EMA20 falling means `EMA20[t-2] > EMA20[t-1] > EMA20[t]`.
 
-**Active BREAK** fires when `trend_signal == "BREAK"` (signal is at most 1 bar old). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed.
+**Active BREAK** fires when `trend_signal == "BREAK"` (signal is at most 1 bar old). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed. **Aged-out BREAK** (`trend_signal is None` with a known `last_break_age_bars`) is sold on the same basis — the underlying's trend already broke, it is simply outside screening's UI-visible BREAK window, so ROLL would otherwise extend exposure to a position whose trend support has already gone.
 
 ### Responsibility boundary
 
@@ -126,8 +127,9 @@ Monitoring is classification-only:
 | Trend Signal | Action | Reason |
 | --- | --- | --- |
 | `BREAK` | **SELL** | "trend break" |
-| `HOLD` / `NEW` / `None` (with key) | → Step 2 | Continue to warrant health check |
-| key missing | → Step 2 (KEEP) | "no signal" |
+| `None` with known `last_break_age_bars` (aged-out BREAK) | **SELL** | "trend break" |
+| `HOLD` / `NEW` | → Step 2 | Continue to warrant health check |
+| `None` with no `last_break_age_bars` entry, or key missing | → Step 2 (KEEP) | "no signal" |
 
 #### Step 2: Warrant health (only if trend is intact)
 

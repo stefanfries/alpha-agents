@@ -138,7 +138,7 @@ The stored `trend_signals` value is then derived from the most recent event and 
 
 This signal is purely observational. It informs entry timing at the screening stage; it does not trigger orders.
 
-Additionally, `last_break_age_bars` stores the distance (in bars) to the most recent BREAK event, even when `trend_signals[symbol]` has already aged out to `None`. Monitoring uses this for explanatory UI text only.
+Additionally, `last_break_age_bars` stores the distance (in bars) to the most recent BREAK event, even when `trend_signals[symbol]` has already aged out to `None`. Monitoring uses this both to render aged-out-BREAK explanatory UI text and — since the state machine has already settled to `OUT` at that point — to trigger a SELL for held positions (see [docs/agents/monitoring.md](agents/monitoring.md)).
 
 ### Policy persistence
 

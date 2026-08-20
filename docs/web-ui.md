@@ -247,7 +247,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
 | Reason | Human-readable decision reason string |
-| Trend status | User-facing trend state: `NEW`, `HOLD`, `BREAK pending`, `BREAK confirmed`, `BREAK confirmed earlier`, or `no screening signal` |
+| Trend status | User-facing trend state: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no signal, last BREAK X bars ago`, or `no screening signal` |
 | Warrant health | Health status derived from monitoring checks: `healthy`, `degraded` (+ detail), or `unknown` |
 
 Entry-candidate columns:

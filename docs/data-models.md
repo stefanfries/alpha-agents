@@ -314,7 +314,7 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `positions_to_sell` | `list[PositionReview]` | Positions with confirmed trend exit (`BREAK` confirmed or aged-out `--` for mapped symbol) |
+| `positions_to_sell` | `list[PositionReview]` | Positions with a confirmed trend exit (active `BREAK`) or an aged-out BREAK (`trend_signal is None` with a known `last_break_age_bars` for the mapped symbol) |
 | `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger and/or degraded-but-not-roll-eligible positions |
 | `positions_to_roll` | `list[PositionReview]` | Degraded warrants classified as roll candidates (replacement selection occurs downstream) |
 | `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |

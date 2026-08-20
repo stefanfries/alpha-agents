@@ -282,8 +282,11 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                     underlying_sym,
                     warrant_wkn,
                 )
-            has_exit_signal = trend_signal == "BREAK"
             last_break_age = input.last_break_age_bars.get(underlying_sym)
+            # Aged-out BREAK (None + known last_break_age) means the state machine
+            # already settled to OUT — the trend has broken, just outside the
+            # active-BREAK display window. Treat as an exit signal, same as BREAK.
+            has_exit_signal = trend_signal == "BREAK" or (trend_signal is None and last_break_age is not None)
             policy_values = input.policy_results.get(underlying_sym, {})
             break_reasons = self._break_reasons(policy_values)
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)

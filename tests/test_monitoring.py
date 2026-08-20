@@ -707,6 +707,33 @@ class TestImmediateBreakSell:
         assert len(result.positions_to_sell) == 0
         assert len(result.positions_to_keep) == 1
 
+    @pytest.mark.asyncio
+    async def test_aged_out_break_with_known_age_sells(self):
+        """None signal WITH a known last_break_age means the state already settled
+        OUT — this is an aged-out BREAK, not a healthy trend, so it must sell."""
+        agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+        result = await agent.run(
+            MonitoringInput(
+                candidates=[],
+                scores={},
+                trend_signals={"ASML": None},
+                last_break_age_bars={"ASML": 8},
+                current_holdings=[
+                    Position(
+                        ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                        quantity=Decimal("1"),
+                        avg_cost=Decimal("0"),
+                    )
+                ],
+                warrant_underlying_map={"ISIN1": "ASML"},
+                held_since_map={},
+                max_positions=5,
+            )
+        )
+        assert len(result.positions_to_sell) == 1
+        assert len(result.positions_to_keep) == 0
+        assert result.positions_to_sell[0].decision_reason == "trend break"
+
 
 class TestTrendStatus:
     """Unit tests for _trend_status and _break_reasons."""
