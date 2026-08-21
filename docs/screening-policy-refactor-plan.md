@@ -63,7 +63,7 @@ Phase 2 note:
 
 ### Phase 3 (optional hardening)
 
-1. Add targeted parity tests for policy evaluation and marker transitions.
+1. Add targeted parity tests for policy evaluation, NEW transitions, and active-BREAK markers (including BREAK on the bar immediately after NEW).
 2. Add fixture-based tests that compare old/new behavior on representative bar series.
 
 ### Phase 4 (later, separate track)

@@ -263,7 +263,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `policy_results` | `dict[str, dict[str, bool]]` | Per-ticker indicator booleans used by NEW/BREAK policy groups: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above` |
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
-| `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below) |
+| `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below). `BREAK` is emitted when the active BREAK group passes while the ticker is in trend; it does not require a new edge. |
 | `last_break_age_bars` | `dict[str, int]` | Per-ticker bars since the most recent BREAK event (present even when `trend_signals[symbol]` is `None`) |
 | `latest_candle_dates` | `dict[str, date]` | Date of the most recent OHLCV bar per ticker |
 | `previous_candle_dates` | `dict[str, date]` | Date of bars[-2] per ticker (second-to-last closed candle) |

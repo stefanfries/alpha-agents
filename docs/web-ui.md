@@ -178,7 +178,7 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 | TQ-20 | Short-window Trend Quality (20-bar) |
 | TSI | True Strength Index value |
 | ST / E20 / ADX / E50 | Per-policy pass/fail badges (green ✓ / red ✗) |
-| Signal | Recent trend-state signal from the screening state machine: **NEW** (green, fresh signal with 5-bar stickiness) / **HOLD** (yellow, still in trend) / **BREAK** (red, break event with 1-bar follow-through) / — |
+| Signal | Recent trend-state signal from the screening state machine: **NEW** (green, fresh signal with 5-bar stickiness) / **HOLD** (yellow, still in trend) / **BREAK** (red, active exit event shown for up to 5 bars including the event bar) / — |
 | 1W / 2W / 4W | Rank delta vs prior runs (▲/▼/▶/—) |
 
 Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
@@ -191,7 +191,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 - **Time range selector**: 3M / 6M / 1Y (default) / 3Y
 - **Overlay indicators** (toggle buttons): EMA 20 (blue, default on), EMA 50 (orange), SMA 200 (purple), SuperTrend (green/red segments)
 - **ADX sub-pane** (toggle, synchronized scroll/zoom): ADX line (gold), +DI (green), −DI (red), threshold line at `min_adx` (default 20, dashed, lineWidth=2)
-- **Policy signal markers** on the price chart: green ▲ NEW at each bar where all enabled policies first pass; red ▼ BREAK at each bar where they stop passing. Computed server-side over the full 1460-bar history, respecting the current `config_overrides.screening` policy configuration.
+- **Policy signal markers** on the price chart: green ▲ NEW when the NEW group first passes after failing; red ▼ BREAK when the active BREAK group passes while the ticker is in trend. BREAK does not require a new false-to-true edge and can therefore occur on the bar immediately after NEW. Markers are computed server-side over the full 1460-bar history, respecting the current `config_overrides.screening` policy configuration.
 - **Market regime line is clickable**: clicking it loads the corresponding index candle chart in the same right-side panel.
 - **Index chart behavior (regime click path)**:
   - NEW/BREAK markers are hidden.

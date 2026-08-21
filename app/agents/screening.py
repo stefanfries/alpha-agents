@@ -356,7 +356,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 self._passes_policy_group(c, break_enabled, break_min_true),
             )
 
-        prev_pn, prev_pb = _bar_passes(0)
+        prev_pn, _ = _bar_passes(0)
         state = "OUT"
         last_signal: str | None = None
         last_signal_bar = -1
@@ -368,12 +368,12 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
                 state = "IN_TREND"
                 last_signal = "NEW"
                 last_signal_bar = i
-            elif state == "IN_TREND" and pb and not prev_pb:
+            elif state == "IN_TREND" and pb:
                 state = "OUT"
                 last_signal = "BREAK"
                 last_signal_bar = i
                 last_break_bar = i
-            prev_pn, prev_pb = pn, pb
+            prev_pn = pn
 
         age = n - 1 - last_signal_bar  # 0 = fired on current (last) bar
         last_break_age = (n - 1 - last_break_bar) if last_break_bar >= 0 else None

@@ -82,7 +82,7 @@ With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillat
 Policies are evaluated as indicator booleans per ticker, then grouped into two rule sets:
 
 1. **NEW group (entry detection)** controls whether a ticker becomes a candidate for `SelectionResult.selected`.
-2. **BREAK group (exit detection)** is used by the trend-signal state machine to emit `BREAK` transitions.
+2. **BREAK group (exit detection)** is used by the trend-signal state machine to emit an exit when the active BREAK conditions are met while the ticker is already `IN_TREND`.
 
 Rules are evaluated with k-of-n semantics via `passes_rule_group`:
 
@@ -124,7 +124,8 @@ For every ticker with sufficient bar history, the agent runs a state machine ove
 
 - `OUT -[NEW]-> IN_TREND -[BREAK]-> OUT`
 - A `NEW` event is emitted only when the NEW rule group changes from failing to passing.
-- A `BREAK` event is emitted only when the BREAK rule group changes from failing to passing while already `IN_TREND`.
+- A `BREAK` event is emitted when the BREAK rule group passes while already `IN_TREND`; it does not require a failing-to-passing edge on the BREAK group.
+- Consequently, a ticker can produce `NEW` on one bar and `BREAK` on the next bar when the entry and exit policy groups disagree. This is intentional: BREAK is an active exit condition and does not wait for candle confirmation.
 - Consecutive same-direction events are impossible by construction.
 
 The stored `trend_signals` value is then derived from the most recent event and the current state:

@@ -269,6 +269,32 @@ def test_trend_signal_k2_keeps_break_visible_for_five_bars_total():
     assert signal == "BREAK"
 
 
+def test_active_break_after_new_transition_emits_break_without_new_edge(monkeypatch):
+    from app.agents import screening as screening_module
+    from app.config import ScreeningSettings
+
+    agent = SecuritySelectionAgent(ScreeningSettings())
+    ticker = Ticker(symbol="SYN")
+    bars = _make_synthetic_bars(ticker, [100.0 + 0.1 * i for i in range(70)])
+
+    monkeypatch.setattr(screening_module, "build_trend_indicator_series", lambda *args, **kwargs: object())
+
+    def fake_bar_indicator_values(idx, *args, **kwargs):
+        return {"new": idx == len(bars) - 2, "break": idx >= 0}
+
+    monkeypatch.setattr(screening_module, "bar_indicator_values", fake_bar_indicator_values)
+
+    signal = agent._trend_signal(
+        bars,
+        {"new": True},
+        {"break": True},
+        new_min_true=None,
+        break_min_true=None,
+    )
+
+    assert signal == "BREAK"
+
+
 def test_recent_new_downgrades_to_hold_when_current_bar_fails_selected_policy(monkeypatch):
     from app.agents import screening as screening_module
     from app.config import ScreeningSettings

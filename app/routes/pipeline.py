@@ -116,7 +116,7 @@ def _compute_signal_markers(
         if state == "OUT" and passes_new[i] and not passes_new[i - 1]:
             markers.append({"time": dates[i], "position": "belowBar", "color": "#26a69a", "shape": "arrowUp", "text": "NEW"})
             state = "IN_TREND"
-        elif state == "IN_TREND" and passes_break[i] and not passes_break[i - 1]:
+        elif state == "IN_TREND" and passes_break[i]:
             markers.append({"time": dates[i], "position": "aboveBar", "color": "#ef5350", "shape": "arrowDown", "text": "BREAK"})
             state = "OUT"
     return markers

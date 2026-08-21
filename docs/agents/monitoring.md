@@ -92,7 +92,7 @@ None directly.
 
 Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold). Here, EMA20 falling means `EMA20[t-2] > EMA20[t-1] > EMA20[t]`.
 
-**Active BREAK** fires when `trend_signal == "BREAK"` (signal is at most 1 bar old). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed. **Aged-out BREAK** (`trend_signal is None` with a known `last_break_age_bars`) is sold on the same basis — the underlying's trend already broke, it is simply outside screening's UI-visible BREAK window, so ROLL would otherwise extend exposure to a position whose trend support has already gone.
+**Active BREAK** fires when `trend_signal == "BREAK"` (the signal is exposed for up to 5 bars including the event bar). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed. **Aged-out BREAK** (`trend_signal is None` with a known `last_break_age_bars`) is sold on the same basis — the underlying's trend already broke, it is simply outside screening's UI-visible BREAK window, so ROLL would otherwise extend exposure to a position whose trend support has already gone.
 
 ### Responsibility boundary
 
