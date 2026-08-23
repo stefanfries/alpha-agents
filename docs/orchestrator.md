@@ -196,7 +196,10 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   to `WarrantSelectionAgent(isin_overrides=...)`. An override redirects warrant lookup to the
   override ISIN, derives the strike band from that underlying's live native-currency quote
   (falling back to bid/ask midprice when `/quotes` omits a last price, no FX), and sets each
-  warrant's `chart_symbol`; the ADR remains the analyzed instrument.
+  warrant's `chart_symbol`; the ADR remains the analyzed instrument. It also passes the
+  configured `spread_max_pct` (hard spread cap, honored verbatim \u2014 no clamp) and
+  `max_selected = monitoring.free_positions` so warrant selection fills only up to the number
+  of free slots while backfilling from the full candidate pool.
 
 ---
 
@@ -206,7 +209,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 
 1. Calls `_portfolio_max_positions(run)` — resolves the target position limit from execution `config_overrides.portfolio.max_positions`, or falls back to global `settings.portfolio.max_positions`.
 2. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries).
-3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through), with `free_positions = max_positions`.
+3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through, not capped), with `free_positions = max_positions`.
 4. Builds initial underlying names from screening universe (`SelectionResult.all_tickers` fallback `selected`): `{symbol -> name}`.
 5. Calls `_fetch_warrant_underlying_map(run, holdings)` — strict live resolver via FinHub `/v1/instruments/{isin}` only.
   The result maps `warrant_isin -> underlying_symbol`.
@@ -218,8 +221,8 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
 10. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
 11. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
-12. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`) and filters entry candidates to capped list. Positions whose underlying cannot be mapped are always kept (safe default).
-13. `entry_candidates` = top `free_positions` screening candidates not in `excluded_symbols` (all held underlyings)
+12. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`). Positions whose underlying cannot be mapped are always kept (safe default).
+13. `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found.
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 

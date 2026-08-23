@@ -80,13 +80,14 @@ class SelectedWarrant(BaseModel):
 class WarrantSelectionResult(BaseModel):
     selected: list[SelectedWarrant]
     skipped: list[str]
-    skipped_reasons: dict[str, str] = {}            # symbol → skip reason
-    top3: dict[str, list[SelectedWarrant]] = {}       # symbol → up to 3 warrants by score
-    analyzed_count: dict[str, int] = {}               # symbol → total candidates evaluated
+    skipped_reasons: dict[str, str] = Field(default_factory=dict)            # symbol → skip reason
+    skipped_names: dict[str, str] = Field(default_factory=dict)              # symbol → underlying display name
+    top3: dict[str, list[SelectedWarrant]] = Field(default_factory=dict)       # symbol → up to 3 warrants by score
+    analyzed_count: dict[str, int] = Field(default_factory=dict)               # symbol → total candidates evaluated
     # Metadata for monitoring integration
-    keep_existing_isins: list[str] = []               # ISINs downgraded to KEEP (replacement worse)
-    roll_underlyings: list[str] = []                  # symbols where valid replacement found
-    roll_keep_underlyings: list[str] = []             # symbols downgraded to KEEP
+    keep_existing_isins: list[str] = Field(default_factory=list)               # ISINs downgraded to KEEP (replacement worse)
+    roll_underlyings: list[str] = Field(default_factory=list)                  # symbols where valid replacement found
+    roll_keep_underlyings: list[str] = Field(default_factory=list)             # symbols downgraded to KEEP
 
 
 class RollReplacement(BaseModel):

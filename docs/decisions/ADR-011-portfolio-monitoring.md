@@ -57,7 +57,7 @@ The stage reads the depot, audits every open position against warrant and underl
    - Underlyings already held (and not being sold)
    - Underlyings sold in the last N days (re-entry prevention window, configurable)
 
-5. Select top free_positions from Screening results that meet ALL entry criteria:
+5. Pass all eligible entry candidates from Screening (meeting ALL entry criteria) downstream — **not** capped to `free_positions` here (see Amendment below):
    - SuperTrend bullish
    - EMA20 rising
    - ADX > threshold and rising
@@ -109,10 +109,18 @@ Research → Screening → [Monitoring] → Warrant Selection → Portfolio → 
 The Monitoring stage consumes `SelectionResult` (from Screening) and the depot state, and produces a `MonitoringResult` containing:
 
 - `positions_to_sell: list[PositionReview]` — each with symbol, warrant, reason
-- `entry_candidates: list[Ticker]` — filtered and capped to `free_positions`
+- `entry_candidates: list[Ticker]` — all eligible screening candidates (rank order); the `free_positions` slot cap is enforced downstream in Warrant Selection (see Amendment)
 - `free_positions: int`
 
-Downstream stages (Warrant Selection, Portfolio) operate only on `entry_candidates`, not the full screening list.
+Downstream stages (Warrant Selection, Portfolio) operate on `entry_candidates`. Warrant Selection fills up to `free_positions` warrants and lets lower-ranked candidates backfill slots where no warrant exists.
+
+---
+
+## Amendment (2026-08): slot cap moved to Warrant Selection
+
+Originally, Monitoring capped `entry_candidates` to `free_positions` (top-N by rank). This starved the portfolio when warrant availability removed top-ranked candidates (no warrant, all capped, or all above the spread cap), leaving fewer positions than free slots with no backfill.
+
+Current behavior: Monitoring passes **all** eligible candidates (rank order, uncapped). Warrant Selection receives `max_selected = free_positions` and fills up to that many warrants in rank order, so a lower-ranked underlying can backfill a slot a higher-ranked one could not fill. `free_positions` remains the real capacity limit — it is simply enforced one stage later, after warrant availability is known.
 
 ---
 
@@ -129,7 +137,7 @@ class PositionReview(BaseModel):
 class MonitoringResult(BaseModel):
     positions_to_sell: list[PositionReview]
     positions_to_keep: list[PositionReview]
-    entry_candidates: list[Ticker]      # top-N filtered, capped to free_positions
+    entry_candidates: list[Ticker]      # all eligible (rank order); slot cap applied downstream
    free_positions: int                 # max_positions − len(current_holdings) + confirmed sells
     excluded_symbols: list[str]         # all held underlyings (kept + selling)
 ```

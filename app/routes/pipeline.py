@@ -239,6 +239,7 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "strike_min_factor": ws_cfg.strike_min_factor,
             "strike_max_factor": ws_cfg.strike_max_factor,
             "min_score": ws_cfg.min_score,
+            "spread_max_pct": ws_cfg.spread_max_pct,
         }
     if stage == "monitoring" and execution:
         mon_overrides = execution.get("config_overrides", {}).get("monitoring", {})
@@ -327,6 +328,7 @@ async def restart_stage(
     ws_strike_min_factor: Annotated[str | None, Form()] = None,
     ws_strike_max_factor: Annotated[str | None, Form()] = None,
     ws_min_score: Annotated[str | None, Form()] = None,
+    ws_spread_max_pct: Annotated[str | None, Form()] = None,
     monitoring_health_submitted: Annotated[str | None, Form()] = None,
     wh_spread_max_pct: Annotated[str | None, Form()] = None,
     wh_leverage_min: Annotated[str | None, Form()] = None,
@@ -484,12 +486,23 @@ async def restart_stage(
             parsed_min_score = 0.0
         safe_min_score = max(0.0, min(parsed_min_score, 1.0))
 
+        try:
+            parsed_spread_max_pct = (
+                float(ws_spread_max_pct)
+                if ws_spread_max_pct not in (None, "")
+                else settings.warrant_selection.spread_max_pct
+            )
+        except ValueError:
+            parsed_spread_max_pct = settings.warrant_selection.spread_max_pct
+        safe_spread_max_pct = max(0.0, min(parsed_spread_max_pct, 20.0))
+
         updates["config_overrides.warrant_selection"] = {
             "min_days_to_expiry": safe_min_months * 30,
             "max_days_to_expiry": safe_max_months * 30,
             "strike_min_factor": safe_strike_min_factor,
             "strike_max_factor": safe_strike_max_factor,
             "min_score": safe_min_score,
+            "spread_max_pct": safe_spread_max_pct,
         }
 
     if monitoring_health_submitted is not None:

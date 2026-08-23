@@ -1,5 +1,45 @@
 # Market Regime Filter — Implementation Plan
 
+## Implementation Status (as of 2026-08-23)
+
+Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
+
+### Implemented
+
+1. Market regime model and payload wiring are implemented (`MarketRegime` on research and screening results, benchmark metadata persisted through pipeline stages).
+2. Research benchmark selection and regime classification are implemented:
+  - dominant index from `universe_source`
+  - index-to-Yahoo mapping from `ResearchSettings.market_regime_symbols`
+  - TQ-60/TQ-20 classification with configurable thresholds
+3. Research UI regime badge is implemented (status color, TQ-60, TQ-20, advisory wording).
+4. Screening UI regime banner is implemented, including click-to-chart behavior for index charts.
+5. Breadth enrichment (Phase 1.5) is implemented in Screening:
+  - breadth score and components
+  - narrow-rally downgrade `green -> yellow` when breadth < 0.40
+6. Orchestrator wiring of `universe_source` into `ResearchInput` is implemented.
+
+### Not implemented (still open)
+
+1. Phase 2 regime-aware behavior in Monitoring (no tighter stops or automatic HOLD review based on yellow/red).
+2. Regime-aware behavior in Warrant Selection and Portfolio stages.
+3. Regime history persistence across runs.
+4. VIX as secondary signal.
+
+### Rule/step coverage against this plan
+
+1. Step 1 (`app/models/signals.py`): Implemented.
+2. Step 2 (`app/config.py`): Implemented.
+3. Step 3 (`app/agents/research.py`): Implemented.
+4. Step 3b (`app/templates/stages/research.html`): Implemented.
+5. Step 4 (`app/agents/screening.py`): Implemented.
+6. Step 5 (`app/templates/stages/screening.html`): Implemented.
+7. Step 6 (`app/orchestrator.py`): Implemented.
+
+### Notes
+
+1. Current behavior is advisory-only for approval decisions; no runtime entry blocking based on regime status is enforced.
+2. There are no dedicated tests that assert market-regime classification and UI payload behavior end-to-end, so regression risk remains if thresholds or wiring change.
+
 ## Goal
 
 Add a market regime traffic light (🟢 / 🟡 / 🔴) to the Screening stage that:

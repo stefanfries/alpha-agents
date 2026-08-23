@@ -273,7 +273,9 @@ class Pipeline:
                 strike_min_factor=ws_cfg.strike_min_factor,
                 strike_max_factor=ws_cfg.strike_max_factor,
                 min_score=ws_cfg.min_score,
+                spread_max_pct=ws_cfg.spread_max_pct,
                 atm_band_fallback=ws_cfg.atm_band_fallback,
+                max_selected=monitoring.free_positions,
                 isin_overrides=overrides,
                 on_progress=on_progress,
             ).run(SelectionResult(selected=candidates, scores={t.symbol: 1.0 for t in candidates}, rationale={}))
@@ -293,14 +295,15 @@ class Pipeline:
         current_holdings = await self._fetch_holdings(run)
         max_positions = self._portfolio_max_positions(run)
 
-        # No holdings → pass all screening candidates through as entry candidates
+        # No holdings → pass all screening candidates through as entry candidates.
+        # Warrant selection fills up to free_positions from this pool (backfill).
         if not current_holdings:
             free = max_positions
             return MonitoringResult(
                 positions_to_sell=[],
                 positions_to_keep=[],
                 positions_to_roll=[],
-                entry_candidates=screening.selected[:max_positions],
+                entry_candidates=screening.selected,
                 free_positions=free,
                 excluded_symbols=[],
             )

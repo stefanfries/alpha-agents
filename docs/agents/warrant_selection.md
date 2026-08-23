@@ -6,7 +6,7 @@ For each stock selected by the `SecuritySelectionAgent`, find available Call War
 
 ## Input
 
-`SelectionResult` (output of `SecuritySelectionAgent`) — the `selected` list is consumed as underlyings.
+`SelectionResult` (output of `SecuritySelectionAgent`, forwarded via monitoring's `entry_candidates`) — the `selected` list is consumed as underlyings, in screening rank order. The agent fills warrants up to `max_selected` slots (set to monitoring `free_positions`); the candidate pool is intentionally larger than the number of free slots so lower-ranked underlyings can backfill slots where no warrant exists.
 
 ## Output
 
@@ -14,6 +14,8 @@ For each stock selected by the `SecuritySelectionAgent`, find available Call War
 class WarrantSelectionResult(BaseModel):
     selected: list[SelectedWarrant]           # Single best warrant per underlying (for portfolio)
     skipped: list[str]                        # Underlying symbols where no warrant was found
+    skipped_reasons: dict[str, str]           # Symbol -> human-readable skip reason
+    skipped_names: dict[str, str]             # Symbol -> underlying display name
     top3: dict[str, list[SelectedWarrant]]    # Symbol -> up to 3 best warrants by score
     analyzed_count: dict[str, int]            # Symbol -> total candidates detail-fetched
     # Monitoring metadata (consumed by UI/portfolio flows):
@@ -71,14 +73,16 @@ name); only warrant sourcing and the strike chart follow the override.
 
 ## Behaviour
 
-1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × strike_min_factor .. current_price × strike_max_factor` (default `0.95 .. 1.00`)
+1. For each selected underlying, call `GET /v1/warrants` with `preselection=CALL`, the underlying's ISIN, and a strike range of `current_price × strike_min_factor .. current_price × strike_max_factor` (default `0.90 .. 1.05`)
 2. For ADR overrides, the `current_price` comes from the FinHub `/quotes` endpoint for the override ISIN; if the quote has no explicit last/current field, the bid/ask midprice is used instead. Otherwise it comes from the research-stage current price map.
 3. Adapt strike interval width by candidate count (up to two adjustments each direction): if `<5` candidates, widen interval by doubling width; if `>50`, narrow interval by halving width.
 4. If no candidates remain after adaptation, retry once with the wider fallback band `current_price × (1 ± atm_band_fallback)` (default ±10%)
 5. For each candidate, call `GET /v1/warrants/{isin}` to fetch full detail. Both steps use the shared `retry_call()` helper (`app/tools/retry.py`: up to 3 attempts with exponential backoff, roughly 2 s then 4 s) for transient API errors.
-6. Score all successfully fetched details using the scoring model and keep only candidates with `score > min_score`.
-7. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`
-8. Underlyings with no suitable candidate are recorded in `skipped` with a reason in `skipped_reasons` and excluded from portfolio construction
+6. Drop **capped** warrants (`reference_data.is_capped`). Then apply the **hard spread cap**: drop any warrant whose `market_data.spread_percent` exceeds `spread_max_pct` (default `2.0`%). The spread cap is filtered **locally after detail fetch** — never passed as a `get_warrants` query parameter (doing so pre-filtered the search and produced misleading empty results). `spread_percent` is already expressed in percent (e.g. `2.0` = 2.0%).
+7. Score the remaining details using the scoring model and keep only candidates with `score > min_score`.
+8. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`.
+9. **Entry cap with backfill (`max_selected`)**: candidates are processed in screening rank order and warrants fill up to `max_selected` slots (= monitoring `free_positions`). Once the slots are full, further underlyings that *do* have a viable warrant are simply not entered (no free slot). This lets a lower-ranked underlying backfill a slot that a higher-ranked one could not fill because it had no viable warrant.
+10. Underlyings with no suitable candidate are recorded in `skipped` with a human-readable reason in `skipped_reasons` (and the display name in `skipped_names`) and excluded from portfolio construction. Reasons include: `no candidates in configured maturity/strike range`, `only capped call warrants available`, `all candidates above configured spread cap`, `no candidate exceeded min score …`, `all detail fetches failed`, `missing ISIN`, `lookup failed`.
 
 Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail fetches share a pool of 5 concurrent connections (`asyncio.Semaphore(5)`). The detail concurrency was reduced from 10 to 5 to avoid triggering Comdirect rate limiting on the FinHub backend when processing large candidate pools (e.g. AMD with 100+ candidates).
 
@@ -107,9 +111,10 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | --------- | ------- | ----------- |
 | `min_days_to_expiry` | `270` | Minimum remaining life (9 months) for maturity filter |
 | `max_days_to_expiry` | `450` | Maximum remaining life (15 months) for maturity filter |
-| `strike_min_factor` | `0.95` | Primary strike lower bound factor (`strike_min = current_price × factor`) |
-| `strike_max_factor` | `1.00` | Primary strike upper bound factor (`strike_max = current_price × factor`) |
+| `strike_min_factor` | `0.90` | Primary strike lower bound factor (`strike_min = current_price × factor`) |
+| `strike_max_factor` | `1.05` | Primary strike upper bound factor (`strike_max = current_price × factor`) |
 | `min_score` | `0.0` | Minimum accepted score; only warrants with `score > min_score` are eligible |
+| `spread_max_pct` | `2.0` | Hard bid-ask spread cap (%) applied at selection time; wider warrants are dropped. Should stay ≤ monitoring `warrant_health.spread_max_pct` (entry stricter than degradation). |
 | `atm_band_fallback` | `0.10` | Fallback strike filter half-width (±10%) |
 
 **WarrantScoringSettings** (scoring component weights & thresholds, runtime-tunable via `.env`):
@@ -122,7 +127,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `leverage_mean` | `5.0` | Gaussian peak leverage (sweet spot) |
 | `leverage_sigma` | `3.0` | Gaussian standard deviation (range ~3–8×) |
 | `days_weight` | `0.20` | Weight for days-to-expiry component |
-| `days_mean` | `360` | Base/fallback Gaussian peak days; warrant selection runtime aligns target to midpoint of selected min/max maturity |
+| `days_mean` | `315` | Base/fallback Gaussian peak days (~midpoint of 9–12 months); warrant selection runtime aligns target to midpoint of selected min/max maturity (e.g. 360 for the 9–15 month default) |
 | `days_sigma` | `45.0` | Base/fallback Gaussian sigma; warrant selection runtime widens sigma for wider maturity windows |
 | `delta_weight` | `0.30` | Weight for delta component |
 | `delta_peak` | `0.5` | Base linear peak delta; overridden dynamically by `_range_adjusted_scoring_config` based on strike-band midpoint |
@@ -134,7 +139,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 WARRANT_SCORING__SPREAD_WEIGHT=0.25
 WARRANT_SCORING__DELTA_WEIGHT=0.30
 WARRANT_SCORING__LEVERAGE_MEAN=6.0
-WARRANT_SCORING__DAYS_MEAN=360
+WARRANT_SCORING__DAYS_MEAN=315
 ```
 
 Note: in warrant selection, the effective maturity target is derived from the selected maturity window shown in the UI (`target = (min + max) / 2`) and therefore adjusts automatically when the user changes min/max months.
@@ -143,11 +148,12 @@ Note: in warrant selection, the effective maturity target is derived from the se
 
 The warrant selection stage page shows:
 
-- **Status summary** (top): count of selected warrants and skipped underlyings. If `keep_existing_isins` is populated by upstream/downstream enrichment, an info box displays those incumbent ISINs.
+- **Status summary** (top): count of selected warrants and skipped underlyings. Skipped underlyings are listed as `SYMBOL - underlying name - reason` (name and reason shown when available). If `keep_existing_isins` is populated by upstream/downstream enrichment, an info box displays those incumbent ISINs.
 - **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) or `ROLL` (replacement). Optional `ROLL/KEEP` is supported when `roll_keep_underlyings` is populated.
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
 - **Strike controls** (below table): configurable strike min/max factors plus a read-only target strike factor field showing the midpoint of the selected strike range.
+- **Filter controls** (below table): `Max spread %` (hard spread cap, `ws_spread_max_pct`) and `Min score` (`ws_min_score`), rendered side by side. Values are persisted per execution and re-applied on rerun.
 - **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.
 - **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SuperTrend, NEW/BREAK signal markers (derived from active screening policy config), a horizontal price line at the strike price, and an arrow marker at the maturity date. Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.
 

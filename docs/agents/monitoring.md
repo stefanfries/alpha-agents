@@ -44,7 +44,7 @@ class MonitoringResult(BaseModel):
     positions_to_sell: list[PositionReview]  # SELL decisions
     positions_to_keep: list[PositionReview]  # HOLD decisions
     positions_to_roll: list[PositionReview]  # ROLL candidates (classification only)
-    entry_candidates: list[Ticker]           # filtered and capped to free_positions
+    entry_candidates: list[Ticker]           # all eligible screening candidates (NOT capped to free_positions)
     free_positions: int                      # max_positions − len(current_holdings) + confirmed sells
     excluded_symbols: list[str]              # all held underlyings (blocked from entry)
     # Metadata for warrant selection integration:
@@ -110,7 +110,7 @@ Monitoring is classification-only:
   - Note: Holdings with quantity ≤ 0 are excluded from the count by `_fetch_holdings()`
 - Confirmed SELL positions free slots within the same run. ROLL positions do not, because they remain occupied until replacement selection succeeds.
 - `excluded_symbols` = all held underlying symbols (kept + selling).
-- `entry_candidates` = `[t for t in candidates if t.symbol not in excluded_symbols][:free_positions]`
+- `entry_candidates` = `[t for t in candidates if t.symbol not in excluded_symbols]` — **not** capped to `free_positions`. The full eligible pool (screening rank order) is passed downstream so warrant selection can fill up to `free_positions` slots and let lower-ranked underlyings backfill slots where no warrant exists. The `free_positions` count is carried as metadata and enforced in the warrant selection stage (`max_selected`).
 
 ### Asymmetric entry / exit logic
 

@@ -275,8 +275,10 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `selected` | `list[SelectedWarrant]` | Single best-scoring warrant per underlying stock |
-| `skipped` | `list[str]` | Underlying symbols for which no warrant was found |
+| `selected` | `list[SelectedWarrant]` | Single best-scoring warrant per underlying stock (capped to `max_selected` = free slots, with backfill) |
+| `skipped` | `list[str]` | Underlying symbols for which no warrant was selected |
+| `skipped_reasons` | `dict[str, str]` | Symbol → human-readable skip reason (e.g. `only capped call warrants available`, `all candidates above configured spread cap`) |
+| `skipped_names` | `dict[str, str]` | Symbol → underlying display name (for the skipped list) |
 | `top3` | `dict[str, list[SelectedWarrant]]` | Symbol → up to 3 best warrants by score (for HITL detail panel) |
 | `analyzed_count` | `dict[str, int]` | Symbol → total warrant details fetched and scored |
 
@@ -317,7 +319,7 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 | `positions_to_sell` | `list[PositionReview]` | Positions with a confirmed trend exit (active `BREAK`) or an aged-out BREAK (`trend_signal is None` with a known `last_break_age_bars` for the mapped symbol) |
 | `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger and/or degraded-but-not-roll-eligible positions |
 | `positions_to_roll` | `list[PositionReview]` | Degraded warrants classified as roll candidates (replacement selection occurs downstream) |
-| `entry_candidates` | `list[Ticker]` | Filtered and capped screening candidates for new entry in this run; capped to `free_positions` |
+| `entry_candidates` | `list[Ticker]` | All eligible screening candidates (rank order) for new entry this run; **not** capped to `free_positions` — warrant selection enforces the slot cap (`max_selected`) with backfill |
 | `free_positions` | `int` | `max_positions − len(current_holdings) + len(positions_to_sell)` (`Free now`, including confirmed sells) |
 | `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling + rolling); blocked from entry in this run |
 | `keep_existing_isins` | `list[str]` | Reserved metadata for downstream stages |

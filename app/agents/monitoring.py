@@ -384,12 +384,14 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         n_held = len(input.current_holdings)
         free_positions = max(0, self._max_positions - n_held + len(positions_to_sell))
 
-        # Entry candidates: screening candidates not already held (kept or being sold)
+        # Entry candidates: screening candidates not already held (kept or being sold).
+        # Not capped to free_positions here — warrant selection fills up to free_positions
+        # from this pool so lower-ranked names can backfill slots where no warrant exists.
         excluded_symbols = sorted(all_held_underlyings)
         entry_candidates = [
             t for t in input.candidates
             if t.symbol not in all_held_underlyings
-        ][:free_positions]
+        ]
 
         logger.info(
             "Monitoring complete: %d keep, %d roll, %d sell, %d free slots, %d entry candidates",

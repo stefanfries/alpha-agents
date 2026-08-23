@@ -158,6 +158,9 @@
               {% for sym in r.skipped %}
               <li>
                 <code>{{ sym }}</code>
+                {% if r.skipped_names and sym in r.skipped_names %}
+                  <span class="text-muted">- {{ r.skipped_names[sym] }}</span>
+                {% endif %}
                 {% if r.skipped_reasons and sym in r.skipped_reasons %}
                   <span class="text-muted">- {{ r.skipped_reasons[sym] }}</span>
                 {% endif %}
@@ -241,15 +244,21 @@
           </fieldset>
 
           <fieldset class="border rounded p-3" style="min-width:220px;flex:1 1 220px">
-            <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Score filter</legend>
+            <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Filter</legend>
             <div class="d-flex align-items-end gap-3 flex-wrap">
+              <div>
+                <label class="form-label small mb-1" for="ws_spread_max_pct">Max spread %</label>
+                <input class="form-control form-control-sm" type="number" min="0.00" max="20.00" step="0.01"
+                       id="ws_spread_max_pct" name="ws_spread_max_pct"
+                    value="{{ '%.2f' | format(ws_cfg.spread_max_pct if ws_cfg.spread_max_pct is defined else 2.0) }}"
+                       style="width:130px">
+              </div>
               <div>
                 <label class="form-label small mb-1" for="ws_min_score">Min score</label>
                 <input class="form-control form-control-sm" type="number" min="0.00" max="1.00" step="0.01"
                        id="ws_min_score" name="ws_min_score"
                        value="{{ '%.2f' | format(ws_cfg.min_score if ws_cfg.min_score is defined else 0.0) }}"
                        style="width:130px">
-                <div class="form-text small">Only scores strictly greater than this value are eligible.</div>
               </div>
             </div>
           </fieldset>

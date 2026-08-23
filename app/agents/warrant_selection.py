@@ -7,7 +7,11 @@ from typing import Any
 from app.agents.base import Agent
 from app.config import settings
 from app.models.market import Ticker
-from app.models.signals import SelectedWarrant, SelectionResult, WarrantSelectionResult
+from app.models.signals import (
+    SelectedWarrant,
+    SelectionResult,
+    WarrantSelectionResult,
+)
 from app.policies.warrant_scoring import (
     WarrantScoringConfig,
     build_warrant_rationale,
@@ -77,7 +81,9 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         strike_min_factor: float = 0.95,
         strike_max_factor: float = 1.00,
         min_score: float = 0.0,
+        spread_max_pct: float | None = None,
         atm_band_fallback: float = 0.10,
+        max_selected: int | None = None,
         isin_overrides: dict[str, str] | None = None,
         on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
         scoring_config: WarrantScoringConfig | None = None,
@@ -89,7 +95,9 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._strike_min_factor = strike_min_factor
         self._strike_max_factor = strike_max_factor
         self._min_score = min_score
+        self._spread_max_pct = spread_max_pct
         self._atm_band_fallback = atm_band_fallback
+        self._max_selected = max_selected
         self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
         # Keep the scoring peak aligned with the active maturity search window.
@@ -113,7 +121,9 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         done_count = [0]
         active: set[str] = set()
 
-        async def select_one(ticker: Ticker) -> tuple[SelectedWarrant | None, list[SelectedWarrant], int, str | None]:
+        async def select_one(
+            ticker: Ticker,
+        ) -> tuple[SelectedWarrant | None, list[SelectedWarrant], int, str | None] | None:
             async with underlying_sem:
                 active.add(ticker.symbol)
                 if self._on_progress:
@@ -133,6 +143,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         selected: list[SelectedWarrant] = []
         skipped: list[str] = []
         skipped_reasons: dict[str, str] = {}
+        skipped_names: dict[str, str] = {}
         top3: dict[str, list[SelectedWarrant]] = {}
         analyzed_count: dict[str, int] = {}
         for ticker, result in zip(input.selected, results):
@@ -150,16 +161,24 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                         skipped_reasons[ticker.symbol] = skip_reason
                     if count:
                         analyzed_count[ticker.symbol] = count
+                elif self._max_selected is not None and len(selected) >= self._max_selected:
+                    # Warrant found but all free position slots are filled — not entered.
+                    analyzed_count[ticker.symbol] = count
                 else:
                     selected.append(best)
                     top3[ticker.symbol] = candidates_top3
                     analyzed_count[ticker.symbol] = count
+
+        for ticker in input.selected:
+            if ticker.symbol in skipped and ticker.name:
+                skipped_names[ticker.symbol] = ticker.name
 
         logger.info("Warrant selection: %d selected, %d skipped", len(selected), len(skipped))
         return WarrantSelectionResult(
             selected=selected,
             skipped=skipped,
             skipped_reasons=skipped_reasons,
+            skipped_names=skipped_names,
             top3=top3,
             analyzed_count=analyzed_count,
         )
@@ -227,7 +246,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
                 candidates = await fetch_warrants(strike_min, strike_max)
                 if candidates is None:
-                    return None
+                    return None, [], 0, "lookup failed"
 
                 count = len(candidates)
                 if count < 5 and widen_count < 2 and half_width > 0:
@@ -262,7 +281,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         else:
             candidates = await fetch_warrants(None, None)
             if candidates is None:
-                return None
+                return None, [], 0, "lookup failed"
 
         if not candidates and price:
             wide_min = round(price * (1 - self._atm_band_fallback), 4)
@@ -278,7 +297,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             )
             candidates = await fetch_warrants(wide_min, wide_max)
             if candidates is None:
-                return None
+                return None, [], 0, "lookup failed"
 
         if not candidates:
             logger.info(
@@ -305,11 +324,39 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             fetch_detail(c["isin"]) for c in candidates if c.get("isin")
         ])
         details = [d for d in raw if d]
+        fetched_count = len(details)
+        capped_rejected = sum(
+            1 for d in details if (d.get("reference_data") or {}).get("is_capped")
+        )
         details = [d for d in details if not (d.get("reference_data") or {}).get("is_capped")]
 
+        spread_rejected = 0
+        if self._spread_max_pct is not None:
+            spread_eligible_details: list[dict[str, Any]] = []
+            for detail in details:
+                spread = self._as_float((detail.get("market_data") or {}).get("spread_percent"))
+                if spread is not None and spread > self._spread_max_pct:
+                    spread_rejected += 1
+                    continue
+                spread_eligible_details.append(detail)
+            details = spread_eligible_details
+
         if not details:
-            logger.warning("%s: all %d detail fetches failed or were capped — skipping", ticker.symbol, len(candidates))
-            return None, [], 0, "all detail fetches failed or only capped warrants available"
+            if spread_rejected > 0:
+                logger.info(
+                    "%s: all %d eligible details rejected by spread cap %.2f%%",
+                    ticker.symbol,
+                    spread_rejected,
+                    self._spread_max_pct,
+                )
+                return None, [], 0, "all candidates above configured spread cap"
+
+            if capped_rejected > 0 and capped_rejected == fetched_count:
+                logger.info("%s: all %d call warrants are capped — skipping", ticker.symbol, capped_rejected)
+                return None, [], 0, "only capped call warrants available"
+
+            logger.warning("%s: all %d detail fetches failed — skipping", ticker.symbol, len(candidates))
+            return None, [], 0, "all detail fetches failed"
 
         scored_with_values = [
             (detail, self._score(detail, today))
@@ -339,6 +386,15 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         best = self._build(ticker, best_detail, today, chart_symbol)
         top3 = [self._build(ticker, d, today, chart_symbol) for d in top3_details]
         return best, top3, len(scored_with_values), None
+
+    @staticmethod
+    def _as_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     async def _override_chart_symbol(self, lookup_isin: str) -> str | None:
         """yfinance symbol of an override underlying (native-currency price series)."""

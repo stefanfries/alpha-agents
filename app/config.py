@@ -94,6 +94,8 @@ class WarrantSelectionSettings(BaseModel):
     strike_min_factor: float = 0.90 # strike_min = current_price × factor
     strike_max_factor: float = 1.05 # strike_max = current_price × factor
     min_score: float = 0.0          # keep only warrants with score > min_score
+    # Entry filter should be stricter than monitoring's degradation threshold.
+    spread_max_pct: float = 2.0     # hard eligibility cap for bid-ask spread (%)
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
 
 

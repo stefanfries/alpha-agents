@@ -519,6 +519,7 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
         ws_strike_min_factor="0.95",
         ws_strike_max_factor="1.00",
         ws_min_score="0.62",
+        ws_spread_max_pct="2.25",
     )
 
     _, update = fake_collection.calls[0]
@@ -530,6 +531,7 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
         "strike_min_factor": 0.95,
         "strike_max_factor": 1.0,
         "min_score": 0.62,
+        "spread_max_pct": 2.25,
     }
 
 
@@ -546,6 +548,7 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
             captured["strike_min_factor"] = kwargs["strike_min_factor"]
             captured["strike_max_factor"] = kwargs["strike_max_factor"]
             captured["min_score"] = kwargs["min_score"]
+            captured["spread_max_pct"] = kwargs["spread_max_pct"]
 
         async def run(self, _input: SelectionResult) -> WarrantSelectionResult:
             return WarrantSelectionResult(selected=[], skipped=[])
@@ -579,6 +582,7 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
                 "strike_min_factor": 0.96,
                 "strike_max_factor": 1.01,
                 "min_score": 0.55,
+                "spread_max_pct": 1.9,
             }
         },
         "stages": {
@@ -620,19 +624,150 @@ async def test_run_warrant_selection_uses_maturity_override(monkeypatch):
         "strike_min_factor": 0.96,
         "strike_max_factor": 1.01,
         "min_score": 0.55,
+        "spread_max_pct": 1.9,
     }
+
+
+@pytest.mark.asyncio
+async def test_run_warrant_selection_honors_configured_spread_without_clamp(monkeypatch):
+    from app import orchestrator as orchestrator_module
+
+    captured: dict[str, float] = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            captured["spread_max_pct"] = kwargs["spread_max_pct"]
+
+        async def run(self, _input: SelectionResult) -> WarrantSelectionResult:
+            return WarrantSelectionResult(selected=[], skipped=[])
+
+    class FakeFinHub:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    pipeline = orchestrator_module.Pipeline()
+
+    async def fake_wake(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_overrides_map() -> dict[str, str]:
+        return {}
+
+    monkeypatch.setattr(orchestrator_module, "WarrantSelectionAgent", FakeAgent)
+    monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHub)
+    monkeypatch.setattr(orchestrator_module.warrant_availability, "overrides_map", fake_overrides_map)
+    monkeypatch.setattr(pipeline, "_wake_finhub", fake_wake)
+
+    run = {
+        "execution_id": "exec5",
+        "config_overrides": {
+            "warrant_selection": {
+                "spread_max_pct": 20.0,
+            },
+            "monitoring": {
+                "warrant_health": {
+                    "spread_max_pct": 2.2,
+                }
+            },
+        },
+        "stages": {
+            "monitoring": {
+                "result": {
+                    "positions_to_sell": [],
+                    "positions_to_keep": [],
+                    "positions_to_roll": [],
+                    "entry_candidates": [{"symbol": "A", "isin": None, "name": None}],
+                    "free_positions": 1,
+                    "excluded_symbols": [],
+                    "keep_existing_isins": [],
+                    "roll_underlyings": [],
+                    "roll_keep_underlyings": [],
+                }
+            },
+            "screening": {
+                "result": SelectionResult(
+                    selected=[Ticker(symbol="A")],
+                    scores={"A": 1.0},
+                    rationale={},
+                ).model_dump(mode="json")
+            },
+            "research": {
+                "result": ResearchResult(
+                    tickers=[Ticker(symbol="A")],
+                    bars={},
+                    fundamentals={"A": {"currentPrice": 123.0}},
+                ).model_dump(mode="json")
+            },
+        },
+    }
+
+    await pipeline._run_warrant_selection(run)
+
+    # The configured selection spread cap is honored verbatim (no clamp to monitoring).
+    assert captured["spread_max_pct"] == 20.0
+
+
+@pytest.mark.asyncio
+async def test_warrant_selection_caps_to_max_selected_with_backfill():
+    # Rank order A > B > C > D. B has no warrant; cap = 2 free slots.
+    # Expect A and C selected (C backfills B's missing warrant); D dropped (no slot).
+    class FakeFinHub:
+        async def get_warrants(self, **kwargs):
+            underlying = kwargs.get("underlying")
+            if underlying == "ISIN_B":
+                return []
+            return [{"isin": f"W_{underlying}"}]
+
+        async def get_warrant_detail(self, isin: str):
+            return {
+                "isin": isin,
+                "wkn": isin,
+                "market_data": {"spread_percent": 0.5, "bid": 1.0, "ask": 1.1},
+                "analytics": {"leverage": 5.0, "delta": 0.5},
+                "reference_data": {"maturity_date": (date.today() + timedelta(days=330)).isoformat(), "is_capped": False},
+            }
+
+    agent = WarrantSelectionAgent(
+        finhub=FakeFinHub(),
+        prices={"A": 100.0, "B": 100.0, "C": 100.0, "D": 100.0},
+        max_selected=2,
+    )
+
+    result = await agent.run(
+        SelectionResult(
+            selected=[
+                Ticker(symbol="A", isin="ISIN_A"),
+                Ticker(symbol="B", isin="ISIN_B"),
+                Ticker(symbol="C", isin="ISIN_C"),
+                Ticker(symbol="D", isin="ISIN_D"),
+            ],
+            scores={"A": 1.0, "B": 0.9, "C": 0.8, "D": 0.7},
+            rationale={},
+        )
+    )
+
+    assert [w.underlying.symbol for w in result.selected] == ["A", "C"]
+    assert result.skipped == ["B"]  # only the genuine no-warrant case
+    assert "D" not in result.skipped  # overflow is dropped, not mislabeled as no-warrant
 
 
 @pytest.mark.asyncio
 async def test_warrant_selection_adapts_strike_interval_when_candidate_count_low():
     class FakeFinHub:
         def __init__(self) -> None:
-            self.strike_windows: list[tuple[float | None, float | None]] = []
+            self.selection_strike_windows: list[tuple[float | None, float | None]] = []
             self.call_count = 0
 
         async def get_warrants(self, **kwargs):
+            preselection = kwargs.get("preselection")
+            if preselection != "CALL":
+                return []
+
             self.call_count += 1
-            self.strike_windows.append((kwargs.get("strike_min"), kwargs.get("strike_max")))
+            self.selection_strike_windows.append((kwargs.get("strike_min"), kwargs.get("strike_max")))
             if self.call_count == 1:
                 return [{"isin": "W1"}, {"isin": "W2"}, {"isin": "W3"}]
             if self.call_count == 2:
@@ -673,9 +808,9 @@ async def test_warrant_selection_adapts_strike_interval_when_candidate_count_low
 
     assert len(result.selected) == 1
     assert result.analyzed_count["A"] == 6
-    assert len(finhub.strike_windows) == 3
-    first_min, first_max = finhub.strike_windows[0]
-    third_min, third_max = finhub.strike_windows[2]
+    assert len(finhub.selection_strike_windows) == 3
+    first_min, first_max = finhub.selection_strike_windows[0]
+    third_min, third_max = finhub.selection_strike_windows[2]
     assert first_min is not None and first_max is not None
     assert third_min is not None and third_max is not None
     assert (third_max - third_min) > (first_max - first_min)
@@ -700,6 +835,7 @@ async def test_warrant_selection_skips_when_no_candidate_exceeds_min_score():
         finhub=FakeFinHub(),
         prices={"A": 100.0},
         min_score=0.99,
+        spread_max_pct=None,
     )
 
     result = await agent.run(
@@ -714,6 +850,109 @@ async def test_warrant_selection_skips_when_no_candidate_exceeds_min_score():
     assert result.skipped == ["A"]
     assert "A" in result.skipped_reasons
     assert "min score 0.99" in result.skipped_reasons["A"]
+
+
+@pytest.mark.asyncio
+async def test_warrant_selection_applies_spread_max_cap():
+    captured_spread_limits: list[float | None] = []
+
+    class FakeFinHub:
+        async def get_warrants(self, **kwargs):
+            captured_spread_limits.append(kwargs.get("spread_ask_pct_max"))
+            return [{"isin": "W1"}]
+
+        async def get_warrant_detail(self, isin: str):
+            return {
+                "isin": isin,
+                "wkn": isin,
+                "market_data": {"spread_percent": 3.2, "bid": 1.0, "ask": 1.1},
+                "analytics": {"leverage": 5.0, "delta": 0.5},
+                "reference_data": {"maturity_date": (date.today() + timedelta(days=330)).isoformat(), "is_capped": False},
+            }
+
+    agent = WarrantSelectionAgent(
+        finhub=FakeFinHub(),
+        prices={"A": 100.0},
+        spread_max_pct=2.5,
+    )
+
+    result = await agent.run(
+        SelectionResult(
+            selected=[Ticker(symbol="A", isin="ISIN1")],
+            scores={"A": 1.0},
+            rationale={},
+        )
+    )
+
+    # Spread cap is enforced locally in detail filtering, not in the get_warrants API query.
+    assert all(limit is None for limit in captured_spread_limits)
+    assert result.selected == []
+    assert result.skipped == ["A"]
+    assert result.skipped_reasons["A"] == "all candidates above configured spread cap"
+
+
+@pytest.mark.asyncio
+async def test_warrant_selection_reports_only_capped_when_all_candidates_capped():
+    today = date.today()
+
+    class FakeFinHub:
+        async def get_warrants(self, **kwargs):
+            # Selection path returns candidates, all of which are capped.
+            return [{"isin": "W1"}, {"isin": "W2"}]
+
+        async def get_warrant_detail(self, isin: str):
+            return {
+                "isin": isin,
+                "wkn": isin,
+                "market_data": {"spread_percent": 0.5, "bid": 1.0, "ask": 1.1},
+                "analytics": {"leverage": 5.0, "delta": 0.5},
+                "reference_data": {"maturity_date": (today + timedelta(days=330)).isoformat(), "is_capped": True},
+            }
+
+    agent = WarrantSelectionAgent(
+        finhub=FakeFinHub(),
+        prices={"A": 100.0},
+        spread_max_pct=2.5,
+    )
+
+    result = await agent.run(
+        SelectionResult(
+            selected=[Ticker(symbol="A", isin="ISIN1")],
+            scores={"A": 1.0},
+            rationale={},
+        )
+    )
+
+    assert result.selected == []
+    assert result.skipped == ["A"]
+    assert result.skipped_reasons["A"] == "only capped call warrants available"
+
+
+@pytest.mark.asyncio
+async def test_warrant_selection_reports_no_candidates_when_none_found():
+    class FakeFinHub:
+        async def get_warrants(self, **kwargs):
+            return []
+
+        async def get_warrant_detail(self, isin: str):
+            return None
+
+    agent = WarrantSelectionAgent(
+        finhub=FakeFinHub(),
+        prices={"A": 100.0},
+    )
+
+    result = await agent.run(
+        SelectionResult(
+            selected=[Ticker(symbol="A", isin="ISIN1")],
+            scores={"A": 1.0},
+            rationale={},
+        )
+    )
+
+    assert result.selected == []
+    assert result.skipped == ["A"]
+    assert result.skipped_reasons["A"] == "no candidates in configured maturity/strike range"
 
 
 def test_warrant_selection_scoring_tracks_active_maturity_range():

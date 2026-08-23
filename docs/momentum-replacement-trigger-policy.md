@@ -4,6 +4,43 @@ Status: Draft (not implemented)
 Owner: Strategy research
 Scope: Screening -> Monitoring replacement logic
 
+## Implementation Status (as of 2026-08-23)
+
+Overall: Core momentum-replacement behavior is not implemented.
+
+Current runtime behavior remains:
+
+- Entries come from screening-ranked candidates.
+- Held underlyings are excluded from same-run entries unless a position is sold.
+- SELL decisions are driven by BREAK signals.
+- Replacement logic exists only for warrant-roll (same underlying when warrant quality degrades), not incumbent-vs-challenger momentum swaps.
+
+### What is implemented (building blocks only)
+
+1. TQ-60 as the primary screening score is implemented.
+2. Trend signal state machine is implemented (NEW/HOLD/BREAK/None).
+3. Rank-change diagnostics are implemented (1W/2W/4W deltas).
+4. Market regime classification is implemented (green/yellow/red with breadth enrichment).
+5. Warrant-health degradation checks are implemented for roll classification.
+
+### Rule coverage status against this policy
+
+1. Replacement eligibility (holding age, top-5 challenger, NEW/HOLD challenger, 2-bar persistence): Not implemented.
+2. Relative momentum trigger (DeltaS and relative score thresholds): Not implemented.
+3. Regime-tightened thresholds for yellow and replacement-disable in red: Not implemented for momentum replacement.
+4. Incumbent weakness filter (rank deterioration, TQ-20, trend condition): Not implemented.
+5. Cost and execution guardrails (friction proxy, 2x edge, spread hard block): Not implemented for momentum replacement.
+6. Churn controls (per-run/per-10-day caps, same-underlying cooldown): Not implemented.
+7. Pilot profile and feature-flagged rollout: Not implemented.
+8. Backtest validation workflow for this policy: Not implemented.
+
+### Evidence snapshot (code-level)
+
+- Screening computes momentum score and rank deltas, but no incumbent-challenger replacement decision path exists.
+- Monitoring computes SELL/KEEP/ROLL decisions, where ROLL is tied to warrant degradation and not to challenger momentum.
+- Orchestrator explicitly keeps monitoring classification-only and delegates replacement lookup to warrant selection for roll underlyings.
+- No tests currently assert incumbent-vs-challenger momentum replacement rules from this policy.
+
 ## Purpose
 
 Define a controlled way for stronger-momentum newcomers to replace weaker held underlyings, while preserving current BREAK-based risk exits and limiting churn.

@@ -233,7 +233,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 1. **Exit signals** table (`positions_to_sell`): SELL rows with rationale.
 2. **Roll recommendations** table (`positions_to_roll`): ROLL candidate rows from monitoring classification.
 3. **Incumbent positions (keep)** table (`positions_to_keep`): HOLD rows with rationale.
-4. **Entry candidates** table: filtered and ranked new-entry candidates, capped to `free_positions`.
+4. **Entry candidates** table: all eligible new-entry candidates in screening rank order (not capped to `free_positions`; the slot cap is applied downstream in warrant selection with backfill).
 
 | Column | Description |
 | ------ | ----------- |
@@ -276,7 +276,7 @@ Entry-candidate columns:
 
 #### 4.5 Warrant Selection — `/stages/warrant_selection`
 
-**Summary**: `{N} warrants selected. {K} underlyings skipped.`
+**Summary**: `{N} warrants selected. {K} underlyings skipped.` Skipped underlyings are listed as `SYMBOL - underlying name - reason` (e.g. `ROP - Roper Technologies - all candidates above configured spread cap`).
 
 **Split-panel layout:**
 
@@ -318,12 +318,14 @@ Right side — two vertically stacked panels:
 - Time range selector: 3M / 6M / 1Y (default) / 3Y
 - Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings (ADRs), `chart_symbol` plots the override underlying in its native currency so candles and the strike line share one currency (no FX); the strike filter itself is anchored to the override quote's last/current price or, if absent, the bid/ask midprice. Otherwise the underlying symbol is charted.
 
-Below the split panel — **maturity and strike controls**:
+Below the split panel — **maturity, strike, and filter controls**:
 
 - Min maturity (months), Max maturity (months), and a read-only Target maturity field
 - Strike min factor, Strike max factor, and a read-only Target strike factor field
+- **Filter** section: `Max spread %` (hard spread cap) and `Min score`, side by side
 - Default filter window: **9–15 months**
-- Default primary strike window: **0.95–1.00 × current price**
+- Default primary strike window: **0.90–1.05 × current price**
+- Default max spread: **2.0%**; default min score: **0.0**
 - Target maturity shown in UI equals midpoint `(min + max) / 2` and matches the days-to-expiry scoring target used during selection
 - Target strike factor shown in UI equals midpoint `(min_factor + max_factor) / 2`
 - Clicking **Apply & Re-run** restarts from warrant selection with the updated maturity window
@@ -469,7 +471,7 @@ Each restart form shows only the parameters relevant to the stage being re-run. 
 | ----- | ------------------- |
 | Universe | Indices (multi-checkbox: DAX, MDAX, SDAX, TecDAX) |
 | Screening | `stock_selection_top_n`, `stock_selection_min_adx`, `stock_selection_allow_starting_trends` |
-| Warrant selection | `warrant_min_remaining_days`, `warrant_max_leverage`, `warrant_max_spread_pct`, `warrant_min_score`, `warrant_scoring_weights` (7 fields, validated to sum to 1.0) |
+| Warrant selection | Min/Max maturity (months), Min/Max strike factor, `Min score`, `Max spread %` |
 | Portfolio | `portfolio_capital_eur`, `portfolio_sizing_method`, `portfolio_max_position_weight` |
 | Risk | `risk_max_position_weight`, `risk_max_sector_weight`, `risk_max_positions` |
 | Execution | `execution_dry_run`, `execution_min_trade_eur`, `execution_order_type` |
