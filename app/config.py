@@ -97,6 +97,8 @@ class WarrantSelectionSettings(BaseModel):
     # Entry filter should be stricter than monitoring's degradation threshold.
     spread_max_pct: float = 2.0     # hard eligibility cap for bid-ask spread (%)
     atm_band_fallback: float = 0.10 # widened band retried when narrow band returns nothing
+    # Minimum score improvement over the incumbent required to roll (else keep incumbent).
+    roll_min_improvement: float = 0.10
 
 
 def resolve_warrant_selection_settings(overrides: dict[str, Any] | None = None) -> WarrantSelectionSettings:

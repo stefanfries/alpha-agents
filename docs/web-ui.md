@@ -276,16 +276,46 @@ Entry-candidate columns:
 
 #### 4.5 Warrant Selection — `/stages/warrant_selection`
 
-**Summary**: `{N} warrants selected. {K} underlyings skipped.` Skipped underlyings are listed as `SYMBOL - underlying name - reason` (e.g. `ROP - Roper Technologies - all candidates above configured spread cap`).
+**Summary**: `{N} new entries · {Y} rolls · {Z} kept (replacement worse) · {K} skipped. Click a row to see top-3 alternatives.` Skipped underlyings are listed as `SYMBOL - underlying name - reason` (e.g. `ROP - Roper Technologies - all candidates above configured spread cap`).
 
 **Split-panel layout:**
 
-Left side (55% width) — **main warrant table**: one row per underlying, ordered by screening TQ rank.
+Left side (55% width), **two stacked tables** sharing an identical column set and
+fixed column widths (`<colgroup>` + `table-layout:fixed` for strict visual alignment
+between the two tables):
+
+**Rolls table** (rendered first, only when roll candidates exist):
+
+| Column | Description |
+| ------ | ----------- |
+| `#` | Always `—` (roll candidates aren't part of the screening rank order) |
+| Type | `ROLL` (incumbent, muted, not clickable), `NEW` (replacement, clickable), or `KEEP` (incumbent retained, clickable) |
+| Underlying | Symbol + company name |
+| Analyzed | Number of warrant details fetched and scored (blank on the `ROLL` row) |
+| WKN / ISIN | Warrant identifiers |
+| Strike / Maturity | Populated for both incumbent and replacement, enabling direct before→after comparison |
+| Spread / Lev / Delta / Score | Same metrics as the Entries table |
+
+Each roll candidate renders as two stacked rows: `ROLL` (incumbent) directly above `NEW`
+(replacement), with a green `▲ {delta}` score badge on the `NEW` row when a replacement
+was selected. `KEEP` candidates (no replacement cleared `roll_min_improvement`, default
+`0.10`) render as a single row followed by a muted italic explanation row: *"No
+replacement scored ≥ {margin} above incumbent — click to see the N alternative(s)
+analyzed, all worse than the incumbent."*
+
+Only the `NEW` and `KEEP` rows are clickable — they use the identical
+`loadWarrantDetailPanel()` mechanism as Entries rows, so clicking shows the top-3
+alternatives analyzed for that underlying in the right-hand panel (for `KEEP` rows this
+makes visible that every searched alternative scored worse than the incumbent). The
+`ROLL` (incumbent) row is informational only.
+
+**Entries table** (rendered below Rolls): one row per underlying, ordered by screening
+TQ rank.
 
 | Column | Description |
 | ------ | ----------- |
 | `#` | Screening rank |
-| Type | `ENTRY`, `ROLL`, or `ROLL/KEEP` |
+| Type | `ENTRY` |
 | Underlying | Symbol + company name |
 | Analyzed | Number of warrant details fetched and scored |
 | WKN | Best warrant WKN |
@@ -296,8 +326,6 @@ Left side (55% width) — **main warrant table**: one row per underlying, ordere
 | Lev | Leverage ratio |
 | Delta | Option delta |
 | Score | Composite score in [0, 1] |
-
-`ROLL/KEEP` is an optional state when replacement metadata (`roll_keep_underlyings`) is present. It indicates a roll candidate was ultimately kept as incumbent.
 
 Right side — two vertically stacked panels:
 
@@ -331,7 +359,7 @@ Below the split panel — **maturity, strike, and filter controls**:
 - Clicking **Apply & Re-run** restarts from warrant selection with the updated maturity window
 - The button uses the same shared `partials/apply_rerun_btn.html` component as Screening and Monitoring (default `primary` variant)
 
-**User actions at approve:** selected warrants advance to portfolio construction; retained roll rows are protected from closure via `keep_existing_isins` metadata.
+**User actions at approve:** selected warrants advance to portfolio construction; retained roll rows are protected from closure via `keep_existing_isins` metadata. Note: roll replacements (`roll_selected`) are selected and displayed but not yet fed into portfolio/execution as trades — see [roll-warrant-selection-plan.md](../roll-warrant-selection-plan.md) "Next session" for the pending follow-up.
 
 ---
 

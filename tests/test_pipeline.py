@@ -12,7 +12,12 @@ from app.agents.screening import SecuritySelectionAgent
 from app.agents.warrant_selection import WarrantSelectionAgent
 from app.config import MonitoringSettings
 from app.models.market import OHLCV, Position, Ticker
-from app.models.signals import ResearchResult, SelectionResult, WarrantSelectionResult
+from app.models.signals import (
+    ResearchResult,
+    RollCandidate,
+    SelectionResult,
+    WarrantSelectionResult,
+)
 
 
 @pytest.mark.asyncio
@@ -752,6 +757,90 @@ async def test_warrant_selection_caps_to_max_selected_with_backfill():
     assert [w.underlying.symbol for w in result.selected] == ["A", "C"]
     assert result.skipped == ["B"]  # only the genuine no-warrant case
     assert "D" not in result.skipped  # overflow is dropped, not mislabeled as no-warrant
+
+
+def _roll_finhub(wkn: str = "NEW123", maturity_days: int = 330):
+    mat = (date.today() + timedelta(days=maturity_days)).isoformat()
+
+    class FakeFinHub:
+        async def get_warrants(self, **kwargs):
+            return [{"isin": f"W_{kwargs.get('underlying')}"}]
+
+        async def get_warrant_detail(self, isin: str):
+            return {
+                "isin": isin,
+                "wkn": wkn,
+                "market_data": {"spread_percent": 0.5, "bid": 1.0, "ask": 1.1},
+                "analytics": {"leverage": 5.0, "delta": 0.5},
+                "reference_data": {"maturity_date": mat, "is_capped": False},
+            }
+
+    return FakeFinHub()
+
+
+@pytest.mark.asyncio
+async def test_warrant_selection_rolls_when_replacement_better():
+    # Incumbent is degraded (wide spread, low leverage/delta, short maturity);
+    # replacement is near-optimal → score improvement clears the 0.10 margin.
+    agent = WarrantSelectionAgent(
+        finhub=_roll_finhub(),
+        prices={"A": 100.0},
+        roll_candidates=[RollCandidate(
+            underlying=Ticker(symbol="A", isin="ISIN_A"),
+            warrant_isin="OLD_ISIN", warrant_wkn="OLD123",
+            spread_pct=2.4, leverage=2.0, delta=0.2, days_to_maturity=70,
+        )],
+    )
+    result = await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
+
+    assert result.roll_underlyings == ["A"]
+    assert result.roll_keep_underlyings == []
+    assert [w.warrant_wkn for w in result.roll_selected] == ["NEW123"]
+    assert "A" in result.roll_incumbents
+    assert result.roll_incumbents["A"].warrant_isin == "OLD_ISIN"
+
+
+@pytest.mark.asyncio
+async def test_warrant_selection_keeps_incumbent_when_replacement_not_better():
+    # Incumbent metrics match the replacement exactly → no score margin → keep.
+    agent = WarrantSelectionAgent(
+        finhub=_roll_finhub(),
+        prices={"A": 100.0},
+        roll_candidates=[RollCandidate(
+            underlying=Ticker(symbol="A", isin="ISIN_A"),
+            warrant_isin="OLD_ISIN", warrant_wkn="OLD123",
+            spread_pct=0.5, leverage=5.0, delta=0.5, days_to_maturity=330,
+        )],
+    )
+    result = await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
+
+    assert result.roll_keep_underlyings == ["A"]
+    assert result.roll_underlyings == []
+    assert result.roll_selected == []
+    assert result.keep_existing_isins == ["OLD_ISIN"]
+
+
+@pytest.mark.asyncio
+async def test_warrant_selection_rolls_ignore_entry_slot_cap():
+    # Entry cap of 1 is filled by underlying A; a degraded roll candidate R must
+    # still be rolled — rolls are 1:1 replacements and do not consume entry slots.
+    agent = WarrantSelectionAgent(
+        finhub=_roll_finhub(),
+        prices={"A": 100.0, "R": 100.0},
+        max_selected=1,
+        roll_candidates=[RollCandidate(
+            underlying=Ticker(symbol="R", isin="ISIN_R"),
+            warrant_isin="OLD_R", warrant_wkn="OLDR",
+            spread_pct=3.0, leverage=1.5, delta=0.1, days_to_maturity=65,
+        )],
+    )
+    result = await agent.run(SelectionResult(
+        selected=[Ticker(symbol="A", isin="ISIN_A")],
+        scores={"A": 1.0}, rationale={},
+    ))
+
+    assert len(result.selected) == 1        # entry cap respected
+    assert result.roll_underlyings == ["R"] # roll not blocked by the entry cap
 
 
 @pytest.mark.asyncio

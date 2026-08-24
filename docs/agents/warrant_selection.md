@@ -19,9 +19,11 @@ class WarrantSelectionResult(BaseModel):
     top3: dict[str, list[SelectedWarrant]]    # Symbol -> up to 3 best warrants by score
     analyzed_count: dict[str, int]            # Symbol -> total candidates detail-fetched
     # Monitoring metadata (consumed by UI/portfolio flows):
-    keep_existing_isins: list[str]            # Optional: incumbents explicitly marked to keep
-    roll_underlyings: list[str]               # Underlyings requested for replacement search
-    roll_keep_underlyings: list[str]          # Optional: roll underlyings downgraded to KEEP
+    keep_existing_isins: list[str]            # Incumbent warrant ISINs kept (replacement not better)
+    roll_underlyings: list[str]               # Roll underlyings where a better replacement was found
+    roll_keep_underlyings: list[str]          # Roll underlyings kept (replacement below score margin)
+    roll_selected: list[SelectedWarrant]      # Chosen replacement warrants (rolls; separate from `selected`)
+    roll_incumbents: dict[str, RollReplacement]  # Underlying -> incumbent snapshot (re-scored) for before→after UI
 ```
 
 ### `SelectedWarrant`
@@ -116,6 +118,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `min_score` | `0.0` | Minimum accepted score; only warrants with `score > min_score` are eligible |
 | `spread_max_pct` | `2.0` | Hard bid-ask spread cap (%) applied at selection time; wider warrants are dropped. Should stay ≤ monitoring `warrant_health.spread_max_pct` (entry stricter than degradation). |
 | `atm_band_fallback` | `0.10` | Fallback strike filter half-width (±10%) |
+| `roll_min_improvement` | `0.10` | Minimum score improvement over the incumbent required to roll; below this the incumbent is kept (`ROLL/KEEP`) |
 
 **WarrantScoringSettings** (scoring component weights & thresholds, runtime-tunable via `.env`):
 
@@ -160,4 +163,11 @@ The warrant selection stage page shows:
 Monitoring integration note:
 
 - Monitoring classifies roll candidates and emits `roll_underlyings`.
-- Replacement warrant discovery and replacement quality guardrails are applied in this stage.
+- This stage searches for a same-underlying replacement (reusing the entry search and
+  scoring), re-scores the incumbent from its snapshot metrics, and rolls only when
+  `replacement.score >= incumbent.score + roll_min_improvement` (default `0.10`);
+  otherwise the incumbent is kept (`ROLL/KEEP`). Roll replacements are stored in
+  `roll_selected` / `roll_incumbents` (not `selected`) so the entry slot cap and
+  portfolio construction are unaffected. Executing the roll (pairing SELL incumbent +
+  BUY replacement) is a downstream follow-up; see
+  [roll-warrant-selection-plan](../roll-warrant-selection-plan.md).

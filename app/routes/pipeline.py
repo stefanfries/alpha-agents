@@ -240,6 +240,7 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "strike_max_factor": ws_cfg.strike_max_factor,
             "min_score": ws_cfg.min_score,
             "spread_max_pct": ws_cfg.spread_max_pct,
+            "roll_min_improvement": ws_cfg.roll_min_improvement,
         }
     if stage == "monitoring" and execution:
         mon_overrides = execution.get("config_overrides", {}).get("monitoring", {})

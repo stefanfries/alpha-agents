@@ -281,6 +281,11 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | `skipped_names` | `dict[str, str]` | Symbol → underlying display name (for the skipped list) |
 | `top3` | `dict[str, list[SelectedWarrant]]` | Symbol → up to 3 best warrants by score (for HITL detail panel) |
 | `analyzed_count` | `dict[str, int]` | Symbol → total warrant details fetched and scored |
+| `keep_existing_isins` | `list[str]` | Incumbent warrant ISINs kept because no replacement cleared the roll score margin |
+| `roll_underlyings` | `list[str]` | Roll underlyings where a better replacement was found |
+| `roll_keep_underlyings` | `list[str]` | Roll underlyings kept (replacement below `roll_min_improvement`) |
+| `roll_selected` | `list[SelectedWarrant]` | Chosen replacement warrants for rolls (kept separate from `selected`; not fed to portfolio yet) |
+| `roll_incumbents` | `dict[str, RollReplacement]` | Underlying symbol → incumbent snapshot (re-scored) for the before→after UI comparison |
 
 ### `PositionReview`
 
@@ -301,6 +306,8 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `leverage` | `float \| None` | Current leverage ratio (from warrant snapshot) |
 | `delta` | `float \| None` | Delta / directional sensitivity (from warrant snapshot) |
 | `days_to_maturity` | `int \| None` | Days until warrant expiry |
+| `strike` | `float \| None` | Strike price of the held warrant (from warrant snapshot) |
+| `maturity_date` | `date \| None` | Maturity date of the held warrant (from warrant snapshot) |
 | `monitoring_score` | `float \| None` | Health score 0-1 (weighted 4-component: spread, leverage, maturity, delta) |
 | `screening_signal` | `str \| None` | Resolved screening signal for mapped underlying symbol (`NEW`/`HOLD`/`BREAK`/`None`) |
 | `screening_signal_present` | `bool \| None` | Whether mapped underlying symbol exists as a key in `SelectionResult.trend_signals` |

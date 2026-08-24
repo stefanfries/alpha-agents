@@ -32,6 +32,7 @@ from app.models.signals import (
     PortfolioProposal,
     ResearchResult,
     RiskAssessment,
+    RollCandidate,
     SelectionResult,
     UniverseResult,
     WarrantSelectionResult,
@@ -257,6 +258,31 @@ class Pipeline:
             if fund.get("currentPrice")
         }
 
+        screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
+        underlying_by_symbol = {
+            t.symbol: t for t in (screening.all_tickers or screening.selected) if t.isin
+        }
+        roll_candidates: list[RollCandidate] = []
+        for review in monitoring.positions_to_roll:
+            underlying = underlying_by_symbol.get(review.underlying_symbol)
+            if underlying is None:
+                logger.info(
+                    "Roll candidate %s has no underlying ISIN in screening — cannot search replacement",
+                    review.underlying_symbol,
+                )
+                continue
+            roll_candidates.append(RollCandidate(
+                underlying=underlying,
+                warrant_isin=review.warrant_isin,
+                warrant_wkn=review.warrant_wkn,
+                spread_pct=review.spread_pct,
+                leverage=review.leverage,
+                delta=review.delta,
+                days_to_maturity=review.days_to_maturity,
+                strike=review.strike,
+                maturity_date=review.maturity_date,
+            ))
+
         async def on_progress(done: int, total: int, active: list[str]) -> None:
             await update_stage_progress(execution_id, "warrant_selection", {"done": done, "total": total, "active": active})
 
@@ -278,11 +304,11 @@ class Pipeline:
                 max_selected=monitoring.free_positions,
                 isin_overrides=overrides,
                 on_progress=on_progress,
+                roll_candidates=roll_candidates,
+                roll_min_improvement=ws_cfg.roll_min_improvement,
             ).run(SelectionResult(selected=candidates, scores={t.symbol: 1.0 for t in candidates}, rationale={}))
 
-        result.keep_existing_isins = monitoring.keep_existing_isins or []
-        result.roll_underlyings = monitoring.roll_underlyings or []
-        result.roll_keep_underlyings = monitoring.roll_keep_underlyings or []
+        result.keep_existing_isins = monitoring.keep_existing_isins or result.keep_existing_isins
 
         return result
 
@@ -400,6 +426,8 @@ class Pipeline:
                 leverage = self._as_float(an.get("leverage"))
                 delta = self._as_float(an.get("delta"))
                 days_to_maturity = self._days_to_maturity(rd.get("maturity_date"), today)
+                strike = self._as_float(rd.get("strike"))
+                maturity_date = self._parse_maturity_date(rd.get("maturity_date"))
 
                 bid = self._as_float(md.get("bid"))
                 ask = self._as_float(md.get("ask"))
@@ -419,6 +447,8 @@ class Pipeline:
                     days_to_maturity=days_to_maturity,
                     delta=delta,
                     bid_ask_midprice=bid_ask_midprice,
+                    strike=strike,
+                    maturity_date=maturity_date,
                 )
 
         return snapshots
@@ -433,25 +463,30 @@ class Pipeline:
             return None
 
     @staticmethod
-    def _days_to_maturity(value: Any, today: date) -> int | None:
+    def _parse_maturity_date(value: Any) -> date | None:
         if value is None:
             return None
         if isinstance(value, date):
-            maturity_date = value
-        elif isinstance(value, datetime):
-            maturity_date = value.date()
-        elif isinstance(value, str):
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, str):
             raw = value.strip()
             if raw.endswith("Z"):
                 raw = raw[:-1] + "+00:00"
             try:
-                maturity_date = datetime.fromisoformat(raw).date()
+                return datetime.fromisoformat(raw).date()
             except ValueError:
                 try:
-                    maturity_date = date.fromisoformat(raw)
+                    return date.fromisoformat(raw)
                 except ValueError:
                     return None
-        else:
+        return None
+
+    @staticmethod
+    def _days_to_maturity(value: Any, today: date) -> int | None:
+        maturity_date = Pipeline._parse_maturity_date(value)
+        if maturity_date is None:
             return None
         return (maturity_date - today).days
 

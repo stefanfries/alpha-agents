@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
@@ -8,6 +9,8 @@ from app.agents.base import Agent
 from app.config import settings
 from app.models.market import Ticker
 from app.models.signals import (
+    RollCandidate,
+    RollReplacement,
     SelectedWarrant,
     SelectionResult,
     WarrantSelectionResult,
@@ -26,6 +29,17 @@ logger = logging.getLogger(__name__)
 # At ATM (factor=1.0) delta≈0.5; each 0.10 move in strike factor shifts
 # the expected delta by ~0.15 (derived from Black-Scholes with σ≈30%, T≈1yr).
 _STRIKE_DELTA_SENSITIVITY: float = 1.5
+
+
+@dataclass
+class _RollOutcome:
+    selected: list[SelectedWarrant] = field(default_factory=list)
+    incumbents: dict[str, RollReplacement] = field(default_factory=dict)
+    underlyings: list[str] = field(default_factory=list)
+    keep_underlyings: list[str] = field(default_factory=list)
+    keep_existing_isins: list[str] = field(default_factory=list)
+    top3: dict[str, list[SelectedWarrant]] = field(default_factory=dict)
+    analyzed_count: dict[str, int] = field(default_factory=dict)
 
 
 class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
@@ -87,6 +101,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         isin_overrides: dict[str, str] | None = None,
         on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
         scoring_config: WarrantScoringConfig | None = None,
+        roll_candidates: list[RollCandidate] | None = None,
+        roll_min_improvement: float = 0.10,
     ) -> None:
         self._finhub = finhub
         self._prices = prices
@@ -100,6 +116,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._max_selected = max_selected
         self._isin_overrides = isin_overrides or {}
         self._on_progress = on_progress
+        self._roll_candidates = roll_candidates or []
+        self._roll_min_improvement = roll_min_improvement
         # Keep the scoring peak aligned with the active maturity search window.
         base_scoring_config = scoring_config or WarrantScoringConfig.from_settings(settings.warrant_scoring)
         self._scoring_config = self._range_adjusted_scoring_config(
@@ -173,7 +191,12 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             if ticker.symbol in skipped and ticker.name:
                 skipped_names[ticker.symbol] = ticker.name
 
-        logger.info("Warrant selection: %d selected, %d skipped", len(selected), len(skipped))
+        roll = await self._select_rolls(today, maturity_from, maturity_to, detail_sem)
+        top3.update(roll.top3)
+        analyzed_count.update(roll.analyzed_count)
+
+        logger.info("Warrant selection: %d selected, %d skipped, %d rolls, %d roll/keep",
+                    len(selected), len(skipped), len(roll.underlyings), len(roll.keep_underlyings))
         return WarrantSelectionResult(
             selected=selected,
             skipped=skipped,
@@ -181,7 +204,66 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             skipped_names=skipped_names,
             top3=top3,
             analyzed_count=analyzed_count,
+            roll_underlyings=roll.underlyings,
+            roll_keep_underlyings=roll.keep_underlyings,
+            keep_existing_isins=roll.keep_existing_isins,
+            roll_selected=roll.selected,
+            roll_incumbents=roll.incumbents,
         )
+
+    async def _select_rolls(
+        self,
+        today: date,
+        maturity_from: str,
+        maturity_to: str,
+        detail_sem: asyncio.Semaphore,
+    ) -> "_RollOutcome":
+        outcome = _RollOutcome()
+        if not self._roll_candidates:
+            return outcome
+
+        results = await asyncio.gather(
+            *[self._pick_best(rc.underlying, maturity_from, maturity_to, detail_sem)
+              for rc in self._roll_candidates],
+            return_exceptions=True,
+        )
+        for rc, result in zip(self._roll_candidates, results):
+            sym = rc.underlying.symbol
+            maturity_iso = (
+                rc.maturity_date.isoformat() if rc.maturity_date is not None
+                else (today + timedelta(days=rc.days_to_maturity)).isoformat()
+                if rc.days_to_maturity is not None else None
+            )
+            incumbent_score = compute_warrant_score(
+                rc.spread_pct, rc.leverage, maturity_iso, rc.delta, today, self._scoring_config
+            )
+            outcome.incumbents[sym] = RollReplacement(
+                warrant_isin=rc.warrant_isin,
+                warrant_wkn=rc.warrant_wkn,
+                strike=rc.strike,
+                maturity_date=rc.maturity_date,
+                spread_pct=rc.spread_pct,
+                leverage=rc.leverage,
+                delta=rc.delta,
+                score=incumbent_score,
+            )
+            best: SelectedWarrant | None = None
+            if isinstance(result, BaseException):
+                logger.warning("Roll replacement lookup failed for %s: %s", sym, result)
+            elif result is not None:
+                best, candidates_top3, count, _skip_reason = result
+                # Always expose the searched alternatives, even when the incumbent is kept,
+                # so the UI can show that all candidates scored worse.
+                outcome.top3[sym] = candidates_top3
+                outcome.analyzed_count[sym] = count
+
+            if best is not None and best.score >= incumbent_score + self._roll_min_improvement:
+                outcome.selected.append(best)
+                outcome.underlyings.append(sym)
+            else:
+                outcome.keep_underlyings.append(sym)
+                outcome.keep_existing_isins.append(rc.warrant_isin)
+        return outcome
 
     async def _pick_best(
         self,

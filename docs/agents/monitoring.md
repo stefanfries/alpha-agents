@@ -32,7 +32,7 @@ The orchestrator builds `MonitoringInput` from:
 - `held_since_map` via `_fetch_held_since()`:
   - real depots: latest `finance.depot_snapshots.positions[].held_since_date`
   - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
-- `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()`
+- `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()` (also captures `strike`/`maturity_date` for display and roll re-scoring, in addition to spread/leverage/delta/days-to-maturity)
 - `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
 - `last_break_age_bars` forwarded from `SelectionResult.last_break_age_bars` (used for aged-out BREAK explanation text)
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
@@ -58,7 +58,7 @@ class MonitoringResult(BaseModel):
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
 - Holding context: `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
 - Pricing context: `buy_price` (average buy price), `current_price` (snapshot midprice), `performance_pct`
-- Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity` (all optional float)
+- Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity`, `strike`, `maturity_date` (all optional)
 - Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
 - Trend status: `trend_status` (UI-ready status label)
 - Health assessment: `monitoring_score` (0-1 health score), `warrant_health_status`, `warrant_health_reason`, `decision_reason`

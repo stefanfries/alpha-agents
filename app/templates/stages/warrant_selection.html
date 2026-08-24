@@ -70,8 +70,10 @@
       {% set r = stage_result %}
       <div class="flex-shrink-0 mb-2">
         <span class="text-muted small">
-          <strong class="text-body">{{ r.selected | length }}</strong> warrants selected
-          {% if r.skipped %}, <span class="text-warning">{{ r.skipped | length }} underlyings skipped</span>{% endif %}.
+          <strong class="text-body">{{ r.selected | length }}</strong> new entries
+          {% if r.roll_selected %} · <strong class="text-primary">{{ r.roll_selected | length }}</strong> rolls{% endif %}
+          {% if r.roll_keep_underlyings %} · <span class="text-info">{{ r.roll_keep_underlyings | length }} kept (replacement worse)</span>{% endif %}
+          {% if r.skipped %} · <span class="text-warning">{{ r.skipped | length }} skipped</span>{% endif %}.
           <span class="ms-2 text-muted">Click a row to see top-3 alternatives.</span>
         </span>
         {% if r.keep_existing_isins %}
@@ -92,7 +94,120 @@
       <div class="d-flex flex-grow-1 gap-3 overflow-hidden" style="min-height:0">
         {# Left: main warrant table #}
         <div class="overflow-auto flex-shrink-0" style="min-width:0;flex-basis:55%">
-          <table class="table table-sm table-hover bg-white rounded shadow-sm">
+          {% if r.roll_selected or r.roll_keep_underlyings %}
+          {% set roll_margin = ws_cfg.roll_min_improvement if ws_cfg.roll_min_improvement is defined else 0.10 %}
+          <h6 class="mb-2">Rolls
+            {% if r.roll_selected %}<span class="badge bg-primary bg-opacity-10 text-primary">{{ r.roll_selected | length }} replace</span>{% endif %}
+            {% if r.roll_keep_underlyings %}<span class="badge bg-info bg-opacity-10 text-info">{{ r.roll_keep_underlyings | length }} keep</span>{% endif %}
+          </h6>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm mb-3" style="table-layout:fixed">
+            <colgroup>
+              <col style="width:3%"><col style="width:7%"><col style="width:16%"><col style="width:7%">
+              <col style="width:8%"><col style="width:14%"><col style="width:7%"><col style="width:9%">
+              <col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:10%">
+            </colgroup>
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>#</th>
+                <th>Type</th>
+                <th>Underlying</th>
+                <th class="text-end">Analyzed</th>
+                <th>WKN</th>
+                <th>ISIN</th>
+                <th class="text-end">Strike</th>
+                <th>Maturity</th>
+                <th class="text-end">Spread</th>
+                <th class="text-end">Lev</th>
+                <th class="text-end">Delta</th>
+                <th class="text-end">Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for w in r.roll_selected %}
+              {% set sym = w.underlying.symbol %}
+              {% set inc = r.roll_incumbents[sym] if r.roll_incumbents and sym in r.roll_incumbents else none %}
+              {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
+              <tr class="text-muted">
+                <td>—</td>
+                <td><span class="badge bg-secondary">ROLL</span></td>
+                <td>
+                  <code>{{ sym }}</code>
+                  {% if w.underlying.name %}<span class="small ms-1">{{ w.underlying.name }}</span>{% endif %}
+                </td>
+                <td class="text-end small">—</td>
+                <td><code>{{ inc.warrant_wkn if inc else "—" }}</code></td>
+                <td class="small">{{ inc.warrant_isin if inc else "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(inc.strike) if inc and inc.strike is not none else "—" }}</td>
+                <td class="small">{{ inc.maturity_date if inc and inc.maturity_date else "—" }}</td>
+                <td class="text-end small">{{ "%.1f%%" | format(inc.spread_pct) if inc and inc.spread_pct is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.1f×" | format(inc.leverage) if inc and inc.leverage is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(inc.delta) if inc and inc.delta is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(inc.score) if inc and inc.score is not none else "—" }}</td>
+              </tr>
+              {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
+              <tr style="cursor:pointer"
+                  data-top3='{{ top3_list | tojson }}'
+                  data-analyzed="{{ analyzed }}"
+                  onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
+                <td>—</td>
+                <td><span class="badge bg-primary">NEW</span></td>
+                <td>
+                  <code>{{ sym }}</code>
+                  {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}
+                </td>
+                <td class="text-end text-muted small">{{ analyzed }}</td>
+                <td><code>{{ w.warrant_wkn or "—" }}</code></td>
+                <td class="small text-muted">{{ w.warrant_isin or "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(w.strike) if w.strike is not none else "—" }}</td>
+                <td class="small">{{ w.maturity_date or "—" }}</td>
+                <td class="text-end small">{{ "%.1f%%" | format(w.spread_pct) if w.spread_pct is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.1f×" | format(w.leverage) if w.leverage is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(w.delta) if w.delta is not none else "—" }}</td>
+                <td class="text-end fw-semibold">
+                  {{ "%.2f" | format(w.score) }}
+                  {% if inc and inc.score is not none %}
+                    <span class="text-success small">▲ {{ "%.2f" | format(w.score - inc.score) }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+              {% for sym in r.roll_keep_underlyings %}
+              {% set inc = r.roll_incumbents[sym] if r.roll_incumbents and sym in r.roll_incumbents else none %}
+              {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
+              {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
+              <tr style="cursor:pointer"
+                  data-top3='{{ top3_list | tojson }}'
+                  data-analyzed="{{ analyzed }}"
+                  onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
+                <td>—</td>
+                <td><span class="badge bg-info">KEEP</span></td>
+                <td><code>{{ sym }}</code></td>
+                <td class="text-end text-muted small">{{ analyzed }}</td>
+                <td><code>{{ inc.warrant_wkn if inc else "—" }}</code></td>
+                <td class="small text-muted">{{ inc.warrant_isin if inc else "—" }}</td>
+                <td class="text-end small">—</td>
+                <td class="small">—</td>
+                <td class="text-end small">{{ "%.1f%%" | format(inc.spread_pct) if inc and inc.spread_pct is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.1f×" | format(inc.leverage) if inc and inc.leverage is not none else "—" }}</td>
+                <td class="text-end small">{{ "%.2f" | format(inc.delta) if inc and inc.delta is not none else "—" }}</td>
+                <td class="text-end fw-semibold">{{ "%.2f" | format(inc.score) if inc and inc.score is not none else "—" }}</td>
+              </tr>
+              <tr>
+                <td colspan="12" class="text-muted small fst-italic border-0 pt-0 pb-2">
+                  No replacement scored ≥ {{ "%.2f" | format(roll_margin) }} above incumbent — click to see the {{ top3_list | length }} alternative(s) analyzed, all worse than the incumbent.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed">
+            <colgroup>
+              <col style="width:3%"><col style="width:7%"><col style="width:16%"><col style="width:7%">
+              <col style="width:8%"><col style="width:14%"><col style="width:7%"><col style="width:9%">
+              <col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:10%">
+            </colgroup>
             <thead class="table-light sticky-top">
               <tr>
                 <th>#</th>
@@ -116,23 +231,12 @@
               {% set rank.n = rank.n + 1 %}
               {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
               {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
-              {% set is_roll = sym in (r.roll_underlyings or []) %}
-              {% set is_roll_keep = sym in (r.roll_keep_underlyings or []) %}
-              {% set row_type = "ROLL" if is_roll else ("ROLL/KEEP" if is_roll_keep else "ENTRY") %}
               <tr style="cursor:pointer"
                   data-top3='{{ top3_list | tojson }}'
                   data-analyzed="{{ analyzed }}"
                   onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td class="text-muted small">{{ rank.n }}</td>
-                <td>
-                  {% if row_type == "ROLL" %}
-                    <span class="badge bg-primary">{{ row_type }}</span>
-                  {% elif row_type == "ROLL/KEEP" %}
-                    <span class="badge bg-info">{{ row_type }}</span>
-                  {% else %}
-                    <span class="badge bg-secondary">{{ row_type }}</span>
-                  {% endif %}
-                </td>
+                <td><span class="badge bg-secondary">ENTRY</span></td>
                 <td>
                   <code>{{ w.underlying.symbol }}</code>
                   {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}

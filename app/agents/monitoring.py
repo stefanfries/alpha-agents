@@ -21,6 +21,8 @@ class WarrantSnapshot(BaseModel):
     days_to_maturity: int | None = None
     delta: float | None = None
     bid_ask_midprice: float | None = None
+    strike: float | None = None
+    maturity_date: date | None = None
 
 
 # BREAK indicator keys in priority order (plan §B, reason priority).
@@ -261,6 +263,8 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                     leverage=warrant_snapshot.leverage if warrant_snapshot else None,
                     delta=warrant_snapshot.delta if warrant_snapshot else None,
                     days_to_maturity=warrant_snapshot.days_to_maturity if warrant_snapshot else None,
+                    strike=warrant_snapshot.strike if warrant_snapshot else None,
+                    maturity_date=warrant_snapshot.maturity_date if warrant_snapshot else None,
                     monitoring_score=self._monitoring_score(warrant_snapshot) if warrant_snapshot else None,
                     decision_reason="underlying mapping unresolved",
                 ))
@@ -309,6 +313,8 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 leverage=warrant_snapshot.leverage if warrant_snapshot else None,
                 delta=warrant_snapshot.delta if warrant_snapshot else None,
                 days_to_maturity=warrant_snapshot.days_to_maturity if warrant_snapshot else None,
+                strike=warrant_snapshot.strike if warrant_snapshot else None,
+                maturity_date=warrant_snapshot.maturity_date if warrant_snapshot else None,
                 monitoring_score=monitoring_score,
                 screening_signal=trend_signal,
                 screening_signal_present=has_trend_signal,

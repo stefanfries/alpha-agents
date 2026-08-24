@@ -88,6 +88,8 @@ class WarrantSelectionResult(BaseModel):
     keep_existing_isins: list[str] = Field(default_factory=list)               # ISINs downgraded to KEEP (replacement worse)
     roll_underlyings: list[str] = Field(default_factory=list)                  # symbols where valid replacement found
     roll_keep_underlyings: list[str] = Field(default_factory=list)             # symbols downgraded to KEEP
+    roll_selected: list["SelectedWarrant"] = Field(default_factory=list)       # chosen replacement warrants (rolls)
+    roll_incumbents: dict[str, "RollReplacement"] = Field(default_factory=dict) # symbol → incumbent snapshot (re-scored)
 
 
 class RollReplacement(BaseModel):
@@ -100,6 +102,19 @@ class RollReplacement(BaseModel):
     delta: float | None = None
     score: float | None = None
     rationale: str | None = None
+
+
+class RollCandidate(BaseModel):
+    """A held position classified for ROLL, passed to warrant selection for replacement search."""
+    underlying: Ticker
+    warrant_isin: str
+    warrant_wkn: str
+    spread_pct: float | None = None
+    leverage: float | None = None
+    delta: float | None = None
+    days_to_maturity: int | None = None
+    strike: float | None = None
+    maturity_date: date | None = None
 
 
 class PositionReview(BaseModel):
@@ -116,6 +131,8 @@ class PositionReview(BaseModel):
     leverage: float | None = None
     delta: float | None = None
     days_to_maturity: int | None = None
+    strike: float | None = None
+    maturity_date: date | None = None
     monitoring_score: float | None = None  # 0–1 health score
     screening_signal: str | None = None
     screening_signal_present: bool | None = None
