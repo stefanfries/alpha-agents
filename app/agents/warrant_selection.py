@@ -36,8 +36,8 @@ class _RollOutcome:
     selected: list[SelectedWarrant] = field(default_factory=list)
     incumbents: dict[str, RollReplacement] = field(default_factory=dict)
     underlyings: list[str] = field(default_factory=list)
-    keep_underlyings: list[str] = field(default_factory=list)
-    keep_existing_isins: list[str] = field(default_factory=list)
+    sell_underlyings: list[str] = field(default_factory=list)
+    sell_existing_isins: list[str] = field(default_factory=list)
     top3: dict[str, list[SelectedWarrant]] = field(default_factory=dict)
     analyzed_count: dict[str, int] = field(default_factory=dict)
 
@@ -195,8 +195,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         top3.update(roll.top3)
         analyzed_count.update(roll.analyzed_count)
 
-        logger.info("Warrant selection: %d selected, %d skipped, %d rolls, %d roll/keep",
-                    len(selected), len(skipped), len(roll.underlyings), len(roll.keep_underlyings))
+        logger.info("Warrant selection: %d selected, %d skipped, %d rolls, %d roll/sell",
+                    len(selected), len(skipped), len(roll.underlyings), len(roll.sell_underlyings))
         return WarrantSelectionResult(
             selected=selected,
             skipped=skipped,
@@ -205,8 +205,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             top3=top3,
             analyzed_count=analyzed_count,
             roll_underlyings=roll.underlyings,
-            roll_keep_underlyings=roll.keep_underlyings,
-            keep_existing_isins=roll.keep_existing_isins,
+            roll_sell_underlyings=roll.sell_underlyings,
+            sell_existing_isins=roll.sell_existing_isins,
             roll_selected=roll.selected,
             roll_incumbents=roll.incumbents,
         )
@@ -261,8 +261,11 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                 outcome.selected.append(best)
                 outcome.underlyings.append(sym)
             else:
-                outcome.keep_underlyings.append(sym)
-                outcome.keep_existing_isins.append(rc.warrant_isin)
+                # No replacement clears the score margin — the incumbent is degraded
+                # (it only reaches this loop via a roll classification), so recommend
+                # closing the position outright rather than keeping a known-degraded warrant.
+                outcome.sell_underlyings.append(sym)
+                outcome.sell_existing_isins.append(rc.warrant_isin)
         return outcome
 
     async def _pick_best(

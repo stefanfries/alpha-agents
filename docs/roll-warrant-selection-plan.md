@@ -3,6 +3,13 @@
 Status: **Implemented (2026-08-24/25)** — replacement search, guardrail, output wiring,
 and UI are done. Roll **execution** (pairing SELL incumbent + BUY replacement) is the
 remaining follow-up; see "Next session" at the bottom.
+
+**Update (2026-08-26):** when no replacement clears the score margin, the stage now
+recommends **SELL** for the incumbent instead of **KEEP** — every candidate reaching
+this path is already known-degraded (that's why monitoring classified it as ROLL), so
+keeping it silently was misleading. See `WarrantSelectionResult.roll_sell_underlyings`
+/ `sell_existing_isins` (renamed from `roll_keep_underlyings` / `keep_existing_isins`).
+
 Scope: Warrant Selection stage (replacement discovery for ROLL candidates) + UI
 Owner: Strategy / pipeline
 
@@ -40,9 +47,9 @@ classification-only decision.
 
 1. **Guardrail: score-margin only.** Replace only if
    `best_replacement.score >= incumbent_score + roll_min_improvement`; otherwise
-   downgrade to `ROLL/KEEP`. No separate "replacement must be non-degraded" gate — the
-   incumbent is already known-degraded and the four scoring components (spread,
-   leverage, days, delta) already capture warrant health.
+   recommend **SELL** for the incumbent (`ROLL/SELL`). No separate "replacement must be
+   non-degraded" gate — the incumbent is already known-degraded and the four scoring
+   components (spread, leverage, days, delta) already capture warrant health.
 2. **`roll_min_improvement` default `0.10`** to avoid overtrading (same-underlying,
    lower-risk swap; deliberately conservative).
 3. **Slot isolation.** Rolls are 1:1 replacements and must **not** consume

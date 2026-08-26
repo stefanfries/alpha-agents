@@ -350,13 +350,13 @@ class TestOrchestrationMetadataFields:
             analyzed_count={},
             skipped=[],
             skipped_reasons={"A": "no candidates"},
-            keep_existing_isins=["ISIN1"],
+            sell_existing_isins=["ISIN1"],
             roll_underlyings=["A"],
-            roll_keep_underlyings=["B"],
+            roll_sell_underlyings=["B"],
         )
-        assert result.keep_existing_isins == ["ISIN1"]
+        assert result.sell_existing_isins == ["ISIN1"]
         assert result.roll_underlyings == ["A"]
-        assert result.roll_keep_underlyings == ["B"]
+        assert result.roll_sell_underlyings == ["B"]
         assert result.skipped_reasons == {"A": "no candidates"}
 
     def test_warrant_selection_result_metadata_fields_default_to_empty(self):
@@ -367,9 +367,9 @@ class TestOrchestrationMetadataFields:
             analyzed_count={},
             skipped=[],
         )
-        assert result.keep_existing_isins == []
+        assert result.sell_existing_isins == []
         assert result.roll_underlyings == []
-        assert result.roll_keep_underlyings == []
+        assert result.roll_sell_underlyings == []
         assert result.skipped_reasons == {}
 
 

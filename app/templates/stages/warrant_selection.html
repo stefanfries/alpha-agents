@@ -72,14 +72,14 @@
         <span class="text-muted small">
           <strong class="text-body">{{ r.selected | length }}</strong> new entries
           {% if r.roll_selected %} · <strong class="text-primary">{{ r.roll_selected | length }}</strong> rolls{% endif %}
-          {% if r.roll_keep_underlyings %} · <span class="text-info">{{ r.roll_keep_underlyings | length }} kept (replacement worse)</span>{% endif %}
+          {% if r.roll_sell_underlyings %} · <span class="text-danger">{{ r.roll_sell_underlyings | length }} recommend SELL (no better replacement)</span>{% endif %}
           {% if r.skipped %} · <span class="text-warning">{{ r.skipped | length }} skipped</span>{% endif %}.
           <span class="ms-2 text-muted">Click a row to see top-3 alternatives.</span>
         </span>
-        {% if r.keep_existing_isins %}
-        <div class="alert alert-info small mt-2 mb-0">
-          <strong>Keeping existing warrants</strong> (replacement was worse):
-          {% for isin in r.keep_existing_isins %}
+        {% if r.sell_existing_isins %}
+        <div class="alert alert-danger small mt-2 mb-0">
+          <strong>Recommend SELL</strong> (degraded, no replacement cleared the roll margin):
+          {% for isin in r.sell_existing_isins %}
             <code>{{ isin }}</code>{% if not loop.last %},{% endif %}
           {% endfor %}
         </div>
@@ -94,11 +94,11 @@
       <div class="d-flex flex-grow-1 gap-3 overflow-hidden" style="min-height:0">
         {# Left: main warrant table #}
         <div class="overflow-auto flex-shrink-0" style="min-width:0;flex-basis:55%">
-          {% if r.roll_selected or r.roll_keep_underlyings %}
+          {% if r.roll_selected or r.roll_sell_underlyings %}
           {% set roll_margin = ws_cfg.roll_min_improvement if ws_cfg.roll_min_improvement is defined else 0.10 %}
           <h6 class="mb-2">Rolls
             {% if r.roll_selected %}<span class="badge bg-primary bg-opacity-10 text-primary">{{ r.roll_selected | length }} replace</span>{% endif %}
-            {% if r.roll_keep_underlyings %}<span class="badge bg-info bg-opacity-10 text-info">{{ r.roll_keep_underlyings | length }} keep</span>{% endif %}
+            {% if r.roll_sell_underlyings %}<span class="badge bg-danger bg-opacity-10 text-danger">{{ r.roll_sell_underlyings | length }} sell</span>{% endif %}
           </h6>
           <table class="table table-sm table-hover bg-white rounded shadow-sm mb-3" style="table-layout:fixed">
             <colgroup>
@@ -171,7 +171,7 @@
                 </td>
               </tr>
               {% endfor %}
-              {% for sym in r.roll_keep_underlyings %}
+              {% for sym in r.roll_sell_underlyings %}
               {% set inc = r.roll_incumbents[sym] if r.roll_incumbents and sym in r.roll_incumbents else none %}
               {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
               {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
@@ -180,7 +180,7 @@
                   data-analyzed="{{ analyzed }}"
                   onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td>—</td>
-                <td><span class="badge bg-info">KEEP</span></td>
+                <td><span class="badge bg-danger">SELL</span></td>
                 <td><code>{{ sym }}</code></td>
                 <td class="text-end text-muted small">{{ analyzed }}</td>
                 <td><code>{{ inc.warrant_wkn if inc else "—" }}</code></td>
@@ -194,7 +194,7 @@
               </tr>
               <tr>
                 <td colspan="12" class="text-muted small fst-italic border-0 pt-0 pb-2">
-                  No replacement scored ≥ {{ "%.2f" | format(roll_margin) }} above incumbent — click to see the {{ top3_list | length }} alternative(s) analyzed, all worse than the incumbent.
+                  No replacement scored ≥ {{ "%.2f" | format(roll_margin) }} above incumbent — recommend closing this degraded position. Click to see the {{ top3_list | length }} alternative(s) analyzed, all worse than the incumbent.
                 </td>
               </tr>
               {% endfor %}

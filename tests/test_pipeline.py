@@ -794,15 +794,16 @@ async def test_warrant_selection_rolls_when_replacement_better():
     result = await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
 
     assert result.roll_underlyings == ["A"]
-    assert result.roll_keep_underlyings == []
+    assert result.roll_sell_underlyings == []
     assert [w.warrant_wkn for w in result.roll_selected] == ["NEW123"]
     assert "A" in result.roll_incumbents
     assert result.roll_incumbents["A"].warrant_isin == "OLD_ISIN"
 
 
 @pytest.mark.asyncio
-async def test_warrant_selection_keeps_incumbent_when_replacement_not_better():
-    # Incumbent metrics match the replacement exactly → no score margin → keep.
+async def test_warrant_selection_recommends_sell_when_replacement_not_better():
+    # Incumbent metrics match the replacement exactly → no score margin → the
+    # incumbent is a known-degraded roll candidate, so recommend SELL, not keep.
     agent = WarrantSelectionAgent(
         finhub=_roll_finhub(),
         prices={"A": 100.0},
@@ -814,10 +815,10 @@ async def test_warrant_selection_keeps_incumbent_when_replacement_not_better():
     )
     result = await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
 
-    assert result.roll_keep_underlyings == ["A"]
+    assert result.roll_sell_underlyings == ["A"]
     assert result.roll_underlyings == []
     assert result.roll_selected == []
-    assert result.keep_existing_isins == ["OLD_ISIN"]
+    assert result.sell_existing_isins == ["OLD_ISIN"]
 
 
 @pytest.mark.asyncio

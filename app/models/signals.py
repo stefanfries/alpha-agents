@@ -85,9 +85,9 @@ class WarrantSelectionResult(BaseModel):
     top3: dict[str, list[SelectedWarrant]] = Field(default_factory=dict)       # symbol → up to 3 warrants by score
     analyzed_count: dict[str, int] = Field(default_factory=dict)               # symbol → total candidates evaluated
     # Metadata for monitoring integration
-    keep_existing_isins: list[str] = Field(default_factory=list)               # ISINs downgraded to KEEP (replacement worse)
+    sell_existing_isins: list[str] = Field(default_factory=list)               # incumbent ISINs recommended for SELL (no better replacement)
     roll_underlyings: list[str] = Field(default_factory=list)                  # symbols where valid replacement found
-    roll_keep_underlyings: list[str] = Field(default_factory=list)             # symbols downgraded to KEEP
+    roll_sell_underlyings: list[str] = Field(default_factory=list)             # symbols recommended for SELL (no better replacement)
     roll_selected: list["SelectedWarrant"] = Field(default_factory=list)       # chosen replacement warrants (rolls)
     roll_incumbents: dict[str, "RollReplacement"] = Field(default_factory=dict) # symbol → incumbent snapshot (re-scored)
 

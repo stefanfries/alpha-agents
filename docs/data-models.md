@@ -281,9 +281,9 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | `skipped_names` | `dict[str, str]` | Symbol → underlying display name (for the skipped list) |
 | `top3` | `dict[str, list[SelectedWarrant]]` | Symbol → up to 3 best warrants by score (for HITL detail panel) |
 | `analyzed_count` | `dict[str, int]` | Symbol → total warrant details fetched and scored |
-| `keep_existing_isins` | `list[str]` | Incumbent warrant ISINs kept because no replacement cleared the roll score margin |
+| `sell_existing_isins` | `list[str]` | Incumbent warrant ISINs recommended for SELL (no replacement cleared the roll score margin) |
 | `roll_underlyings` | `list[str]` | Roll underlyings where a better replacement was found |
-| `roll_keep_underlyings` | `list[str]` | Roll underlyings kept (replacement below `roll_min_improvement`) |
+| `roll_sell_underlyings` | `list[str]` | Roll underlyings recommended for SELL (replacement below `roll_min_improvement`) |
 | `roll_selected` | `list[SelectedWarrant]` | Chosen replacement warrants for rolls (kept separate from `selected`; not fed to portfolio yet) |
 | `roll_incumbents` | `dict[str, RollReplacement]` | Underlying symbol → incumbent snapshot (re-scored) for the before→after UI comparison |
 

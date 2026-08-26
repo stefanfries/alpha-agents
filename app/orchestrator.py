@@ -308,8 +308,6 @@ class Pipeline:
                 roll_min_improvement=ws_cfg.roll_min_improvement,
             ).run(SelectionResult(selected=candidates, scores={t.symbol: 1.0 for t in candidates}, rationale={}))
 
-        result.keep_existing_isins = monitoring.keep_existing_isins or result.keep_existing_isins
-
         return result
 
     async def _run_monitoring(self, run: dict) -> MonitoringResult:
