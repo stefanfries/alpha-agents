@@ -156,7 +156,7 @@ review); item 4 remains optional/deferred.
 3. **`KEEP` inline explanation**: a muted italic row under each `KEEP` pair reads
    *"No replacement scored ≥ {margin} above incumbent — click to see the N
    alternative(s) analyzed, all worse than the incumbent."*
-5. **Summary counts** at top: `"X new entries · Y rolls · Z kept (replacement worse) ·
+4. **Summary counts** at top: `"X new entries · Y rolls · Z kept (replacement worse) ·
    W skipped"`.
 
 Data plumbing needed for this: `strike`/`maturity_date` were not previously captured on
@@ -170,7 +170,7 @@ approximation when available.
 
 ### Optional (deferred)
 
-4. **Dual-strike chart overlay.** On a ROLL/NEW row, plot both strike lines (incumbent
+5. **Dual-strike chart overlay.** On a ROLL/NEW row, plot both strike lines (incumbent
    dashed/grey, replacement solid) and both maturity markers on the underlying chart.
    Requires a small change to the warrant_selection chart endpoint; defer to a follow-up.
 
@@ -212,6 +212,7 @@ replacements are selected, scored, and visualized, but never traded. To close th
    confirmed useful in practice.
 
 Relevant current constraints to keep in mind (do not regress):
+
 - Portfolio must not double-buy: `roll_selected` is deliberately kept out of `selected`.
 - Rolls must not consume `free_positions` / `max_selected` entry slots.
 - Guardrail stays score-margin only (`roll_min_improvement`, default `0.10`).
