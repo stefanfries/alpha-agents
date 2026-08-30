@@ -32,6 +32,7 @@ The implementation evolved from the initial draft in this file. Current producti
 - Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`.
 - Monitoring no longer resolves or attaches replacement warrants.
 - Warrant Selection owns replacement lookup for roll underlyings and applies replacement guardrails.
+- If a warrant is degraded and marked for `ROLL`, but no replacement warrant is better by the required improvement threshold, the underlying is treated as a `SELL` instead of keeping the degraded warrant in place.
 - If replacement metadata marks a roll candidate as worse than current (spread/maturity guard), the row can appear as `ROLL/KEEP`; current warrant stays selected.
 - `WarrantSelectionResult` now carries `keep_existing_isins`, `roll_underlyings`, and `roll_keep_underlyings` for downstream portfolio/UX behavior.
 
