@@ -37,6 +37,7 @@ from app.models.signals import (
     UniverseResult,
     WarrantSelectionResult,
 )
+from app.policies.trend_detection import TrendDetectionPolicyConfig
 from app.tools.finhub import FinHubTool
 from app.tools.wikipedia import WikipediaIndexTool
 from app.tools.yfinance import YFinanceTool
@@ -359,6 +360,10 @@ class Pipeline:
             mon_cfg = MonitoringSettings.model_validate(base)
         else:
             mon_cfg = settings.monitoring
+        screening_overrides = run.get("config_overrides", {}).get("screening", {})
+        enabled_break_rules = TrendDetectionPolicyConfig.from_mapping(
+            {**settings.screening.model_dump(), **screening_overrides}
+        ).exit_enabled_rules()
         result = await MonitoringAgent(
             settings=mon_cfg,
             max_positions=max_positions,
@@ -373,6 +378,7 @@ class Pipeline:
             held_since_map=held_since_map,
             warrant_snapshots=warrant_snapshots,
             policy_results=screening.policy_results,
+            enabled_break_rules=enabled_break_rules,
             max_positions=max_positions,
         ))
 

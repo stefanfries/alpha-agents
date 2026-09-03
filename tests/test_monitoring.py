@@ -802,6 +802,12 @@ class TestTrendStatus:
         reasons = MonitoringAgent._break_reasons(policy)
         assert reasons == ["SuperTrend bearish"]
 
+    def test_break_reasons_excludes_unselected_rules(self):
+        """Rules not selected as BREAK criteria must not appear as reasons."""
+        policy = {"adx_falling": True, "adx_below": True}
+        enabled = {"adx_falling": False, "adx_below": True}
+        assert MonitoringAgent._break_reasons(policy, enabled) == ["ADX below threshold"]
+
     def test_break_reasons_from_policy_results_wired_to_trend_status(self):
         """End-to-end: policy_results → break_reasons → trend_status string."""
         policy = {"price_below_ema50": True, "adx_below": True}

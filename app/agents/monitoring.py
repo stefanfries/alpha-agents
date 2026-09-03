@@ -32,6 +32,7 @@ _BREAK_REASON_LABELS: list[tuple[str, str]] = [
     ("ema20_falling", "EMA20 falling"),
     ("adx_falling", "ADX falling"),
     ("adx_below", "ADX below threshold"),
+    ("tsi_below", "TSI below threshold"),
 ]
 
 
@@ -41,6 +42,7 @@ class MonitoringInput(BaseModel):
     trend_signals: dict[str, str | None]       # underlying_symbol → "NEW"|"HOLD"|"BREAK"|None
     last_break_age_bars: dict[str, int] = {}   # underlying_symbol → bars since latest BREAK
     policy_results: dict[str, dict[str, bool]] = {}  # underlying_symbol → indicator booleans
+    enabled_break_rules: dict[str, bool] = {}  # BREAK rule key → selected in screening config
     underlying_names: dict[str, str] = {}      # underlying_symbol → display name
     current_holdings: list[Position]           # depot warrant positions (isin+wkn in ticker)
     warrant_underlying_map: dict[str, str]     # warrant_isin → underlying_symbol
@@ -142,12 +144,19 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         return round(sum(components) / len(components), 3)
 
     @staticmethod
-    def _break_reasons(policy_values: dict[str, bool]) -> list[str]:
-        """Return active BREAK rule labels in deterministic priority order."""
+    def _break_reasons(
+        policy_values: dict[str, bool],
+        enabled_rules: dict[str, bool] | None = None,
+    ) -> list[str]:
+        """Return active BREAK rule labels in deterministic priority order.
+
+        Rules not selected as BREAK criteria in screening are excluded.
+        """
         return [
             label
             for key, label in _BREAK_REASON_LABELS
             if policy_values.get(key, False)
+            and (not enabled_rules or enabled_rules.get(key, False))
         ]
 
     @staticmethod
@@ -292,7 +301,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             # active-BREAK display window. Treat as an exit signal, same as BREAK.
             has_exit_signal = trend_signal == "BREAK" or (trend_signal is None and last_break_age is not None)
             policy_values = input.policy_results.get(underlying_sym, {})
-            break_reasons = self._break_reasons(policy_values)
+            break_reasons = self._break_reasons(policy_values, input.enabled_break_rules)
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
             is_degraded, degrade_detail = False, None
             if warrant_snapshot:
