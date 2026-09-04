@@ -33,7 +33,7 @@ The orchestrator builds `MonitoringInput` from:
 - `held_since_map` via `_fetch_held_since()`:
   - real depots: latest `finance.depot_snapshots.positions[].held_since_date`
   - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
-- `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()` (also captures `strike`/`maturity_date` for display and roll re-scoring, in addition to spread/leverage/delta/days-to-maturity)
+- `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()` (also captures `strike`/`maturity_date` for display and roll re-scoring, in addition to spread/leverage/delta/days-to-maturity). Each per-ISIN detail fetch uses the shared `retry_call()` helper (`app/tools/retry.py`); a warrant is skipped (all snapshot fields `None`) only if all retry attempts fail.
 - `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
 - `enabled_break_rules` from the execution's screening config (`TrendDetectionPolicyConfig.exit_enabled_rules()`), so only selected BREAK criteria are reported as degradation reasons
 - `last_break_age_bars` forwarded from `SelectionResult.last_break_age_bars` (used for aged-out BREAK explanation text)

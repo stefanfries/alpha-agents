@@ -215,14 +215,15 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   The result maps `warrant_isin -> underlying_symbol`.
 6. Normalizes mapped underlying symbols to screening symbols before monitoring decisions.
   Example: `ASML.AS` is normalized to `ASML` when `ASML` exists in `screening.trend_signals`.
-7. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
-8. Calls `_fetch_held_since(run)` — builds `{wkn -> date}` from latest snapshot position field `held_since_date`.
+7. Calls `_fetch_warrant_snapshots(warrant_isins)` — fetches `GET /v1/warrants/{isin}` per held warrant via the shared `retry_call()` helper (3 attempts, exponential backoff); a warrant's snapshot is only omitted if all retry attempts fail.
+8. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
+9. Calls `_fetch_held_since(run)` — builds `{wkn -> date}` from latest snapshot position field `held_since_date`.
   For virtual depots only, missing snapshot dates fall back to most recent BUY from `virtual_depot_transactions`.
-9. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
-10. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
-11. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
-12. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`). Positions whose underlying cannot be mapped are always kept (safe default).
-13. `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found.
+10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
+11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
+12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
+13. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`). Positions whose underlying cannot be mapped are always kept (safe default).
+14. `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found.
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 

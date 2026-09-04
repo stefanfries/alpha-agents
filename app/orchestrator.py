@@ -39,6 +39,7 @@ from app.models.signals import (
 )
 from app.policies.trend_detection import TrendDetectionPolicyConfig
 from app.tools.finhub import FinHubTool
+from app.tools.retry import retry_call
 from app.tools.wikipedia import WikipediaIndexTool
 from app.tools.yfinance import YFinanceTool
 
@@ -414,7 +415,7 @@ class Pipeline:
         async with FinHubTool() as finhub:
             for isin in unique_isins:
                 try:
-                    detail = await finhub.get_warrant_detail(isin)
+                    detail = await retry_call(finhub.get_warrant_detail, isin)
                 except Exception:
                     logger.warning("Monitoring snapshots: detail fetch failed for %s", isin)
                     continue
