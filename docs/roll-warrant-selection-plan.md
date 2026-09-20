@@ -168,11 +168,11 @@ to `RollReplacement` in `_select_rolls()`. This also improved roll scoring accur
 the incumbent's real `maturity_date` is now used instead of the days-based
 approximation when available.
 
-### Optional (deferred)
-
-5. **Dual-strike chart overlay.** On a ROLL/NEW row, plot both strike lines (incumbent
-   dashed/grey, replacement solid) and both maturity markers on the underlying chart.
-   Requires a small change to the warrant_selection chart endpoint; defer to a follow-up.
+<!-- markdownlint-disable MD029 -->
+5. **Optional (deferred) — dual-strike chart overlay.** On a ROLL/NEW row, plot both strike lines (incumbent
+  dashed/grey, replacement solid) and both maturity markers on the underlying chart.
+  Requires a small change to the warrant_selection chart endpoint; defer to a follow-up.
+<!-- markdownlint-enable MD029 -->
 
 ## Success criteria
 

@@ -23,13 +23,13 @@ Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
     - breadth score and components
     - narrow-rally downgrade `green -> yellow` when breadth < 0.40
 
-  6. Focused regression coverage and explicit advisory actions are implemented:
+6. Focused regression coverage and explicit advisory actions are implemented:
 
     - regime advisory wording for Green, Yellow, and Red
     - breadth downgrade behavior
     - no automatic entry blocking
 
-  7. Orchestrator wiring of `universe_source` into `ResearchInput` is implemented.
+7. Orchestrator wiring of `universe_source` into `ResearchInput` is implemented.
 
 ### Not implemented (still open)
 
