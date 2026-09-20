@@ -19,10 +19,12 @@ original design. Current behavior has evolved:
    recommended for `SELL`, not retained as `KEEP`.
 - The current BREAK path is governed by the shared trend state machine and is not the
    draft's generic “minimum holding period for every exit” rule.
-- Re-entry prevention remains unimplemented.
-- Roll replacements are selected and visualized but are not yet executed.
+- Virtual-depot re-entry prevention is implemented from recent SELL transactions;
+   real-depot transaction history remains unavailable.
+- Confirmed roll replacements reach Portfolio, Risk, and Execution as paired SELL
+   incumbent + BUY replacement trades.
 
-For current contracts and the remaining paired SELL/BUY work, use
+For current contracts and the paired SELL/BUY implementation details, use
 [roll-warrant-selection-plan.md](../roll-warrant-selection-plan.md) and
 [improvement-roadmap.md](../improvement-roadmap.md). The sections below are historical
 context, not a current implementation specification.
@@ -169,7 +171,7 @@ class MonitoringResult(BaseModel):
 | `sell_reason` includes `"warrant_degraded"` | Only `"exit_signal"` supported | Warrant health checks require FinHub calls; deferred |
 | `positions_to_keep: list[str]` (symbols) | `list[PositionReview]` | Richer — carries warrant ISIN for downstream Portfolio use |
 | Capital recycling within run | Confirmed sells free slots immediately; rolls remain occupied | Allows replacement entries while preventing roll capacity from being double-counted |
-| Re-entry prevention from history | Not yet implemented | Requires transaction history join; `re_entry_prevention_days` stored for future use |
+| Re-entry prevention from history | Virtual depots implemented | Uses recent SELL transactions and persisted WKN-to-underlying mappings; real-depot history remains unavailable |
 
 ---
 

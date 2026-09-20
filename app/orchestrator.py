@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 import traceback
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -361,6 +361,11 @@ class Pipeline:
             mon_cfg = MonitoringSettings.model_validate(base)
         else:
             mon_cfg = settings.monitoring
+        reentry_blocked_symbols = await self._fetch_reentry_blocked_symbols(
+            run,
+            screening_symbols=screening_symbols,
+            prevention_days=mon_cfg.re_entry_prevention_days,
+        )
         screening_overrides = run.get("config_overrides", {}).get("screening", {})
         enabled_break_rules = TrendDetectionPolicyConfig.from_mapping(
             {**settings.screening.model_dump(), **screening_overrides}
@@ -380,6 +385,7 @@ class Pipeline:
             warrant_snapshots=warrant_snapshots,
             policy_results=screening.policy_results,
             enabled_break_rules=enabled_break_rules,
+            reentry_blocked_symbols=reentry_blocked_symbols,
             max_positions=max_positions,
         ))
 
@@ -511,6 +517,7 @@ class Pipeline:
                         result[warrant_isin] = underlying_symbol
                     await self._persist_warrant_underlying_mapping(
                         warrant_isin=warrant_isin,
+                        warrant_wkn=pos.ticker.symbol,
                         underlying_symbol=underlying_symbol,
                         underlying_isin=resolved.get("underlying_isin"),
                         underlying_name=resolved.get("underlying_name"),
@@ -563,6 +570,7 @@ class Pipeline:
     async def _persist_warrant_underlying_mapping(
         self,
         warrant_isin: str | None,
+        warrant_wkn: str | None,
         underlying_symbol: str,
         underlying_isin: str | None,
         underlying_name: str | None,
@@ -573,6 +581,7 @@ class Pipeline:
         now = datetime.now(timezone.utc)
         payload = {
             "warrant_isin": warrant_isin,
+            "warrant_wkn": warrant_wkn,
             "underlying_symbol": underlying_symbol,
             "underlying_isin": underlying_isin,
             "underlying_name": underlying_name,
@@ -695,6 +704,47 @@ class Pipeline:
 
         return held_since
 
+    async def _fetch_reentry_blocked_symbols(
+        self,
+        run: dict,
+        *,
+        screening_symbols: set[str],
+        prevention_days: int,
+    ) -> set[str]:
+        """Return underlyings sold within the configured re-entry prevention window."""
+        if prevention_days <= 0 or run.get("depot_type", "virtual") == "real":
+            return set()
+        qs_id = run.get("quant_system_id")
+        if not qs_id:
+            return set()
+        qs = await quant_systems_collection().find_one({"quant_system_id": qs_id})
+        if not qs or not qs.get("depot_id") or qs.get("depot_type", "virtual") == "real":
+            return set()
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=prevention_days)
+        transactions = await virtual_depot_transactions_collection().find(
+            {
+                "depot_id": qs["depot_id"],
+                "transaction_type": "SELL",
+                "booking_date": {"$gte": cutoff},
+            },
+            sort=[("booking_date", -1)],
+        ).to_list()
+        wkns = {txn.get("wkn") for txn in transactions if txn.get("wkn")}
+        if not wkns:
+            return set()
+
+        mappings = await warrant_underlying_map_collection().find(
+            {"warrant_wkn": {"$in": sorted(wkns)}},
+            projection={"warrant_wkn": 1, "underlying_symbol": 1},
+        ).to_list()
+        return {
+            symbol
+            for mapping in mappings
+            if (symbol := mapping.get("underlying_symbol"))
+            and (not screening_symbols or symbol in screening_symbols)
+        }
+
     async def _run_portfolio(self, run: dict) -> PortfolioProposal:
         warrant_result = WarrantSelectionResult.model_validate(
             run["stages"]["warrant_selection"]["result"]
@@ -706,6 +756,11 @@ class Pipeline:
         ]
         scores = {(w.warrant_wkn or w.warrant_isin): w.score for w in warrant_result.selected}
         selection = SelectionResult(selected=warrant_tickers, scores=scores, rationale={})
+        roll_incumbent_isins = {
+            replacement.underlying.symbol: incumbent.warrant_isin
+            for replacement in warrant_result.roll_selected
+            if (incumbent := warrant_result.roll_incumbents.get(replacement.underlying.symbol))
+        }
 
         current_holdings = await self._fetch_holdings(run)
         # Warrant ISINs that monitoring decided to keep — excluded from close_positions
@@ -714,13 +769,14 @@ class Pipeline:
         if monitoring_data:
             monitoring = MonitoringResult.model_validate(monitoring_data)
             kept_warrant_isins = {p.warrant_isin for p in monitoring.positions_to_keep if p.warrant_isin}
-            kept_warrant_isins.update(p.warrant_isin for p in monitoring.positions_to_roll if p.warrant_isin)
         return await PortfolioConstructionAgent(
             capital_eur=run.get("capital_eur", settings.portfolio.capital_eur),
             current_holdings=current_holdings,
             sizing_method=settings.portfolio.sizing_method,
             max_position_weight=settings.portfolio.max_position_weight,
             kept_warrant_isins=kept_warrant_isins,
+            roll_replacements=warrant_result.roll_selected,
+            roll_incumbent_isins=roll_incumbent_isins,
         ).run(selection)
 
     async def _fetch_holdings(self, run: dict) -> list[Position]:

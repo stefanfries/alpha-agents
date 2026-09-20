@@ -48,11 +48,9 @@ class MonitoringResult(BaseModel):
     positions_to_roll: list[PositionReview]  # ROLL candidates (classification only)
     entry_candidates: list[Ticker]           # all eligible screening candidates (NOT capped to free_positions)
     free_positions: int                      # max_positions − len(current_holdings) + confirmed sells
-    excluded_symbols: list[str]              # all held underlyings (blocked from entry)
+    excluded_symbols: list[str]              # held or recently sold underlyings (blocked from entry)
     # Metadata for warrant selection integration:
-    keep_existing_isins: list[str]
-    roll_underlyings: list[str]              # symbols classified as roll candidates
-    roll_keep_underlyings: list[str]
+    reentry_blocked_symbols: set[str]        # recent virtual-depot SELL underlyings
 ```
 
 `PositionReview` fields:
@@ -171,7 +169,7 @@ Warrant health thresholds can be adjusted directly in the monitoring stage UI ("
 | Key | Default | Notes |
 | --- | ------- | ----- |
 | `min_holding_days` | `5` | Grace period before degraded warrants are eligible for ROLL; prevents roll churn on temporary fluctuations |
-| `re_entry_prevention_days` | `10` | Intended for future re-entry prevention from transaction history (not yet implemented) |
+| `re_entry_prevention_days` | `10` | Virtual-depot SELLs block the same underlying for this many days; real-depot history is not available |
 | `warrant_health.enabled` | `True` | Master switch for warrant health checks |
 | `warrant_health.spread_max_pct` | `2.5` | Bid-ask spread threshold for degradation (tighter than entry screening) |
 | `warrant_health.leverage_min` | `3.0` | Minimum acceptable leverage |
@@ -280,6 +278,8 @@ Guardrail suggestions for the baseline profile:
 
 ## Known limitations / TODO
 
-- **Re-entry prevention from history**: `re_entry_prevention_days` is stored but the agent does not yet query transaction history to exclude recently-sold underlyings from entry. Currently only currently-held symbols are excluded.
+- **Re-entry prevention from history**: virtual-depot SELL transactions are queried and
+  recently sold underlyings are excluded for `re_entry_prevention_days`; real-depot
+  transaction history is not available through the current data path.
 - **Real depot held-since quality**: real depots use `held_since_date` from `finance.depot_snapshots`; if upstream snapshots provide `null`, held-since remains unavailable.
 - **Roll approval controls**: ROLL recommendations are approved at stage level (no per-row accept/reject yet).

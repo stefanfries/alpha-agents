@@ -1,6 +1,6 @@
 # Monitoring Agent Enhancement Plan — Warrant Degradation Health Checks
 
-**Status:** Implemented with architecture split (Monitoring classify-only, Warrant Selection replacement ownership). Roll execution remains open; see [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
+**Status:** Implemented with architecture split (Monitoring classify-only, Warrant Selection replacement ownership, paired roll execution in Portfolio/Risk/Execution).
 **Date Created:** 2026-06-22  
 **Priority:** High (risk management for trend-following strategy)
 
@@ -29,7 +29,7 @@ Trend-following is vulnerable to warrant quality degradation — a warrant can b
 
 ---
 
-## Current State (2026-06-27)
+## Current State (2026-09-20)
 
 The implementation evolved from the initial draft in this file. Current production behavior is:
 
@@ -39,11 +39,15 @@ The implementation evolved from the initial draft in this file. Current producti
 - If a warrant is degraded and marked for `ROLL`, but no replacement clears the score
     margin, Warrant Selection recommends `SELL`; it does not retain the degraded
     incumbent as `ROLL/KEEP`.
+- Virtual-depot underlyings sold within `MonitoringSettings.re_entry_prevention_days`
+    are excluded from new entry candidates. SELL transactions are resolved through the
+    persisted warrant WKN-to-underlying mapping; real-depot transaction history is not
+    yet available through this application data path.
 - `WarrantSelectionResult` carries `roll_selected`, `roll_incumbents`,
     `roll_underlyings`, `roll_sell_underlyings`, and `sell_existing_isins` for downstream
-    handling.
-- Replacements and SELL recommendations are selected and displayed, but remain
-    non-executable until the paired roll Portfolio/Risk/Execution follow-up is complete.
+    handling; confirmed rolls are paired in Portfolio, Risk, and Execution.
+- Confirmed replacements and SELL recommendations now flow through Portfolio, Risk,
+    and Execution; unconfirmed or undersized roll pairs remain non-executable.
 
 Use this section as the current-state summary. Historical sections below remain for
 implementation history and may describe superseded intermediate designs, including
@@ -459,13 +463,16 @@ MONITORING__WARRANT_HEALTH__DELTA_MAX=0.80
 
 1. Monitoring marks an incumbent as **ROLL** when trend is not confirmed broken, warrant is degraded, and roll grace is met.
 2. Monitoring emits `roll_underlyings`; replacement search is performed in warrant selection.
-3. If no acceptable replacement exists, warrant selection keeps the incumbent (`ROLL/KEEP` in UI).
+3. If no acceptable replacement clears the score margin, warrant selection recommends
+   **SELL** for the known-degraded incumbent (`ROLL/SELL` in UI).
 4. Monitoring UI presents classification details (Trend status + Warrant health + Decision rationale).
 5. Human review at stage approval is required before execution advances:
-    - approve stage -> ROLL recommendations proceed to downstream planning/execution context
+    - approve stage -> confirmed roll pairs proceed through Portfolio, Risk, and Execution
     - restart from monitoring or earlier stage -> recompute and optionally reject/replace recommendations
 
-Manual approval requirement: ROLL is advisory until the monitoring stage is approved in HITL mode; no replacement order is executed automatically before approval.
+Manual approval requirement: ROLL is advisory until the monitoring stage is approved in HITL mode;
+after approval, confirmed rolls produce paired incumbent SELL/replacement BUY orders subject to
+normal trade-size and dry-run controls.
 
 ### M1.6 Monitoring KPIs and Tuning Runbook
 

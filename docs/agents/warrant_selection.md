@@ -118,7 +118,7 @@ Final score = weighted sum. The warrant with the highest score per underlying be
 | `min_score` | `0.0` | Minimum accepted score; only warrants with `score > min_score` are eligible |
 | `spread_max_pct` | `2.0` | Hard bid-ask spread cap (%) applied at selection time; wider warrants are dropped. Should stay ≤ monitoring `warrant_health.spread_max_pct` (entry stricter than degradation). |
 | `atm_band_fallback` | `0.10` | Fallback strike filter half-width (±10%) |
-| `roll_min_improvement` | `0.10` | Minimum score improvement over the incumbent required to roll; below this the incumbent is kept (`ROLL/KEEP`) |
+| `roll_min_improvement` | `0.10` | Minimum score improvement over the incumbent required to roll; below this the known-degraded incumbent is recommended for SELL |
 
 **WarrantScoringSettings** (scoring component weights & thresholds, runtime-tunable via `.env`):
 
@@ -151,7 +151,7 @@ Note: in warrant selection, the effective maturity target is derived from the se
 
 The warrant selection stage page shows:
 
-- **Status summary** (top): count of selected warrants and skipped underlyings. Skipped underlyings are listed as `SYMBOL - underlying name - reason` (name and reason shown when available). If `keep_existing_isins` is populated by upstream/downstream enrichment, an info box displays those incumbent ISINs.
+- **Status summary** (top): count of selected warrants, rolls, and skipped underlyings. Skipped underlyings are listed as `SYMBOL - underlying name - reason` (name and reason shown when available).
 - **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) or `ROLL` (replacement). Optional `ROLL/SELL` is supported when `roll_sell_underlyings` is populated (no replacement cleared the roll score margin — the incumbent is a known-degraded warrant, so it is recommended for SELL rather than being kept).
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
@@ -166,8 +166,7 @@ Monitoring integration note:
 - This stage searches for a same-underlying replacement (reusing the entry search and
   scoring), re-scores the incumbent from its snapshot metrics, and rolls only when
   `replacement.score >= incumbent.score + roll_min_improvement` (default `0.10`);
-  otherwise the incumbent is kept (`ROLL/KEEP`). Roll replacements are stored in
-  `roll_selected` / `roll_incumbents` (not `selected`) so the entry slot cap and
-  portfolio construction are unaffected. Executing the roll (pairing SELL incumbent +
-  BUY replacement) is a downstream follow-up; see
-  [roll-warrant-selection-plan](../roll-warrant-selection-plan.md).
+  otherwise the known-degraded incumbent is recommended for SELL. Roll replacements
+  are stored in `roll_selected` / `roll_incumbents` (not `selected`) and are passed
+  downstream as paired incumbent SELL + replacement BUY trades without consuming
+  ordinary entry slots. See [roll-warrant-selection-plan](../roll-warrant-selection-plan.md).

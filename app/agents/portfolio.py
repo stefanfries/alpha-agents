@@ -2,8 +2,8 @@ import logging
 from decimal import Decimal
 
 from app.agents.base import Agent
-from app.models.market import Position
-from app.models.signals import PortfolioProposal, SelectionResult
+from app.models.market import Position, Ticker
+from app.models.signals import PortfolioProposal, RollTrade, SelectedWarrant, SelectionResult
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,8 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
         sizing_method: str = "equal",
         max_position_weight: float = 0.10,
         kept_warrant_isins: set[str] | None = None,
+        roll_replacements: list[SelectedWarrant] | None = None,
+        roll_incumbent_isins: dict[str, str] | None = None,
     ) -> None:
         self._capital = capital_eur
         self._holdings = {p.ticker.isin for p in (current_holdings or []) if p.ticker.isin}
@@ -26,9 +28,11 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
         self._max_weight = max_position_weight
         # Warrant ISINs that monitoring determined should be kept — excluded from close_positions
         self._kept_isins: set[str] = kept_warrant_isins or set()
+        self._roll_replacements = roll_replacements or []
+        self._roll_incumbent_isins = roll_incumbent_isins or {}
 
     async def run(self, input: SelectionResult) -> PortfolioProposal:
-        if not input.selected:
+        if not input.selected and not self._roll_replacements:
             close = list(self._holding_positions.values())
             return PortfolioProposal(positions=[], target_weights={}, close_positions=close)
 
@@ -37,6 +41,7 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
         target_weights: dict[str, float] = {}
         new_positions: list[Position] = []
         existing_positions: list[Position] = []
+        roll_trades = self._build_roll_trades()
 
         selected_isins = {t.isin for t in input.selected if t.isin}
 
@@ -60,12 +65,14 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
 
         close_positions = [
             p for isin, p in self._holding_positions.items()
-            if isin not in selected_isins and isin not in self._kept_isins
+            if isin not in selected_isins
+            and isin not in self._kept_isins
+            and isin not in self._roll_incumbent_isins.values()
         ]
 
         logger.info(
-            "Portfolio constructed: %d positions (%d new, %d existing, %d to close)",
-            len(positions), len(new_positions), len(existing_positions), len(close_positions),
+            "Portfolio constructed: %d positions (%d new, %d existing, %d rolls, %d to close)",
+            len(positions), len(new_positions), len(existing_positions), len(roll_trades), len(close_positions),
         )
         return PortfolioProposal(
             positions=positions,
@@ -73,7 +80,44 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
             new_positions=new_positions,
             existing_positions=existing_positions,
             close_positions=close_positions,
+            roll_trades=roll_trades,
         )
+
+    def _build_roll_trades(self) -> list[RollTrade]:
+        rolls: list[RollTrade] = []
+        for replacement in self._roll_replacements:
+            incumbent_isin = self._roll_incumbent_isins.get(replacement.underlying.symbol)
+            incumbent = self._holding_positions.get(incumbent_isin)
+            if incumbent is None:
+                logger.warning(
+                    "Skipping roll into %s: incumbent holding not found",
+                    replacement.warrant_wkn,
+                )
+                continue
+
+            allocated_eur = incumbent.quantity * incumbent.avg_cost
+            if allocated_eur <= 0:
+                logger.warning(
+                    "Skipping roll into %s: incumbent %s has no positive cost basis",
+                    replacement.warrant_wkn,
+                    incumbent.ticker.symbol,
+                )
+                continue
+
+            rolls.append(RollTrade(
+                incumbent=incumbent,
+                replacement=Position(
+                    ticker=Ticker(
+                        symbol=replacement.warrant_wkn or replacement.warrant_isin,
+                        isin=replacement.warrant_isin,
+                        name=replacement.underlying.name,
+                    ),
+                    quantity=allocated_eur,
+                    avg_cost=Decimal("0"),
+                ),
+                target_weight=float(allocated_eur / Decimal(str(self._capital))),
+            ))
+        return rolls
 
     def _compute_weights(self, input: SelectionResult) -> dict[str, float]:
         n = len(input.selected)

@@ -13,8 +13,11 @@ from app.agents.warrant_selection import WarrantSelectionAgent
 from app.config import MonitoringSettings
 from app.models.market import OHLCV, Position, Ticker
 from app.models.signals import (
+    MarketRegime,
     ResearchResult,
     RollCandidate,
+    RollReplacement,
+    SelectedWarrant,
     SelectionResult,
     WarrantSelectionResult,
 )
@@ -82,6 +85,72 @@ async def test_screening_selected_preserves_score_order():
 
 
 @pytest.mark.asyncio
+async def test_screening_exposes_atr_normalized_extension_without_changing_selection():
+    from app.config import ScreeningSettings
+
+    ticker = Ticker(symbol="EXT")
+    bars = _make_synthetic_bars(ticker, [100.0 + i for i in range(70)])
+    agent = SecuritySelectionAgent(ScreeningSettings(top_n=1))
+    agent._evaluate_policies = lambda _bars: {
+        "supertrend": True,
+        "supertrend_bearish": False,
+        "ema20_rising": True,
+        "ema20_falling": False,
+        "adx_above": True,
+        "adx_below": False,
+        "adx_rising": True,
+        "adx_falling": False,
+        "price_above_ema50": True,
+        "price_below_ema50": False,
+        "tq60_above": True,
+        "tq20_above": True,
+        "tsi_above": True,
+        "tsi_below": False,
+    }
+    agent._trend_signal = lambda *args, **kwargs: None
+    agent._last_break_age = lambda *args, **kwargs: None
+
+    result = await agent.run(ResearchResult(
+        tickers=[ticker],
+        bars={ticker.symbol: bars},
+        fundamentals={ticker.symbol: {"marketCap": 1_000_000_000}},
+    ))
+
+    assert result.selected == [ticker]
+    assert result.extension_scores[ticker.symbol] > 0
+    assert result.weekly_confirmed[ticker.symbol] is False
+
+
+def test_market_regime_advisory_action_differentiates_by_status():
+    green = MarketRegime(symbol="^NDX", tq60=0.05, tq20=0.02, status="green")
+    yellow = MarketRegime(symbol="^NDX", tq60=0.00, tq20=0.00, status="yellow")
+    red = MarketRegime(symbol="^NDX", tq60=-0.05, tq20=-0.02, status="red")
+
+    assert green.advisory_action == "normal review"
+    assert yellow.advisory_action == "stricter timing review; no automatic early entries"
+    assert red.advisory_action == "no new entries recommended; review existing positions"
+
+
+def test_screening_downgrades_green_regime_when_breadth_is_narrow():
+    agent = SecuritySelectionAgent()
+    regime = MarketRegime(symbol="^NDX", display_name="Nasdaq 100", tq60=0.05, tq20=0.02, status="green")
+    policy_results = {
+        "A": {"supertrend": False, "ema20_rising": False, "adx_above": False},
+        "B": {"supertrend": False, "ema20_rising": False, "adx_above": False},
+        "C": {"supertrend": True, "ema20_rising": True, "adx_above": False},
+        "D": {"supertrend": False, "ema20_rising": False, "adx_above": False},
+    }
+
+    result = agent._enrich_regime(regime, policy_results)
+
+    assert result is regime
+    assert result.status == "yellow"
+    assert result.breadth_score == pytest.approx(0.188)
+    assert result.breadth_components["pct_supertrend_long"] == pytest.approx(0.25)
+    assert result.advisory_action == "stricter timing review; no automatic early entries"
+
+
+@pytest.mark.asyncio
 async def test_portfolio_equal_weights():
     tickers = [Ticker(symbol=s) for s in ["A", "B", "C", "D"]]
     agent = PortfolioConstructionAgent(capital_eur=10_000, sizing_method="equal", max_position_weight=0.5)
@@ -95,6 +164,130 @@ async def test_portfolio_equal_weights():
     assert len(result.positions) == 4
     for w in result.target_weights.values():
         assert abs(w - 0.25) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_portfolio_constructs_paired_roll_without_closing_incumbent_early():
+    incumbent = Position(
+        ticker=Ticker(symbol="OLD", isin="OLD-ISIN"),
+        quantity=Decimal("3"),
+        avg_cost=Decimal("100"),
+    )
+    replacement = SelectedWarrant(
+        underlying=Ticker(symbol="A", name="Alpha"),
+        warrant_isin="NEW-ISIN",
+        warrant_wkn="NEW",
+        score=0.9,
+        rationale="better roll candidate",
+    )
+    agent = PortfolioConstructionAgent(
+        capital_eur=10_000,
+        current_holdings=[incumbent],
+        roll_replacements=[replacement],
+        roll_incumbent_isins={"A": "OLD-ISIN"},
+    )
+
+    result = await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
+
+    assert result.close_positions == []
+    assert len(result.roll_trades) == 1
+    assert result.roll_trades[0].incumbent == incumbent
+    assert result.roll_trades[0].replacement.ticker.isin == "NEW-ISIN"
+    assert result.roll_trades[0].replacement.quantity == Decimal("300")
+    assert result.roll_trades[0].target_weight == 0.03
+
+
+@pytest.mark.asyncio
+async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch):
+    from app.orchestrator import Pipeline
+
+    incumbent = Position(
+        ticker=Ticker(symbol="OLD", isin="OLD-ISIN"),
+        quantity=Decimal("3"),
+        avg_cost=Decimal("100"),
+    )
+    replacement = SelectedWarrant(
+        underlying=Ticker(symbol="A", name="Alpha"),
+        warrant_isin="NEW-ISIN",
+        warrant_wkn="NEW",
+        score=0.9,
+        rationale="better roll candidate",
+    )
+    warrant_result = WarrantSelectionResult(
+        selected=[],
+        skipped=[],
+        roll_underlyings=["A"],
+        roll_selected=[replacement],
+        roll_incumbents={
+            "A": RollReplacement(warrant_isin="OLD-ISIN", warrant_wkn="OLD"),
+        },
+    )
+    pipeline = Pipeline()
+
+    async def fake_fetch_holdings(_run: dict) -> list[Position]:
+        return [incumbent]
+
+    monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+
+    result = await pipeline._run_portfolio({
+        "capital_eur": 10_000,
+        "stages": {
+            "warrant_selection": {"result": warrant_result.model_dump(mode="json")},
+        },
+    })
+
+    assert result.close_positions == []
+    assert len(result.roll_trades) == 1
+    assert result.roll_trades[0].incumbent.ticker.isin == "OLD-ISIN"
+    assert result.roll_trades[0].replacement.ticker.isin == "NEW-ISIN"
+
+
+@pytest.mark.asyncio
+async def test_run_portfolio_closes_roll_candidate_without_replacement(monkeypatch):
+    from app.orchestrator import Pipeline
+
+    incumbent = Position(
+        ticker=Ticker(symbol="OLD", isin="OLD-ISIN"),
+        quantity=Decimal("3"),
+        avg_cost=Decimal("100"),
+    )
+    pipeline = Pipeline()
+
+    async def fake_fetch_holdings(_run: dict) -> list[Position]:
+        return [incumbent]
+
+    monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+
+    result = await pipeline._run_portfolio({
+        "capital_eur": 10_000,
+        "stages": {
+            "warrant_selection": {
+                "result": WarrantSelectionResult(
+                    selected=[],
+                    skipped=[],
+                    sell_existing_isins=["OLD-ISIN"],
+                    roll_sell_underlyings=["A"],
+                ).model_dump(mode="json"),
+            },
+            "monitoring": {
+                "result": {
+                    "positions_to_sell": [],
+                    "positions_to_keep": [],
+                    "positions_to_roll": [{
+                        "underlying_symbol": "A",
+                        "warrant_isin": "OLD-ISIN",
+                        "warrant_wkn": "OLD",
+                    }],
+                    "entry_candidates": [],
+                    "free_positions": 0,
+                    "excluded_symbols": ["A"],
+                },
+            },
+        },
+    })
+
+    assert result.roll_trades == []
+    assert result.close_positions == [incumbent]
 
 
 @pytest.mark.asyncio

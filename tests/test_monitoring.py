@@ -24,6 +24,25 @@ from app.models.signals import (
 )
 
 
+@pytest.mark.asyncio
+async def test_monitoring_blocks_recently_sold_underlying_from_reentry():
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+
+    result = await agent.run(MonitoringInput(
+        candidates=[Ticker(symbol="RECENT"), Ticker(symbol="AVAILABLE")],
+        scores={"RECENT": 1.0, "AVAILABLE": 0.9},
+        trend_signals={"RECENT": "NEW", "AVAILABLE": "NEW"},
+        current_holdings=[],
+        warrant_underlying_map={},
+        held_since_map={},
+        reentry_blocked_symbols={"RECENT"},
+        max_positions=5,
+    ))
+
+    assert [ticker.symbol for ticker in result.entry_candidates] == ["AVAILABLE"]
+    assert result.excluded_symbols == ["RECENT"]
+
+
 class TestMonitoringScore:
     """Tests for _monitoring_score() method."""
 

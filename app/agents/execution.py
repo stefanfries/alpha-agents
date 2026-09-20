@@ -34,6 +34,33 @@ class TradeExecutionAgent(Agent[RiskAssessment, ExecutionPlan]):
                 limit_price=None,
             ))
 
+        for roll in input.approved_roll_trades:
+            allocated_eur = float(roll.replacement.quantity)
+            if allocated_eur < self._min_trade_eur:
+                skipped.append(roll.replacement)
+                logger.debug(
+                    "Skipping roll into %s: allocated %.2f EUR below minimum %.2f",
+                    roll.replacement.ticker.symbol,
+                    allocated_eur,
+                    self._min_trade_eur,
+                )
+                continue
+
+            orders.append(Order(
+                ticker=roll.incumbent.ticker,
+                side="sell",
+                quantity=roll.incumbent.quantity,
+                order_type=self._order_type,  # type: ignore[arg-type]
+                limit_price=None,
+            ))
+            orders.append(Order(
+                ticker=roll.replacement.ticker,
+                side="buy",
+                quantity=Decimal(str(round(allocated_eur, 2))),
+                order_type=self._order_type,  # type: ignore[arg-type]
+                limit_price=None,
+            ))
+
         for position in input.approved_positions:
             allocated_eur = float(position.quantity)
             if allocated_eur < self._min_trade_eur:

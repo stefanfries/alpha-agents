@@ -260,6 +260,8 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `rationale` | `dict[str, str]` | Human-readable summary per ticker |
 | `tq_short` | `dict[str, float]` | TQ-20 short-window score per ticker |
 | `tsi` | `dict[str, float]` | True Strength Index value per ticker |
+| `extension_scores` | `dict[str, float]` | `(close - EMA20) / ATR20` per ticker; retained for future composite entry-timing analysis, not a standalone policy or table signal |
+| `weekly_confirmed` | `dict[str, bool]` | Latest completed weekly close is above a rising weekly EMA20; advisory only, not a NEW/BREAK policy |
 | `policy_results` | `dict[str, dict[str, bool]]` | Per-ticker indicator booleans used by NEW/BREAK policy groups: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above` |
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
@@ -284,7 +286,7 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | `sell_existing_isins` | `list[str]` | Incumbent warrant ISINs recommended for SELL (no replacement cleared the roll score margin) |
 | `roll_underlyings` | `list[str]` | Roll underlyings where a better replacement was found |
 | `roll_sell_underlyings` | `list[str]` | Roll underlyings recommended for SELL (replacement below `roll_min_improvement`) |
-| `roll_selected` | `list[SelectedWarrant]` | Chosen replacement warrants for rolls (kept separate from `selected`; not fed to portfolio yet) |
+| `roll_selected` | `list[SelectedWarrant]` | Chosen replacement warrants for confirmed rolls (kept separate from `selected`; paired with the incumbent in Portfolio/Risk/Execution) |
 | `roll_incumbents` | `dict[str, RollReplacement]` | Underlying symbol → incumbent snapshot (re-scored) for the before→after UI comparison |
 
 ### `PositionReview`
@@ -328,10 +330,8 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 | `positions_to_roll` | `list[PositionReview]` | Degraded warrants classified as roll candidates (replacement selection occurs downstream) |
 | `entry_candidates` | `list[Ticker]` | All eligible screening candidates (rank order) for new entry this run; **not** capped to `free_positions` — warrant selection enforces the slot cap (`max_selected`) with backfill |
 | `free_positions` | `int` | `max_positions − len(current_holdings) + len(positions_to_sell)` (`Free now`, including confirmed sells) |
-| `excluded_symbols` | `list[str]` | All held underlying symbols (kept + selling + rolling); blocked from entry in this run |
-| `keep_existing_isins` | `list[str]` | Reserved metadata for downstream stages |
-| `roll_underlyings` | `list[str]` | Underlying symbols classified as roll candidates |
-| `roll_keep_underlyings` | `list[str]` | Reserved metadata for downstream stages |
+| `excluded_symbols` | `list[str]` | Held or recently sold underlying symbols blocked from entry in this run |
+| `reentry_blocked_symbols` | `set[str]` | Recent virtual-depot SELL underlyings blocked for the configured prevention window |
 
 ### `PortfolioProposal`
 
@@ -344,6 +344,19 @@ Output of `PortfolioConstructionAgent`. Input of `RiskAgent`.
 | `new_positions` | `list[Warrant]` | Warrants not currently held (new trades) |
 | `existing_positions` | `list[Warrant]` | Already held — no action needed |
 | `close_positions` | `list[Position]` | Current holdings to close (not in shortlist) |
+| `roll_trades` | `list[RollTrade]` | Confirmed incumbent/replacement pairs, kept separate from ordinary new positions |
+
+### `RollTrade`
+
+Paired replacement of a held warrant. Portfolio sizes `replacement.quantity` from the
+incumbent's recorded cost basis; Risk and Execution keep the pair together so an
+unapproved or undersized replacement does not create a naked incumbent SELL.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `incumbent` | `Position` | Held warrant to sell |
+| `replacement` | `Position` | Selected warrant to buy |
+| `target_weight` | `float` | Replacement allocation as a share of portfolio capital |
 
 ### `RiskAssessment`
 
@@ -355,6 +368,8 @@ Output of `RiskAgent`. Input of `TradeExecutionAgent`.
 | `rejected_positions` | `list[Position]` | Positions blocked by risk limits |
 | `risk_notes` | `dict[str, str]` | Reason for each rejection |
 | `close_positions` | `list[Position]` | Positions carried through for SELL order generation |
+| `approved_roll_trades` | `list[RollTrade]` | Roll pairs approved independently of new-entry slots |
+| `rejected_roll_trades` | `list[RollTrade]` | Roll pairs rejected by the position-weight check |
 
 ### `ExecutionPlan`
 

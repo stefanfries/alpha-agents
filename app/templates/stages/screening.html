@@ -129,6 +129,7 @@
                 <th class="text-center" title="ADX &gt; {{ min_adx }}">ADX&gt;</th>
                 <th class="text-center" title="ADX rising">ADX↑</th>
                 <th class="text-center" title="Price above EMA50">EMA50</th>
+                <th class="text-center" title="Latest completed weekly close above a rising weekly EMA20">Week</th>
                 <th class="text-center" title="Recent trend-state signal (NEW persists up to 5 bars; BREAK persists up to 5 bars total)">Signal</th>
                 {% if r.history_labels %}
                   {% for lbl in r.history_labels %}
@@ -166,6 +167,7 @@
                 <td class="text-center">{{ policy_badge(pol.get("adx_above", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("adx_rising", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("price_above_ema50", false)) }}</td>
+                <td class="text-center">{{ policy_badge(r.weekly_confirmed.get(sym, false)) }}</td>
                 {% set sig = r.trend_signals.get(sym) or "" %}
                 <td class="text-center" data-signal="{{ sig }}">
                   {% if sig == "NEW" %}

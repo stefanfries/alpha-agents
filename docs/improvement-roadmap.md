@@ -36,47 +36,53 @@ Market regime
 - Market regime and breadth are computed and displayed, but remain advisory. See
   [market-regime-filter-plan.md](market-regime-filter-plan.md).
 - Monitoring classifies held positions; Warrant Selection searches and scores roll
-  replacements. A roll is selected and displayed but is not yet executed. See
+   replacements. Confirmed rolls now flow through Portfolio, Risk, and Execution as
+   paired incumbent SELL/replacement BUY orders. See
   [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
 - The baseline warrant score is refactored and covered by parity tests. See
   [warrant-scoring-refactor-plan.md](warrant-scoring-refactor-plan.md).
 
 ## Ordered Roadmap
 
-### 0. Close the existing roll-execution gap
+### 0. Close the roll-execution gap — completed
 
 **Goal:** Execute a confirmed roll as one incumbent `SELL` and one replacement `BUY`.
 
-1. Model a roll pair in Portfolio rather than treating a replacement as an ordinary
+1. Portfolio represents a confirmed roll as a `RollTrade`, separate from an ordinary
    new position.
-2. Close the incumbent only when a replacement cleared `roll_min_improvement`; retain
-   it nowhere else in the protected holdings path.
-3. Have Risk validate the pair and Execution emit exactly one `SELL` plus one `BUY`
-   under existing dry-run semantics.
-4. Add end-to-end tests for no double exposure, slot isolation, and the no-replacement
-   `SELL` branch.
+2. Portfolio protects the incumbent from ordinary close processing and uses its recorded
+   cost basis to size the replacement. Missing or non-positive cost basis leaves the
+   incumbent protected and skips the roll.
+3. Risk approves or rejects the pair as one unit without consuming an entry slot.
+4. Execution emits the incumbent `SELL` only when the replacement passes the minimum
+   trade amount, then emits the replacement `BUY` under existing dry-run semantics.
+5. Focused tests cover paired orders, no premature incumbent close, no-replacement
+   sells, and entry-slot isolation.
 
-**Why first:** the system currently makes roll recommendations that cannot reach
-execution. This is an operational correctness gap, not a strategy experiment.
+**Outcome:** roll recommendations now reach the execution plan without double exposure.
 
 **Source:** [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
 
-### 1. Measure entry extension without changing decisions
+### 1. Measure entry extension without changing decisions — complete; no threshold
 
 **Goal:** expose whether a `NEW` signal is far from its own trend.
 
-1. Compute $\mathrm{ema20\_extension\_atr} = (close - ema20) / atr20$.
-2. Persist and display the metric on `SelectionResult`.
-3. Do not add an entry gate or alter `NEW`/`BREAK`.
-4. Produce a forward-return analysis for historical `NEW` signals in extension buckets
-   at 5, 10, and 20 trading days.
+1. $\mathrm{ema20\_extension\_atr} = (close - ema20) / atr20$ is computed and retained
+   on `SelectionResult` as future composite timing evidence, not a standalone table signal.
+2. `NEW` and `BREAK` semantics remain unchanged.
+3. `scripts/analyze_entry_extension.py` resolves the live NASDAQ-100 universe by default
+   and reports 5/10/20-bar underlying returns by data-driven extension quintile.
+4. NASDAQ-100 (747 events) and DAX (290 events) results are non-monotonic and disagree
+   across universes. No standalone threshold is warranted.
+5. Revisit only inside an advisory composite timing model that also considers trigger
+   freshness, trend context, and market regime; do not mine the current samples for a cutoff.
 
 **Decision gate:** only introduce an extension classification or threshold when the
 analysis shows a material, repeatable difference after realistic warrant costs.
 
 **Source:** [entry-timing-extension-filter-plan.md](entry-timing-extension-filter-plan.md).
 
-### 2. Add advisory entry-decision quality
+### 2. Add advisory entry-decision quality — deferred pending new evidence
 
 **Goal:** distinguish a valid trend from a timely leveraged entry.
 
@@ -92,15 +98,24 @@ analysis shows a material, repeatable difference after realistic warrant costs.
 
 **Source:** [entry-conditions-v2-improvement-analysis.md](entry-conditions-v2-improvement-analysis.md).
 
-### 3. Run isolated trend-detection experiments
+### 3. Run isolated trend-detection experiments — completed
 
-Each proposal below needs its own short plan, default-off configuration, and a targeted
-test/backtest. Do not bundle them into Entry V2.
+Each proposal below needed its own short plan, default-off configuration, and a targeted
+test/backtest. The phase is complete; the detailed results below are the final outcomes.
 
-1. Smooth or lengthen the ADX-rising slope window.
-2. Add relative strength versus the selected market benchmark.
-3. Add relative-volume confirmation.
-4. Add weekly confirmation from resampled daily bars.
+1. ADX-slope smoothing/longer-window experiment completed: neither alternative improved
+   churn across NASDAQ-100 and DAX, so the five-bar production default remains. See
+   [adx-slope-smoothing-plan.md](adx-slope-smoothing-plan.md).
+2. Relative-strength experiment completed: benchmark-aligned excess returns were
+   non-monotonic and inconsistent between NASDAQ-100 and DAX, so no field or NEW policy
+   is added. See [relative-strength-experiment-plan.md](relative-strength-experiment-plan.md).
+3. Volume-confirmation experiment completed: returns were non-monotonic across both
+   universes, so no field or NEW policy is added. See
+   [volume-confirmation-experiment-plan.md](volume-confirmation-experiment-plan.md).
+4. Weekly confirmation passed its NASDAQ-100 and DAX advisory gate and is now exposed as
+   a completed-week `Week` indicator. It does not affect NEW/BREAK or selection; a
+   policy gate still requires held-out validation. See
+   [weekly-confirmation-experiment-plan.md](weekly-confirmation-experiment-plan.md).
 5. Consider weighted policy votes only after sufficient execution history exists.
 
 **Source:** [trend-detection-improvement-ideas.md](trend-detection-improvement-ideas.md).
@@ -119,8 +134,10 @@ test/backtest. Do not bundle them into Entry V2.
 
 ### 5. Improve position lifecycle only after its data paths are complete
 
-1. Implement re-entry prevention from transaction history and test the exclusion
-   window.
+1. Implemented virtual-depot re-entry prevention from recent SELL transactions;
+   the configured exclusion window is applied before warrant selection and is covered
+   by a focused monitoring test. Real-depot transaction history remains deferred until
+   an equivalent source is available.
 2. Add historical degradation tracking and alerts if operational monitoring needs it.
 3. Consider incumbent-versus-challenger momentum replacement only with a
    friction-aware backtest, persistence/cooldowns, and a feature flag. It must not

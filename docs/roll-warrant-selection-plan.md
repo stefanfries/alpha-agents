@@ -1,8 +1,7 @@
 # Roll-Candidate Warrant Selection — Implementation Plan
 
-Status: **Implemented (2026-08-24/25)** — replacement search, guardrail, output wiring,
-and UI are done. Roll **execution** (pairing SELL incumbent + BUY replacement) is the
-remaining follow-up; see "Next session" at the bottom.
+Status: **Implemented (2026-08-24 through 2026-09-20)** — replacement search, guardrail,
+output wiring, UI, and paired roll execution are complete.
 
 **Update (2026-08-26):** when no replacement clears the score margin, the stage now
 recommends **SELL** for the incumbent instead of **KEEP** — every candidate reaching
@@ -41,7 +40,8 @@ classification-only decision.
 - `app/orchestrator.py` `_run_warrant_selection`: assigns `roll_underlyings` /
   `roll_keep_underlyings` as pass-through metadata only (no search).
 - `app/templates/stages/warrant_selection.html`: renders the `ENTRY` / `ROLL` /
-  `ROLL/KEEP` Type badge, but roll rows never reach the table today.
+  `ROLL/KEEP` Type badge, but roll rows never reach the table today. This is historical;
+  the current no-replacement outcome is `ROLL/SELL`.
 
 ## Design decisions (agreed)
 
@@ -57,12 +57,12 @@ classification-only decision.
 4. **Reuse existing search + scoring.** Roll replacement reuses `_pick_best()` and
    `compute_warrant_score` unchanged — no new search or scoring logic.
 
-## Implementation status (as of 2026-08-25)
+## Implementation status (as of 2026-09-20)
 
-All of R1–R5 and UI items 1–3+5 are implemented and covered by tests
+All of R1–R5, UI items 1–3+5, and paired roll execution are implemented and covered by tests
 (`tests/test_pipeline.py::test_warrant_selection_rolls_when_replacement_better`,
 `::test_warrant_selection_keeps_incumbent_when_replacement_not_better`,
-`::test_warrant_selection_rolls_ignore_entry_slot_cap`). 157 tests pass, ruff clean.
+`::test_warrant_selection_rolls_ignore_entry_slot_cap`). The full suite passes, ruff clean.
 
 ### Implementation steps (as executed)
 
@@ -82,10 +82,10 @@ All of R1–R5 and UI items 1–3+5 are implemented and covered by tests
   the existing `_pick_best()` search (same strike/maturity/spread/scoring machinery).
 - Re-score the incumbent with `compute_warrant_score` from its snapshot metrics.
 - Apply the guardrail: if `best_replacement.score >= incumbent_score +
-  roll_min_improvement` → ROLL (record replacement); else → ROLL/KEEP.
+  roll_min_improvement` → ROLL (record replacement); else → ROLL/SELL.
 - Run the roll search independently of the `max_selected` entry cap (slot isolation).
-- **Verify:** strictly-better replacement rolls; marginal replacement downgrades to KEEP;
-  no replacement found → KEEP incumbent.
+- **Verify:** strictly-better replacement rolls; marginal or missing replacement
+  recommends SELL for the degraded incumbent.
 
 ### R3 — Output wiring
 
@@ -93,8 +93,8 @@ Roll replacements are stored in **dedicated** result fields, **not** in `selecte
 Rationale: `_run_portfolio` turns every `warrant_result.selected` entry into a BUY and
 already keeps roll incumbents via `kept_warrant_isins`. Appending replacements to
 `selected` would buy the replacement while keeping the incumbent (doubled position).
-Executing the roll (pairing SELL(incumbent) + BUY(replacement)) is a separate
-execution-stage change — deferred to the follow-up below.
+Executing the roll (pairing SELL(incumbent) + BUY(replacement)) is implemented in the
+Portfolio, Risk, and Execution stages as a separate follow-up increment.
 
 - Add to `WarrantSelectionResult`:
   - `roll_selected: list[SelectedWarrant]` — chosen replacement warrants (better).
@@ -115,7 +115,7 @@ incumbent only for confirmed rolls, keep it for `roll_keep`) is a separate incre
 Until then, roll replacements are selected and visualized but not traded, matching the
 current behavior where monitoring keeps roll incumbents.
 
-**This is the next planned increment — see "Next session" at the bottom of this doc.**
+The follow-up is complete; see "Roll execution implementation" below.
 
 ### R4 — Config
 
@@ -128,7 +128,7 @@ current behavior where monitoring keeps roll incumbents.
 - Unit: incumbent re-scoring; better / marginal / no-replacement branches; slot
   isolation from entries.
 - Pipeline: held+degraded position → ROLL row with replacement; marginal case →
-  ROLL/KEEP. Reuse existing FinHub stub patterns in `tests/test_pipeline.py`.
+  ROLL/SELL. Reuse existing FinHub stub patterns in `tests/test_pipeline.py`.
 - Run `uv run pytest tests/ -v` and `uv run ruff check .` — all green.
 
 ## UI visualization
@@ -177,39 +177,29 @@ approximation when available.
 ## Success criteria
 
 - [x] ROLL candidates produce a replacement warrant when a meaningfully better one
-      exists (score margin ≥ 0.10), otherwise ROLL/KEEP.
+      exists (score margin ≥ 0.10), otherwise a SELL recommendation.
 - [x] Roll search does not consume entry slots.
 - [x] Roll rows are visible and explained in the UI (items 1–3 + 5).
-- [x] All tests and ruff pass (157 tests, clean lint, as of 2026-08-25).
-- [ ] Roll is actually **executed** (SELL incumbent + BUY replacement) — not done yet,
-      see "Next session" below.
+- [x] Full test suite and ruff pass (validated 2026-09-20).
+- [x] Confirmed rolls reach the execution plan as a paired SELL incumbent + BUY
+      replacement, without double exposure.
 
-## Next session (resume here)
+## Roll execution implementation (2026-09-20)
 
-The remaining, explicitly deferred piece is **executing** the roll — today, roll
-replacements are selected, scored, and visualized, but never traded. To close the loop:
-
-1. **Portfolio stage** (`app/agents/portfolio.py`, `Pipeline._run_portfolio`): decide how
-   `WarrantSelectionResult.roll_selected` feeds into `PortfolioProposal`. Likely needs a
-   new `roll_positions` (or similar) list distinct from `new_positions` so it can be
-   paired with a close of the specific incumbent ISIN it replaces — a plain BUY (as done
-   for `selected`) would double the position since `kept_warrant_isins` still protects
-   the incumbent from closure.
-2. **Incumbent closure**: for a confirmed roll, the incumbent's `warrant_isin` must move
-   from "kept" to "closed" — currently `_run_portfolio` unconditionally adds
-   `positions_to_roll` ISINs to `kept_warrant_isins`. Needs to become conditional on
-   whether that underlying ended up in `roll_underlyings` (replaced) vs
-   `roll_keep_underlyings` (still kept).
-3. **Execution stage** (`app/agents/execution.py`): confirm SELL(incumbent) and
-   BUY(replacement) can be emitted as a paired trade (or two independent orders) without
-   breaking `execution_dry_run` semantics.
-4. **Risk stage**: check whether `RiskAgent` needs awareness of roll pairs (e.g. netting
-   exposure) or can treat them as independent approved/rejected positions.
-5. Add tests mirroring the existing pipeline integration tests
-   (`tests/test_pipeline.py`), asserting a roll produces exactly one SELL + one BUY (not
-   a naked BUY) end-to-end.
-6. Optionally revisit UI item 4 (dual-strike chart overlay) once execution wiring is
-   confirmed useful in practice.
+1. `Pipeline._run_portfolio()` passes confirmed `roll_selected` replacements and their
+   `roll_incumbents` mapping to `PortfolioConstructionAgent`.
+2. Portfolio constructs a `RollTrade` rather than adding the replacement to ordinary
+   `new_positions`. It calculates replacement allocation from incumbent units multiplied
+   by the recorded average cost. If that value is missing or non-positive, it retains the
+   incumbent and emits no roll pair.
+3. A confirmed-roll incumbent is excluded from ordinary `close_positions`; a roll
+   candidate without a qualifying replacement is no longer protected and follows the
+   ordinary SELL path.
+4. `RiskAgent` validates roll pairs separately, so they do not consume entry slots.
+5. `TradeExecutionAgent` emits the incumbent SELL and replacement BUY only when the
+   replacement allocation meets `min_trade_eur`; otherwise it skips both legs.
+6. Regression tests cover paired orders, no premature close, no-replacement SELL, and
+   roll slot isolation.
 
 Relevant current constraints to keep in mind (do not regress):
 

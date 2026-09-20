@@ -1,6 +1,8 @@
 # Entry Timing / Trend Extension Filter — Improvement Plan
 
-Status: **Not started** — idea captured for later implementation, no code changes yet.
+Status: **Phase 1 and Phase 2 complete; composite timing work deferred** — no entry
+filter or standalone threshold has been introduced because the results do not support a
+stable cutoff.
 Scope: Screening stage (`SecuritySelectionAgent`, `app/policies/trend_detection.py`)
 Owner: Strategy / pipeline
 
@@ -62,16 +64,14 @@ components). That is over-engineered for a first step: the thresholds would be g
 not validated, and CLAUDE.md's simplicity-first guidance argues against building
 speculative configurability before it's justified by data.
 
-### Phase 1 — single metric, informational only (recommended starting point)
+### Phase 1 — single metric, informational only (implemented 2026-09-20)
 
-1. Add `ema20_extension_atr` to `TrendIndicatorSeries` (or compute alongside it) using
-   the existing `atr20` array — no new indicator library calls needed.
-2. Surface it in `SelectionResult` as a new field, e.g.
-   `extension_scores: dict[str, float]` (symbol → last-bar extension value), populated
-   in `SecuritySelectionAgent`.
-3. Display it in the Screening UI (`app/templates/stages/screening.html`) as an extra
-   column or badge — no behavior change, no filtering.
-4. **Do not** wire this into `entry_enabled_rules()` / the NEW policy chain yet.
+1. `SecuritySelectionAgent` computes `(close - EMA20) / ATR20` with the existing
+  20-bar periods and emits finite last-bar values only.
+2. `SelectionResult.extension_scores` stores the symbol → extension mapping.
+3. The score remains persisted for future composite entry-timing work, but is not shown
+  as a standalone Screening table column because it is not a validated confirmation.
+4. The metric is not wired into `entry_enabled_rules()` or the NEW/BREAK state machine.
 
 ### Phase 2 — empirical validation (prerequisite for any hard filter)
 
@@ -84,20 +84,48 @@ NEW signals:
 Only if this shows a real, non-trivial performance difference should Phase 3 proceed.
 This directly avoids picking arbitrary 1.5/2.5 ATR cutoffs "from the gut."
 
-### Phase 3 — soft entry-timing state (only if Phase 2 justifies it)
+#### Replay utility and validation result (2026-09-20)
 
-Introduce a three-state classification, non-blocking by default:
+Run the reproducible underlying-only replay with:
 
-```text
-NORMAL          extension < threshold_low   (e.g. < 1.5 ATR)
-EXTENDED        threshold_low <= extension < threshold_high
-VERY_EXTENDED   extension >= threshold_high (e.g. >= 2.5 ATR)
+```powershell
+uv run python scripts/analyze_entry_extension.py
+uv run python scripts/analyze_entry_extension.py --index DAX
 ```
 
-Possible integration point: an additional optional policy in
-`TrendDetectionPolicyConfig.entry_enabled_rules()` (config-gated, default `False` /
-disabled) so it can be toggled on per quant system without affecting existing runs,
-consistent with how other policies in that file are already individually toggleable.
+The default command resolves the live `NASDAQ100` universe through the same Universe
+Agent used by the pipeline. The script downloads five years of OHLCV history, replays
+the current NEW/BREAK policy state machine, records extension at each NEW event, and
+reports 5/10/20-bar returns by data-driven extension quintile. It deliberately does not
+impose extension thresholds.
+
+The NASDAQ-100 calibration sample produced 747 NEW observations. Its lowest-extension
+quintile had mean 5/10/20-day returns of 0.24% / 0.39% / 0.36%; its highest-extension
+quintile had 1.23% / 3.15% / 3.35%. The DAX robustness sample produced 290 observations:
+its lowest quintile had 0.08% / 0.23% / -0.78%, while its highest quintile had
+-0.01% / 0.38% / -0.93%.
+
+These results are non-monotonic and disagree across universes. They reject a simple
+"high extension means no entry" rule. Do not introduce a standalone extension threshold
+or state from these results. Retain the metric as a future composite timing input, where
+it can be combined with a fresh trigger, trend context, and market regime. A future
+retry needs a pre-specified hypothesis, market-regime split, and warrant-friction model
+rather than additional threshold mining.
+
+### Phase 3 — composite entry-timing classification (deferred)
+
+Introduce an advisory classification only after defining and validating independent
+dimensions: trend state, trend strength, trigger freshness, market regime, and extension.
+Extension remains contextual evidence, not a direct gate. Possible labels include:
+
+```text
+EARLY       trend emerging, momentum improving, extension acceptable
+IMMEDIATE   trend confirmed with a fresh trigger and acceptable extension
+LATE        trend intact but extended without a fresh trigger or pullback
+```
+
+This classification must initially remain advisory and must not alter
+`TrendDetectionPolicyConfig.entry_enabled_rules()` or the NEW/BREAK state machine.
 
 ### Explicitly deferred / not planned for now
 
@@ -111,18 +139,17 @@ consistent with how other policies in that file are already individually togglea
 
 ## Files likely touched (when implementation starts)
 
-- `app/policies/trend_detection.py` — `TrendIndicatorSeries`, `build_trend_indicator_series`, optional new policy field
-- `app/agents/screening.py` — populate `extension_scores` on `SelectionResult`
-- `app/models/signals.py` — new `SelectionResult.extension_scores` field
-- `app/templates/stages/screening.html` — display extension value/badge
+- `app/agents/screening.py` — populates `extension_scores` on `SelectionResult`
+- `app/models/signals.py` — `SelectionResult.extension_scores` field
+- `scripts/analyze_entry_extension.py` — replays NEW events and reports quintile outcomes
 - `app/config.py` — optional threshold settings (only once Phase 3 is justified)
 - `tests/` — unit tests for the ATR-extension calculation; parity tests if added to the policy engine
 
 ## Success criteria (for whenever this is picked up)
 
-- [ ] Phase 1: `ema20_extension_atr` computed and visible in Screening UI, zero change
-      to entry/exit decisions.
-- [ ] Phase 2: backtest report showing forward returns bucketed by extension at NEW
-      signal time (documented, not necessarily code).
-- [ ] Phase 3 (conditional): configurable, opt-in soft entry-timing classification with
-      tests, default-disabled so existing quant systems are unaffected.
+- [x] Phase 1: `ema20_extension_atr` computed and persisted with zero change to
+  entry/exit decisions; removed from the standalone Screening table after validation.
+- [x] Phase 2: NASDAQ-100 calibration plus DAX robustness replay completed; no stable
+  extension relationship supports a threshold.
+- [ ] Phase 3 (conditional): deferred. Revisit only as a composite, advisory timing
+  model with a pre-specified regime-aware, warrant-friction-aware hypothesis.

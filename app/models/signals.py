@@ -16,6 +16,14 @@ class MarketRegime(BaseModel):
     breadth_score: float | None = None
     breadth_components: dict[str, float] = {}
 
+    @property
+    def advisory_action(self) -> str:
+        if self.status == "green":
+            return "normal review"
+        if self.status == "yellow":
+            return "stricter timing review; no automatic early entries"
+        return "no new entries recommended; review existing positions"
+
 
 class TrendStatus(str, Enum):
     ESTABLISHED_UP   = "established_up"    # Gate 1 bullish + Gate 2 confirmed
@@ -49,6 +57,8 @@ class SelectionResult(BaseModel):
     rationale: dict[str, str]
     tq_short: dict[str, float] = {}
     tsi: dict[str, float] = {}
+    extension_scores: dict[str, float] = {}  # sym → (close - EMA20) / ATR20
+    weekly_confirmed: dict[str, bool] = {}  # sym → completed-week close above rising EMA20
     policy_results: dict[str, dict[str, bool]] = {}
     rank_changes: dict[str, list[int | None]] = {}  # sym → [delta_1w, delta_2w]
     history_labels: list[str] = []
@@ -159,12 +169,21 @@ class MonitoringResult(BaseModel):
     roll_keep_underlyings: list[str] = Field(default_factory=list)  # symbols downgraded to KEEP
 
 
+class RollTrade(BaseModel):
+    """Paired replacement of a held warrant with a newly selected warrant."""
+
+    incumbent: Position
+    replacement: Position
+    target_weight: float
+
+
 class PortfolioProposal(BaseModel):
     positions: list[Position]           # all target positions
     target_weights: dict[str, float]
     new_positions: list[Position] = []       # not currently held → buy
     existing_positions: list[Position] = []  # already held → no trade needed
     close_positions: list[Position] = []     # held but not on shortlist → sell
+    roll_trades: list[RollTrade] = []
 
 
 class RiskAssessment(BaseModel):
@@ -172,6 +191,8 @@ class RiskAssessment(BaseModel):
     rejected_positions: list[Position]
     risk_notes: dict[str, str]
     close_positions: list[Position] = Field(default_factory=list)
+    approved_roll_trades: list[RollTrade] = Field(default_factory=list)
+    rejected_roll_trades: list[RollTrade] = Field(default_factory=list)
 
 
 class ExecutionPlan(BaseModel):

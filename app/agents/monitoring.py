@@ -48,6 +48,7 @@ class MonitoringInput(BaseModel):
     warrant_underlying_map: dict[str, str]     # warrant_isin → underlying_symbol
     held_since_map: dict[str, date]            # warrant_wkn → most recent BUY date
     warrant_snapshots: dict[str, WarrantSnapshot] = Field(default_factory=dict)
+    reentry_blocked_symbols: set[str] = Field(default_factory=set)
     max_positions: int = 15
 
 
@@ -402,10 +403,10 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         # Entry candidates: screening candidates not already held (kept or being sold).
         # Not capped to free_positions here — warrant selection fills up to free_positions
         # from this pool so lower-ranked names can backfill slots where no warrant exists.
-        excluded_symbols = sorted(all_held_underlyings)
+        excluded_symbols = sorted(all_held_underlyings | input.reentry_blocked_symbols)
         entry_candidates = [
             t for t in input.candidates
-            if t.symbol not in all_held_underlyings
+            if t.symbol not in excluded_symbols
         ]
 
         logger.info(

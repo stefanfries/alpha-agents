@@ -221,7 +221,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   For virtual depots only, missing snapshot dates fall back to most recent BUY from `virtual_depot_transactions`.
 10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
 11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
-12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`.
+12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`. Confirmed replacements are paired with their incumbent SELL in Portfolio/Risk/Execution.
 13. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`). Positions whose underlying cannot be mapped are always kept (safe default).
 14. `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found.
 

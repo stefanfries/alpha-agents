@@ -359,7 +359,7 @@ Below the split panel — **maturity, strike, and filter controls**:
 - Clicking **Apply & Re-run** restarts from warrant selection with the updated maturity window
 - The button uses the same shared `partials/apply_rerun_btn.html` component as Screening and Monitoring (default `primary` variant)
 
-**User actions at approve:** selected warrants advance to portfolio construction; retained roll rows are protected from closure via `keep_existing_isins` metadata. Note: roll replacements (`roll_selected`) are selected and displayed but not yet fed into portfolio/execution as trades — see [roll-warrant-selection-plan.md](../roll-warrant-selection-plan.md) "Next session" for the pending follow-up.
+**User actions at approve:** selected warrants advance to portfolio construction; confirmed roll replacements (`roll_selected`) advance as paired incumbent SELL/replacement BUY trades, while retained roll rows remain protected from closure.
 
 ---
 

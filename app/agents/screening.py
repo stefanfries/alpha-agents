@@ -89,6 +89,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         scores: dict[str, float] = {}
         tq_short: dict[str, float] = {}
         tsi_vals: dict[str, float] = {}
+        extension_scores: dict[str, float] = {}
+        weekly_confirmed: dict[str, bool] = {}
         rationale: dict[str, str] = {}
         policy_results: dict[str, dict[str, bool]] = {}
         trend_signals: dict[str, str | None] = {}
@@ -124,6 +126,10 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             scores[symbol] = tq
             tq_short[symbol] = tqs
             tsi_vals[symbol] = tsi
+            extension_score = self._ema20_extension_atr(bars)
+            if extension_score is not None:
+                extension_scores[symbol] = extension_score
+            weekly_confirmed[symbol] = self._weekly_confirmed(bars)
 
             # --- Policies ---
             policies = self._evaluate_policies(bars)
@@ -197,6 +203,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             scores=scores,
             tq_short=tq_short,
             tsi=tsi_vals,
+            extension_scores=extension_scores,
+            weekly_confirmed=weekly_confirmed,
             rationale=rationale,
             policy_results=policy_results,
             rank_changes=rank_changes,
@@ -231,13 +239,19 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             "pct_ema20_above_ema50": round(pct_ema, 3),
             "pct_adx_above_20":     round(pct_adx, 3),
         }
-        # Narrow-rally downgrade: index green but most stocks not trending
-        if regime.status == "green" and breadth < 0.40:
-            regime.status = "yellow"
+        old_status = regime.status
+        regime.status = self._regime_status_after_breadth(regime.status, breadth)
+        if old_status == "green" and regime.status == "yellow":
             logger.info("Market regime downgraded green→yellow (narrow rally, breadth=%.2f)", breadth)
         logger.info("Market regime breadth=%.2f (ST=%.0f%% EMA=%.0f%% ADX=%.0f%%)",
                     breadth, pct_st * 100, pct_ema * 100, pct_adx * 100)
         return regime
+
+    @staticmethod
+    def _regime_status_after_breadth(status: str, breadth: float) -> str:
+        if status == "green" and breadth < 0.40:
+            return "yellow"
+        return status
 
     # ------------------------------------------------------------------ #
     # Scoring                                                              #
@@ -282,6 +296,39 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         if np.isnan(denom) or denom == 0.0 or np.isnan(ds_pc[-1]):
             return 0.0
         return float(100.0 * ds_pc[-1] / denom)
+
+    def _ema20_extension_atr(self, bars: list[OHLCV]) -> float | None:
+        close = np.array([float(bar.close) for bar in bars])
+        high = np.array([float(bar.high) for bar in bars])
+        low = np.array([float(bar.low) for bar in bars])
+        ema20 = talib.EMA(close, timeperiod=20)
+        atr20 = talib.ATR(high, low, close, timeperiod=20)
+        value = (close[-1] - ema20[-1]) / atr20[-1]
+        return float(value) if np.isfinite(value) else None
+
+    def _weekly_confirmed(self, bars: list[OHLCV]) -> bool:
+        weekly_closes: list[float] = []
+        current_week: tuple[int, int] | None = None
+        last_close = 0.0
+        for bar in bars:
+            iso = bar.date.isocalendar()
+            week = (iso.year, iso.week)
+            if current_week is not None and week != current_week:
+                weekly_closes.append(last_close)
+            current_week = week
+            last_close = float(bar.close)
+
+        if bars[-1].date.weekday() == 4:
+            weekly_closes.append(last_close)
+        if len(weekly_closes) < 25:
+            return False
+        closes = np.array(weekly_closes)
+        ema20 = talib.EMA(closes, timeperiod=20)
+        return bool(
+            not (np.isnan(ema20[-1]) or np.isnan(ema20[-6]))
+            and closes[-1] > ema20[-1]
+            and ema20[-1] > ema20[-6]
+        )
 
     # ------------------------------------------------------------------ #
     # Policy evaluation                                                    #
