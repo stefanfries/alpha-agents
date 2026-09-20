@@ -7,15 +7,22 @@ Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
 ### Implemented
 
 1. Market regime model and payload wiring are implemented (`MarketRegime` on research and screening results, benchmark metadata persisted through pipeline stages).
+
 2. Research benchmark selection and regime classification are implemented:
-  - dominant index from `universe_source`
-  - index-to-Yahoo mapping from `ResearchSettings.market_regime_symbols`
-  - TQ-60/TQ-20 classification with configurable thresholds
+
+    - dominant index from `universe_source`
+    - index-to-Yahoo mapping from `ResearchSettings.market_regime_symbols`
+    - TQ-60/TQ-20 classification with configurable thresholds
+
 3. Research UI regime badge is implemented (status color, TQ-60, TQ-20, advisory wording).
+
 4. Screening UI regime banner is implemented, including click-to-chart behavior for index charts.
+
 5. Breadth enrichment (Phase 1.5) is implemented in Screening:
-  - breadth score and components
-  - narrow-rally downgrade `green -> yellow` when breadth < 0.40
+
+    - breadth score and components
+    - narrow-rally downgrade `green -> yellow` when breadth < 0.40
+
 6. Orchestrator wiring of `universe_source` into `ResearchInput` is implemented.
 
 ### Not implemented (still open)
