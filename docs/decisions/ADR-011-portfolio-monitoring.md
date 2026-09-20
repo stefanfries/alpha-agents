@@ -1,11 +1,31 @@
 # ADR-011 — Portfolio Monitoring Stage: Position Review Before New Entries
 
 **Date:** 2026-06-08  
-**Status:** Implemented — 2026-06-19  
+**Status:** Implemented — 2026-06-19. Historical decision record; see the current
+state note below before using implementation details.
 
 ---
 
 ## Context
+
+## Current implementation note (2026-09-20)
+
+This ADR records the initial Monitoring-stage decision and intentionally retains its
+original design. Current behavior has evolved:
+
+- Monitoring evaluates warrant health and classifies `HOLD`, `SELL`, or `ROLL`.
+- Monitoring is classification-only; Warrant Selection owns replacement discovery.
+- A degraded roll candidate with no replacement clearing `roll_min_improvement` is
+   recommended for `SELL`, not retained as `KEEP`.
+- The current BREAK path is governed by the shared trend state machine and is not the
+   draft's generic “minimum holding period for every exit” rule.
+- Re-entry prevention remains unimplemented.
+- Roll replacements are selected and visualized but are not yet executed.
+
+For current contracts and the remaining paired SELL/BUY work, use
+[roll-warrant-selection-plan.md](../roll-warrant-selection-plan.md) and
+[improvement-roadmap.md](../improvement-roadmap.md). The sections below are historical
+context, not a current implementation specification.
 
 The existing pipeline covers Research → Screening → Portfolio Construction → Risk → Execution, but has no step that reconciles the *current depot state* with the screening results before generating orders. Without this reconciliation:
 

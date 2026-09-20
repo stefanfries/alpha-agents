@@ -358,7 +358,11 @@ This keeps policy signal visualization focused on stock-level screening charts w
 
 ---
 
-## Phase 1.5 — Breadth Score (future, low effort)
+## Phase 1.5 — Breadth Score (implemented)
+
+**Historical implementation detail:** This section records the Phase 1.5 design that
+is now implemented. Current remaining work is Phase 2 regime-aware downstream behavior
+and focused regression coverage; see [improvement-roadmap.md](improvement-roadmap.md).
 
 **Motivation:** The index TQ-60 can read Green while only a few mega-caps drive the index.
 A breadth indicator measures whether many stocks actually participate in the trend — which

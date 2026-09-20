@@ -1,7 +1,18 @@
 # ADR-009 — Screening Stage: Score/Select Separation
 
 **Date:** 2026-06-05  
-**Status:** Accepted
+**Status:** Accepted. Historical policy-design record; current policy semantics have
+since evolved.
+
+## Current implementation note (2026-09-20)
+
+The score/select separation remains valid. The four-policy AND gate below is historical:
+current screening uses separate configurable `NEW` and `BREAK` groups, split ADX
+above/below and rising/falling rules, optional TQ/TSI rules, configurable group
+thresholds, and a shared state machine that emits `NEW`, `HOLD`, `BREAK`, or no signal.
+
+For the current contract use [screening-policy-refactor-plan.md](../screening-policy-refactor-plan.md).
+For future work and priority use [improvement-roadmap.md](../improvement-roadmap.md).
 
 ## Context
 

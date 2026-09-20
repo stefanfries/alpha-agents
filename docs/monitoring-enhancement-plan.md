@@ -1,6 +1,6 @@
 # Monitoring Agent Enhancement Plan — Warrant Degradation Health Checks
 
-**Status:** Implemented with architecture split (Monitoring classify-only, Warrant Selection replacement ownership). Follow-up planned for comparator/score alignment.  
+**Status:** Implemented with architecture split (Monitoring classify-only, Warrant Selection replacement ownership). Roll execution remains open; see [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
 **Date Created:** 2026-06-22  
 **Priority:** High (risk management for trend-following strategy)
 
@@ -8,7 +8,11 @@
 
 ## Motivation
 
-Currently, the monitoring agent only sells a warrant when the underlying triggers a BREAK signal. However, trend-following is vulnerable to warrant quality degradation — a warrant can become unsuitable while the underlying trend remains intact:
+This section records the original motivation. The implementation now also evaluates
+warrant health. Current cross-cutting priority is maintained in
+[improvement-roadmap.md](improvement-roadmap.md).
+
+Trend-following is vulnerable to warrant quality degradation — a warrant can become unsuitable while the underlying trend remains intact:
 
 - Spread widens → slippage erodes small gains
 - Leverage decays → position size becomes too small
@@ -32,11 +36,19 @@ The implementation evolved from the initial draft in this file. Current producti
 - Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`.
 - Monitoring no longer resolves or attaches replacement warrants.
 - Warrant Selection owns replacement lookup for roll underlyings and applies replacement guardrails.
-- If a warrant is degraded and marked for `ROLL`, but no replacement warrant is better by the required improvement threshold, the underlying is treated as a `SELL` instead of keeping the degraded warrant in place.
-- If replacement metadata marks a roll candidate as worse than current (spread/maturity guard), the row can appear as `ROLL/KEEP`; current warrant stays selected.
-- `WarrantSelectionResult` now carries `keep_existing_isins`, `roll_underlyings`, and `roll_keep_underlyings` for downstream portfolio/UX behavior.
+- If a warrant is degraded and marked for `ROLL`, but no replacement clears the score
+    margin, Warrant Selection recommends `SELL`; it does not retain the degraded
+    incumbent as `ROLL/KEEP`.
+- `WarrantSelectionResult` carries `roll_selected`, `roll_incumbents`,
+    `roll_underlyings`, `roll_sell_underlyings`, and `sell_existing_isins` for downstream
+    handling.
+- Replacements and SELL recommendations are selected and displayed, but remain
+    non-executable until the paired roll Portfolio/Risk/Execution follow-up is complete.
 
-Use this section as the source of truth. Historical sections below remain for implementation history and may describe superseded intermediate designs.
+Use this section as the current-state summary. Historical sections below remain for
+implementation history and may describe superseded intermediate designs, including
+Monitoring-owned replacement lookup, `ROLL/KEEP`, confirmation-based BREAK exits, and
+the old comparator policy.
 
 ---
 
@@ -410,7 +422,7 @@ async def _find_roll_replacement(
 
 ### Phase M1.6: UI & Documentation
 
-- [x] Update [docs/agents/monitoring.md](docs/agents/monitoring.md) with three-state decision logic (HOLD, SELL, ROLL)
+- [x] Update [docs/agents/monitoring.md](agents/monitoring.md) with three-state decision logic (HOLD, SELL, ROLL)
 - [x] Update monitoring results template to show action column (HOLD | SELL | ROLL) with color coding
 - [x] Add `roll_replacement` details panel (suggested ISIN, strike, maturity, projected improvement)
 - [x] Add configuration guide with holding warrant thresholds
