@@ -22,6 +22,14 @@
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
     {% if stage_result %}
       {% set r = stage_result %}
+      {% if r.portfolio_warnings %}
+        <div class="alert alert-warning flex-shrink-0 mb-2">
+          <strong>Existing portfolio warnings</strong>
+          <ul class="mb-0 mt-1">
+            {% for warning in r.portfolio_warnings %}<li>{{ warning }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
       <div class="flex-shrink-0 mb-2">
         <div class="row g-3">
           <div class="col-auto">

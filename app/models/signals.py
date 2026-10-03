@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from enum import Enum
 from typing import Literal
 
@@ -132,9 +133,13 @@ class PositionReview(BaseModel):
     underlying_name: str | None = None
     warrant_isin: str
     warrant_wkn: str
+    quantity: Decimal | None = None
     held_since: date | None = None
     buy_price: float | None = None
     current_price: float | None = None
+    bid_price: float | None = None
+    quote_currency: str | None = None
+    quote_timestamp_utc: datetime | None = None
     performance_pct: float | None = None
     # Health snapshot (from current warrant, if available)
     spread_pct: float | None = None
@@ -163,38 +168,80 @@ class MonitoringResult(BaseModel):
     entry_candidates: list[Ticker]   # filtered and capped to free_positions
     free_positions: int
     excluded_symbols: list[str]      # already held (kept or selling) → blocked from entry
+    nav_eur: Decimal | None = None
+    available_cash_eur: Decimal | None = None
+    valuation_errors: list[str] = Field(default_factory=list)
     # Metadata for warrant selection integration
     keep_existing_isins: list[str] = Field(default_factory=list)  # ISINs where replacement was worse
     roll_underlyings: list[str] = Field(default_factory=list)  # symbols with valid replacement
     roll_keep_underlyings: list[str] = Field(default_factory=list)  # symbols downgraded to KEEP
 
 
+class PlannedPosition(BaseModel):
+    ticker: Ticker
+    notional_eur: Decimal
+    target_weight: float
+    underlying_isin: str | None = None
+    underlying_symbol: str | None = None
+    sector: str | None = None
+    issuer_action: bool = False
+    issuer_no_fee_action: bool = False
+
+
 class RollTrade(BaseModel):
     """Paired replacement of a held warrant with a newly selected warrant."""
 
     incumbent: Position
-    replacement: Position
+    replacement: PlannedPosition
     target_weight: float
 
 
+class PortfolioHoldingValue(BaseModel):
+    position: Position
+    underlying_isin: str | None = None
+    underlying_symbol: str | None = None
+    sector: str | None = None
+    bid_price_eur: Decimal | None = None
+    market_value_eur: Decimal | None = None
+    quote_timestamp_utc: datetime | None = None
+    issuer_action: bool = False
+    issuer_no_fee_action: bool = False
+    quote_error: str | None = None
+
+
+class PortfolioAccountSnapshot(BaseModel):
+    source: Literal["real", "virtual"]
+    available_cash_eur: Decimal | None = None
+    holdings: list[PortfolioHoldingValue] = Field(default_factory=list)
+    nav_eur: Decimal | None = None
+    recorded_at_utc: datetime | None = None
+    valuation_errors: list[str] = Field(default_factory=list)
+
+
 class PortfolioProposal(BaseModel):
-    positions: list[Position]           # all target positions
+    positions: list[PlannedPosition]    # target warrant notionals in EUR
     target_weights: dict[str, float]
-    new_positions: list[Position] = []       # not currently held → buy
-    existing_positions: list[Position] = []  # already held → no trade needed
+    new_positions: list[PlannedPosition] = []  # not currently held → buy
+    existing_positions: list[PlannedPosition] = []  # already held → no trade needed
     close_positions: list[Position] = []     # held but not on shortlist → sell
     roll_trades: list[RollTrade] = []
+    account_snapshot: PortfolioAccountSnapshot | None = None
+    standard_buy_amount_eur: Decimal | None = None
+    expected_net_sell_proceeds_eur: Decimal | None = None
+    cost_reserve_eur: Decimal | None = None
+    sizing_blocked_reason: str | None = None
 
 
 class RiskAssessment(BaseModel):
-    approved_positions: list[Position]
-    rejected_positions: list[Position]
+    approved_positions: list[PlannedPosition]
+    rejected_positions: list[PlannedPosition]
     risk_notes: dict[str, str]
     close_positions: list[Position] = Field(default_factory=list)
     approved_roll_trades: list[RollTrade] = Field(default_factory=list)
     rejected_roll_trades: list[RollTrade] = Field(default_factory=list)
+    portfolio_warnings: list[str] = Field(default_factory=list)
 
 
 class ExecutionPlan(BaseModel):
     orders: list[Order]
-    skipped: list[Position]
+    skipped: list[PlannedPosition]

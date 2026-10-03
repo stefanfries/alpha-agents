@@ -16,9 +16,20 @@ async def test_depot_capital_converts_string_amount_values(monkeypatch):
                 ],
             }
 
+    class FakeBalanceCursor:
+        def sort(self, *_args):
+            return self
+
+        async def to_list(self, length=None):
+            return [
+                {"account_type": "Verrechnungskonto", "balance": {"value": "101865.98", "unit": "EUR"}},
+                {"account_type": "Tagesgeld PLUS-Konto", "balance": {"value": "0.03", "unit": "EUR"}},
+                {"account_type": "Girokonto", "balance": {"value": "106.03", "unit": "EUR"}},
+            ]
+
     class FakeAccountBalances:
-        async def find_one(self, _query: dict, _projection: dict, sort: list[tuple[str, int]]) -> dict:
-            return {"balance": {"value": "10.75", "unit": "EUR"}}
+        def find(self, _query: dict, _projection: dict):
+            return FakeBalanceCursor()
 
     class FakeFinanceDB:
         def __getitem__(self, name: str):
@@ -34,7 +45,7 @@ async def test_depot_capital_converts_string_amount_values(monkeypatch):
 
     assert response.status_code == 200
     assert response.body
-    assert b"111.0" in response.body
+    assert b"102072.29" in response.body
 
 
 @pytest.mark.asyncio
@@ -151,3 +162,66 @@ async def test_edit_quant_system_form_includes_dow_jones(monkeypatch):
 
     assert "indices" in response.context
     assert "Dow Jones" in response.context["indices"]
+    assert response.context["default_slippage_bps"] == 25.0
+
+
+@pytest.mark.asyncio
+async def test_save_quant_system_persists_slippage_override(monkeypatch):
+    from app.routes import quant_systems as quant_systems_module
+
+    saved: dict = {}
+
+    class FakeQuantSystemsCollection:
+        async def update_one(self, query: dict, update: dict) -> None:
+            saved["query"] = query
+            saved["update"] = update
+
+    monkeypatch.setattr(
+        quant_systems_module,
+        "quant_systems_collection",
+        lambda: FakeQuantSystemsCollection(),
+    )
+
+    response = await quant_systems_module.save_quant_system(
+        qs_id="qs1",
+        name="Test QS",
+        depot_id="d1",
+        depot_type="virtual",
+        indices=["DAX"],
+        capital_eur=100_000,
+        max_positions=15,
+        slippage_bps="40",
+        status="active",
+    )
+
+    assert response.status_code == 303
+    assert saved["update"]["$set"]["config_overrides.portfolio.slippage_bps"] == 40.0
+
+
+@pytest.mark.asyncio
+async def test_save_quant_system_blank_slippage_clears_system_override(monkeypatch):
+    from app.routes import quant_systems as quant_systems_module
+
+    saved: dict = {}
+
+    class FakeQuantSystemsCollection:
+        async def update_one(self, _query: dict, update: dict) -> None:
+            saved["update"] = update
+
+    monkeypatch.setattr(
+        quant_systems_module,
+        "quant_systems_collection",
+        lambda: FakeQuantSystemsCollection(),
+    )
+
+    await quant_systems_module.save_quant_system(
+        qs_id="qs1",
+        name="Test QS",
+        depot_id="d1",
+        depot_type="virtual",
+        indices=["DAX"],
+        capital_eur=100_000,
+        slippage_bps="",
+    )
+
+    assert saved["update"]["$unset"] == {"config_overrides.portfolio.slippage_bps": ""}

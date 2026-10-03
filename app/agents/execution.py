@@ -2,8 +2,8 @@ import logging
 from decimal import Decimal
 
 from app.agents.base import Agent
-from app.models.market import Order, Position
-from app.models.signals import ExecutionPlan, RiskAssessment
+from app.models.market import Order
+from app.models.signals import ExecutionPlan, PlannedPosition, RiskAssessment
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,12 @@ class TradeExecutionAgent(Agent[RiskAssessment, ExecutionPlan]):
         self._order_type = order_type
 
     async def run(self, input: RiskAssessment) -> ExecutionPlan:
-        orders: list[Order] = []
-        skipped: list[Position] = []
+        sell_orders: list[Order] = []
+        buy_orders: list[Order] = []
+        skipped: list[PlannedPosition] = []
 
         for position in input.close_positions:
-            orders.append(Order(
+            sell_orders.append(Order(
                 ticker=position.ticker,
                 side="sell",
                 quantity=position.quantity,
@@ -35,7 +36,7 @@ class TradeExecutionAgent(Agent[RiskAssessment, ExecutionPlan]):
             ))
 
         for roll in input.approved_roll_trades:
-            allocated_eur = float(roll.replacement.quantity)
+            allocated_eur = float(roll.replacement.notional_eur)
             if allocated_eur < self._min_trade_eur:
                 skipped.append(roll.replacement)
                 logger.debug(
@@ -46,23 +47,23 @@ class TradeExecutionAgent(Agent[RiskAssessment, ExecutionPlan]):
                 )
                 continue
 
-            orders.append(Order(
+            sell_orders.append(Order(
                 ticker=roll.incumbent.ticker,
                 side="sell",
                 quantity=roll.incumbent.quantity,
                 order_type=self._order_type,  # type: ignore[arg-type]
                 limit_price=None,
             ))
-            orders.append(Order(
+            buy_orders.append(Order(
                 ticker=roll.replacement.ticker,
                 side="buy",
-                quantity=Decimal(str(round(allocated_eur, 2))),
+                notional_eur=Decimal(str(round(allocated_eur, 2))),
                 order_type=self._order_type,  # type: ignore[arg-type]
                 limit_price=None,
             ))
 
         for position in input.approved_positions:
-            allocated_eur = float(position.quantity)
+            allocated_eur = float(position.notional_eur)
             if allocated_eur < self._min_trade_eur:
                 skipped.append(position)
                 logger.debug(
@@ -76,11 +77,13 @@ class TradeExecutionAgent(Agent[RiskAssessment, ExecutionPlan]):
             order = Order(
                 ticker=position.ticker,
                 side="buy",
-                quantity=Decimal(str(round(allocated_eur, 2))),
+                notional_eur=Decimal(str(round(allocated_eur, 2))),
                 order_type=self._order_type,  # type: ignore[arg-type]
                 limit_price=None,
             )
-            orders.append(order)
+            buy_orders.append(order)
+
+        orders = sell_orders + buy_orders
 
         if self._dry_run:
             logger.info("[DRY RUN] Would submit %d orders (not sent to broker)", len(orders))

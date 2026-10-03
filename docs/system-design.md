@@ -52,9 +52,15 @@ Universe Res.  Screen. Monitor. Warrant Portfolio Risk  Execution
 4. **Stock Selection Agent**: Scores every pre-filtered ticker with three metrics (Trend Quality TQ, short-window TQ-20, and TSI), evaluates configurable boolean policies (SuperTrend, EMA20 rising, ADX rising, price > EMA50), and selects the top-N candidates by TQ; emits `trend_signals` (NEW / HOLD / BREAK) for every scored ticker
 5. **Monitoring Agent**: Reconciles the screening results with the current depot. For each open position, checks whether the underlying has a BREAK trend signal and whether the minimum holding period has elapsed; marks positions for SELL or KEEP. Derives `Free now` capacity and filters the entry candidate list to exclude already-held underlyings. Downstream stages operate only on `entry_candidates`, not the full screening shortlist. (See ADR-011.)
 6. **Warrant Selection Agent**: For each entry candidate, fetches available Call Warrants from the **FinHub API** using configurable maturity and strike-factor filters; scores each warrant using the optionsschein scoring model (spread 25%, leverage 25%, days-to-expiry 20%, delta 30%); `delta_peak` is automatically aligned with the midpoint of the active strike-factor band; returns the best warrant plus a top-3 shortlist per underlying
-7. **Portfolio Construction Agent**: Allocates weights across the warrant shortlist (one warrant per underlying); compares proposed positions against **current holdings read from MongoDB Atlas** (synced there by the `comdirect_api` sibling project) to identify new trades. Incumbent positions marked KEEP by Monitoring are excluded from `close_positions`.
-8. **Risk Agent**: Validates the proposed portfolio against risk limits; may reject positions
-9. **Trade Execution Agent**: Produces a list of `Order` objects for submission to the broker
+7. **Portfolio Construction Agent**: Builds a current account snapshot from depot cash and
+   fresh FinHub bid quotes, then sizes equal BUY notionals from opening cash plus expected net
+   proceeds from all planned SELLs (including roll incumbents), less the fee/slippage reserve,
+   divided by the shared `max_positions`. Unused slots/cash are not redistributed.
+8. **Risk Agent**: Blocks risk-increasing orders when NAV/quotes are incomplete; enforces a
+   per-warrant cap of `3 × NAV / max_positions` and a one-third-of-NAV sector cap using
+   underlying ISINs. Existing over-limit holdings are reported, not automatically sold.
+9. **Trade Execution Agent**: Produces explicit EUR-notional BUY orders and unit-quantity SELL
+   orders, listing all SELLs before all BUYs. Execution remains manual/dry-run.
 
 Each stage result is persisted to MongoDB Atlas before the **human-in-the-loop (HITL) checkpoint**. The user reviews the output and either approves (continuing to the next stage) or rejects (returning to the previous stage with adjusted parameters).
 

@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -20,6 +20,12 @@ class WarrantSnapshot(BaseModel):
     leverage: float | None = None
     days_to_maturity: int | None = None
     delta: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    currency: str | None = None
+    timestamp_utc: datetime | None = None
+    issuer_action: bool = False
+    issuer_no_fee_action: bool = False
     bid_ask_midprice: float | None = None
     strike: float | None = None
     maturity_date: date | None = None
@@ -265,9 +271,13 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                     underlying_name=None,
                     warrant_isin=warrant_isin,
                     warrant_wkn=warrant_wkn,
+                    quantity=pos.quantity,
                     held_since=input.held_since_map.get(warrant_wkn),
                     buy_price=buy_price,
                     current_price=current_price,
+                    bid_price=warrant_snapshot.bid if warrant_snapshot else None,
+                    quote_currency=warrant_snapshot.currency if warrant_snapshot else None,
+                    quote_timestamp_utc=warrant_snapshot.timestamp_utc if warrant_snapshot else None,
                     performance_pct=performance_pct,
                     spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
                     leverage=warrant_snapshot.leverage if warrant_snapshot else None,
@@ -315,9 +325,13 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 underlying_name=underlying_name,
                 warrant_isin=warrant_isin,
                 warrant_wkn=warrant_wkn,
+                quantity=pos.quantity,
                 held_since=held_since,
                 buy_price=buy_price,
                 current_price=current_price,
+                bid_price=warrant_snapshot.bid if warrant_snapshot else None,
+                quote_currency=warrant_snapshot.currency if warrant_snapshot else None,
+                quote_timestamp_utc=warrant_snapshot.timestamp_utc if warrant_snapshot else None,
                 performance_pct=performance_pct,
                 spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
                 leverage=warrant_snapshot.leverage if warrant_snapshot else None,

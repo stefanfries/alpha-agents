@@ -22,6 +22,18 @@
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
     {% if stage_result %}
       {% set r = stage_result %}
+      {% if r.sizing_blocked_reason %}
+        <div class="alert alert-warning flex-shrink-0 mb-2">{{ r.sizing_blocked_reason }}</div>
+      {% endif %}
+      {% if r.account_snapshot %}
+        <div class="flex-shrink-0 d-flex flex-wrap gap-3 small text-muted mb-2">
+          <span>NAV: <strong class="text-body">{{ "%.2f" | format(r.account_snapshot.nav_eur | float) if r.account_snapshot.nav_eur is not none else "unavailable" }} EUR</strong></span>
+          <span>Cash: <strong class="text-body">{{ "%.2f" | format(r.account_snapshot.available_cash_eur | float) if r.account_snapshot.available_cash_eur is not none else "unavailable" }} EUR</strong></span>
+          <span>Expected net SELL proceeds: <strong class="text-body">{{ "%.2f" | format(r.expected_net_sell_proceeds_eur | float) if r.expected_net_sell_proceeds_eur is not none else "—" }} EUR</strong></span>
+          <span>Cost reserve: <strong class="text-body">{{ "%.2f" | format(r.cost_reserve_eur | float) if r.cost_reserve_eur is not none else "unconfigured" }} EUR</strong></span>
+          <span>Standard BUY: <strong class="text-body">{{ "%.2f" | format(r.standard_buy_amount_eur | float) if r.standard_buy_amount_eur is not none else "—" }} EUR</strong></span>
+        </div>
+      {% endif %}
       <p class="flex-shrink-0 text-muted small mb-2"><strong class="text-body">{{ r.positions | length }}</strong> positions.</p>
       <div class="flex-grow-1 overflow-auto" style="min-height:0">
         <div class="row">
@@ -36,7 +48,7 @@
                 <tr>
                   <td><code>{{ sym }}</code></td>
                   <td class="text-end">{{ "%.1f" | format(r.target_weights.get(sym, 0) * 100) }}%</td>
-                  <td class="text-end text-muted small">{{ "%.2f" | format(pos.quantity | float) }}</td>
+                  <td class="text-end text-muted small">{{ "%.2f" | format(pos.notional_eur | float) }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

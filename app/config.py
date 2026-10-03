@@ -148,14 +148,14 @@ class MonitoringSettings(BaseModel):
 class PortfolioSettings(BaseModel):
     capital_eur: float = 100_000.0
     sizing_method: str = "equal"       # "equal" | "score_weighted" | "trend_weighted"
-    max_position_weight: float = 0.10
     max_positions: int = 15
+    slippage_bps: float | None = 25.0
+    quote_max_age_hours: int = 72
 
 
 class RiskSettings(BaseModel):
-    max_position_weight: float = 0.10
-    max_sector_weight: float = 0.30
-    max_positions: int = 30
+    max_position_multiple: float = 3.0
+    max_sector_weight: float = 1.0 / 3.0
 
 
 class ExecutionSettings(BaseModel):

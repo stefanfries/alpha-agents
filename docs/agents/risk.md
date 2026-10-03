@@ -2,44 +2,48 @@
 
 ## Responsibility
 
-Validate the proposed portfolio against risk limits. Reject or adjust positions that breach configured thresholds. This is the fifth pipeline stage and the last gate before execution.
+Validate Portfolio's planned EUR BUY notionals and roll replacements against current NAV,
+sector exposure, quote validity, and the shared position-count limit. Risk is a hard gate
+before Execution; it does not submit orders or automatically close existing breaches.
 
-## Input
+## Input and output
 
-`PortfolioProposal` (output of `PortfolioConstructionAgent`)
+Input: `PortfolioProposal`, including current `PortfolioAccountSnapshot`, planned BUY notionals,
+held positions selected for SELL, and atomic roll pairs.
 
-## Output
+Output: `RiskAssessment` with approved/rejected `PlannedPosition`s, approved/rejected roll
+pairs, unchanged close positions, rejection reasons, and warnings for existing over-limit
+positions or sectors.
 
-```python
-class RiskAssessment(AgentOutput):
-    approved_positions: list[Position]
-    rejected_positions: list[Position]
-    risk_notes: dict[str, str]          # Reason for each rejection
-    close_positions: list[Position]     # Positions to sell; passed through unchanged
-```
+## Rules
 
-## Tools used
+- **Position notional cap:** `3 × NAV / max_positions` per warrant position.
+- **Sector cap:** total marked EUR exposure per sector must not exceed one-third of NAV.
+- **Position count:** use the same `portfolio.max_positions` value as Portfolio and Monitoring.
+  A roll replaces an incumbent and does not consume a new-entry slot.
+- Evaluate post-trade exposure: remove planned close positions; for a roll, replace the
+  incumbent exposure with the replacement notional only if both legs pass.
+- Reject only the BUY or paired ROLL that breaches a limit. Do not redistribute rejected
+  amounts in this phase; they remain cash.
+- Existing positions that have naturally grown above a limit generate warnings, not automatic
+  SELLs. Do not add exposure to a sector already above its limit.
+- Missing/stale/non-EUR quote data or missing NAV blocks all risk-increasing orders. A quote
+  is stale after `portfolio.quote_max_age_hours` (72 hours by default). This does not suppress
+  separately planned SELLs.
+- A held position with unknown sector prevents exposure increases until its sector can be
+  classified; candidate and held-sector joins use underlying ISIN.
 
-None — all risk checks are rule-based against configured limits.
+## Configuration
 
-## Behaviour
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| `risk.max_position_multiple` | `3.0` | Multiple of the equal target slot size (`NAV / max_positions`) |
+| `risk.max_sector_weight` | `0.333333...` | Maximum sector share of NAV |
 
-1. Check each proposed position against all configured risk rules
-2. Positions that pass all checks → `approved_positions`
-3. Positions that breach any rule → `rejected_positions` with the violated rule recorded in `risk_notes`
-4. Re-normalise weights across approved positions if any were rejected
-5. Pass `close_positions` through to execution for SELL order generation
+`max_positions` is sourced from `portfolio.max_positions`; there is no separate Risk count.
 
-## Risk rules (configurable)
+## Atomic rolls and execution
 
-| Rule | Parameter | Default |
-|------|-----------|---------|
-| Max single-position weight | `risk_max_position_weight` | `0.10` (10%) |
-| Max sector concentration | `risk_max_sector_weight` | `0.30` (30%) |
-| Max number of positions | `risk_max_positions` | `30` |
-
-## Notes
-
-- Risk rules are the hardest constraints in the system; the Execution Agent must never bypass them
-- All rejections are logged with the specific rule that was violated
-- If all positions are rejected, the pipeline returns an empty execution plan (no trades)
+Risk approves/rejects the incumbent SELL and replacement BUY as one `RollTrade`. Execution
+groups all approved close and roll SELLs before all BUYs. Since fills are manual, the operator
+must confirm sale proceeds and available cash before placing the planned BUYs.

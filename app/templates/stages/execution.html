@@ -33,14 +33,14 @@
       <div class="flex-grow-1 overflow-auto" style="min-height:0">
         <table class="table table-sm table-hover bg-white rounded shadow-sm">
           <thead class="table-light">
-            <tr><th>Symbol</th><th>Side</th><th class="text-end">EUR</th><th>Type</th></tr>
+            <tr><th>Symbol</th><th>Side</th><th class="text-end">Qty / EUR</th><th>Type</th></tr>
           </thead>
           <tbody>
             {% for order in r.orders %}
             <tr>
               <td><code>{{ order.ticker.symbol }}</code></td>
               <td><span class="badge bg-success">{{ order.side }}</span></td>
-              <td class="text-end">{{ "%.2f" | format(order.quantity | float) }}</td>
+              <td class="text-end">{{ "%.2f" | format((order.notional_eur if order.side == "buy" else order.quantity) | float) }}</td>
               <td class="text-muted small">{{ order.order_type }}</td>
             </tr>
             {% endfor %}

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import numpy as np
@@ -14,6 +14,10 @@ from app.config import MonitoringSettings
 from app.models.market import OHLCV, Position, Ticker
 from app.models.signals import (
     MarketRegime,
+    PlannedPosition,
+    PortfolioAccountSnapshot,
+    PortfolioHoldingValue,
+    PortfolioProposal,
     ResearchResult,
     RollCandidate,
     RollReplacement,
@@ -153,7 +157,7 @@ def test_screening_downgrades_green_regime_when_breadth_is_narrow():
 @pytest.mark.asyncio
 async def test_portfolio_equal_weights():
     tickers = [Ticker(symbol=s) for s in ["A", "B", "C", "D"]]
-    agent = PortfolioConstructionAgent(capital_eur=10_000, sizing_method="equal", max_position_weight=0.5)
+    agent = PortfolioConstructionAgent(capital_eur=10_000, sizing_method="equal")
     result = await agent.run(
         SelectionResult(
             selected=tickers,
@@ -164,6 +168,153 @@ async def test_portfolio_equal_weights():
     assert len(result.positions) == 4
     for w in result.target_weights.values():
         assert abs(w - 0.25) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_portfolio_account_equal_sizing_uses_cash_over_target_positions():
+    tickers = [Ticker(symbol="A", isin="A-ISIN"), Ticker(symbol="B", isin="B-ISIN")]
+    agent = PortfolioConstructionAgent(
+        capital_eur=100_000,
+        max_positions=6,
+        slippage_bps=0.0,
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("45000"),
+            nav_eur=Decimal("100000"),
+        ),
+    )
+
+    result = await agent.run(SelectionResult(selected=tickers, scores={}, rationale={}))
+
+    assert result.standard_buy_amount_eur == Decimal("7492.12")
+    assert [position.notional_eur for position in result.new_positions] == [
+        Decimal("7492.12"),
+        Decimal("7492.12"),
+    ]
+    assert result.cost_reserve_eur == Decimal("47.26")
+    assert result.target_weights == {"A": 0.0749212, "B": 0.0749212}
+
+
+@pytest.mark.asyncio
+async def test_portfolio_blocks_buy_sizing_until_cost_assumptions_are_configured():
+    agent = PortfolioConstructionAgent(
+        capital_eur=100_000,
+        max_positions=6,
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("45000"),
+            nav_eur=Decimal("100000"),
+        ),
+    )
+
+    result = await agent.run(SelectionResult(
+        selected=[Ticker(symbol="A", isin="A-ISIN")],
+        scores={},
+        rationale={},
+    ))
+
+    assert result.positions == []
+    assert result.standard_buy_amount_eur is None
+    assert "Configure slippage basis points" in result.sizing_blocked_reason
+
+
+@pytest.mark.asyncio
+async def test_portfolio_buy_uses_no_fee_issuer_action_flag():
+    ticker = Ticker(symbol="FREE", isin="FREE-ISIN")
+    agent = PortfolioConstructionAgent(
+        capital_eur=20_000,
+        max_positions=2,
+        slippage_bps=0.0,
+        planned_metadata_by_isin={
+            "FREE-ISIN": {
+                "issuer_action": True,
+                "issuer_no_fee_action": True,
+            },
+        },
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("20000"),
+            nav_eur=Decimal("20000"),
+        ),
+    )
+
+    result = await agent.run(SelectionResult(selected=[ticker], scores={}, rationale={}))
+
+    assert result.standard_buy_amount_eur == Decimal("10000.00")
+    assert result.cost_reserve_eur == Decimal("0.00")
+    assert result.new_positions[0].issuer_no_fee_action is True
+
+
+@pytest.mark.asyncio
+async def test_portfolio_account_sizing_includes_planned_sell_proceeds():
+    incumbent = Position(
+        ticker=Ticker(symbol="OLD", isin="OLD-ISIN"),
+        quantity=Decimal("100"),
+        avg_cost=Decimal("550"),
+    )
+    tickers = [Ticker(symbol="A", isin="A-ISIN"), Ticker(symbol="B", isin="B-ISIN")]
+    agent = PortfolioConstructionAgent(
+        capital_eur=100_000,
+        current_holdings=[incumbent],
+        max_positions=6,
+        slippage_bps=0.0,
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("45000"),
+            nav_eur=Decimal("100000"),
+            holdings=[PortfolioHoldingValue(
+                position=incumbent,
+                market_value_eur=Decimal("55000"),
+            )],
+        ),
+    )
+
+    result = await agent.run(SelectionResult(selected=tickers, scores={}, rationale={}))
+
+    assert result.close_positions == [incumbent]
+    assert result.expected_net_sell_proceeds_eur == Decimal("54940.10")
+    assert result.standard_buy_amount_eur == Decimal("16641.18")
+
+
+@pytest.mark.asyncio
+async def test_portfolio_roll_replacement_uses_standard_buy_size_not_full_sale_proceeds():
+    incumbent = Position(
+        ticker=Ticker(symbol="OLD", isin="OLD-ISIN"),
+        quantity=Decimal("100"),
+        avg_cost=Decimal("550"),
+    )
+    replacement = SelectedWarrant(
+        underlying=Ticker(symbol="A", isin="A-ISIN", name="Alpha"),
+        warrant_isin="NEW-ISIN",
+        warrant_wkn="NEW",
+        score=0.9,
+        rationale="replacement",
+    )
+    agent = PortfolioConstructionAgent(
+        capital_eur=155_000,
+        current_holdings=[incumbent],
+        max_positions=6,
+        roll_replacements=[replacement],
+        roll_incumbent_isins={"A": "OLD-ISIN"},
+        slippage_bps=0.0,
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("45000"),
+            nav_eur=Decimal("155000"),
+            holdings=[PortfolioHoldingValue(
+                position=incumbent,
+                underlying_isin="A-ISIN",
+                market_value_eur=Decimal("110000"),
+            )],
+        ),
+    )
+
+    result = await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
+
+    assert result.expected_net_sell_proceeds_eur == Decimal("109940.10")
+    assert result.standard_buy_amount_eur == Decimal("25813.36")
+    assert result.roll_trades[0].replacement.notional_eur == result.standard_buy_amount_eur
+    assert result.roll_trades[0].replacement.notional_eur < incumbent.quantity * Decimal("1100")
 
 
 @pytest.mark.asyncio
@@ -193,12 +344,13 @@ async def test_portfolio_constructs_paired_roll_without_closing_incumbent_early(
     assert len(result.roll_trades) == 1
     assert result.roll_trades[0].incumbent == incumbent
     assert result.roll_trades[0].replacement.ticker.isin == "NEW-ISIN"
-    assert result.roll_trades[0].replacement.quantity == Decimal("300")
+    assert result.roll_trades[0].replacement.notional_eur == Decimal("300")
     assert result.roll_trades[0].target_weight == 0.03
 
 
 @pytest.mark.asyncio
 async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch):
+    from app.models.signals import PortfolioAccountSnapshot, PortfolioHoldingValue
     from app.orchestrator import Pipeline
 
     incumbent = Position(
@@ -227,10 +379,28 @@ async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch)
     async def fake_fetch_holdings(_run: dict) -> list[Position]:
         return [incumbent]
 
+    async def fake_account_snapshot(*_args):
+        return PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("10000"),
+            nav_eur=Decimal("10300"),
+            holdings=[PortfolioHoldingValue(
+                position=incumbent,
+                underlying_isin="A-ISIN",
+                market_value_eur=Decimal("300"),
+            )],
+        )
+
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+    monkeypatch.setattr(pipeline, "_fetch_portfolio_account_snapshot", fake_account_snapshot)
 
     result = await pipeline._run_portfolio({
         "capital_eur": 10_000,
+        "config_overrides": {
+            "portfolio": {
+                "slippage_bps": 0.0,
+            },
+        },
         "stages": {
             "warrant_selection": {"result": warrant_result.model_dump(mode="json")},
         },
@@ -244,6 +414,7 @@ async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_run_portfolio_closes_roll_candidate_without_replacement(monkeypatch):
+    from app.models.signals import PortfolioAccountSnapshot
     from app.orchestrator import Pipeline
 
     incumbent = Position(
@@ -256,7 +427,11 @@ async def test_run_portfolio_closes_roll_candidate_without_replacement(monkeypat
     async def fake_fetch_holdings(_run: dict) -> list[Position]:
         return [incumbent]
 
+    async def fake_account_snapshot(*_args):
+        return PortfolioAccountSnapshot(source="virtual", available_cash_eur=Decimal("10000"))
+
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+    monkeypatch.setattr(pipeline, "_fetch_portfolio_account_snapshot", fake_account_snapshot)
 
     result = await pipeline._run_portfolio({
         "capital_eur": 10_000,
@@ -292,18 +467,141 @@ async def test_run_portfolio_closes_roll_candidate_without_replacement(monkeypat
 
 @pytest.mark.asyncio
 async def test_risk_rejects_oversized_position():
-    from app.models.signals import PortfolioProposal
-
     ticker = Ticker(symbol="BIG")
-    agent = RiskAgent(max_position_weight=0.10, max_positions=30)
+    agent = RiskAgent(max_position_multiple=3.0, max_positions=30)
     result = await agent.run(
         PortfolioProposal(
-            positions=[Position(ticker=ticker, quantity=Decimal("5000"), avg_cost=Decimal("0"))],
+            positions=[PlannedPosition(
+                ticker=ticker,
+                notional_eur=Decimal("50000"),
+                target_weight=0.5,
+                sector="Technology",
+            )],
             target_weights={"BIG": 0.50},
+            account_snapshot=PortfolioAccountSnapshot(
+                source="virtual",
+                available_cash_eur=Decimal("100000"),
+                nav_eur=Decimal("100000"),
+            ),
         )
     )
     assert ticker in [p.ticker for p in result.rejected_positions]
     assert "BIG" in result.risk_notes
+
+
+@pytest.mark.asyncio
+async def test_risk_rejects_sector_overflow_but_approves_other_sector():
+    held = Position(
+        ticker=Ticker(symbol="HELD", isin="HELD-ISIN"),
+        quantity=Decimal("100"),
+        avg_cost=Decimal("200"),
+    )
+    tech = PlannedPosition(
+        ticker=Ticker(symbol="TECH"),
+        notional_eur=Decimal("4000"),
+        target_weight=0.04,
+        sector="Technology",
+    )
+    health = PlannedPosition(
+        ticker=Ticker(symbol="HEALTH"),
+        notional_eur=Decimal("4000"),
+        target_weight=0.04,
+        sector="Healthcare",
+    )
+    snapshot_time = datetime.now(timezone.utc)
+
+    result = await RiskAgent(max_positions=6).run(PortfolioProposal(
+        positions=[tech, health],
+        target_weights={"TECH": 0.04, "HEALTH": 0.04},
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("70000"),
+            nav_eur=Decimal("100000"),
+            holdings=[PortfolioHoldingValue(
+                position=held,
+                underlying_isin="HELD-UNDERLYING",
+                sector="Technology",
+                bid_price_eur=Decimal("300"),
+                market_value_eur=Decimal("30000"),
+                quote_timestamp_utc=snapshot_time,
+            )],
+        ),
+    ))
+
+    assert result.approved_positions == [health]
+    assert result.rejected_positions == [tech]
+    assert "sector cap" in result.risk_notes["TECH"]
+
+
+@pytest.mark.asyncio
+async def test_risk_blocks_new_position_when_account_quote_is_stale_but_preserves_sell():
+    held = Position(
+        ticker=Ticker(symbol="SELL", isin="SELL-ISIN"),
+        quantity=Decimal("100"),
+        avg_cost=Decimal("2"),
+    )
+    planned = PlannedPosition(
+        ticker=Ticker(symbol="BUY", isin="BUY-ISIN"),
+        notional_eur=Decimal("5000"),
+        target_weight=0.05,
+        sector="Technology",
+    )
+    snapshot_time = datetime.now(timezone.utc) - timedelta(hours=73)
+
+    result = await RiskAgent(max_positions=6).run(PortfolioProposal(
+        positions=[planned],
+        target_weights={"BUY": 0.05},
+        close_positions=[held],
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("80000"),
+            nav_eur=Decimal("100000"),
+            holdings=[PortfolioHoldingValue(
+                position=held,
+                underlying_isin="SELL-UNDERLYING",
+                sector="Healthcare",
+                bid_price_eur=Decimal("200"),
+                market_value_eur=Decimal("20000"),
+                quote_timestamp_utc=snapshot_time,
+            )],
+        ),
+    ))
+
+    assert result.approved_positions == []
+    assert result.rejected_positions == [planned]
+    assert result.close_positions == [held]
+    assert "stale" in result.risk_notes["BUY"]
+
+
+@pytest.mark.asyncio
+async def test_risk_reports_existing_over_limit_positions_without_forced_sell():
+    held = Position(
+        ticker=Ticker(symbol="GROWN", isin="GROWN-ISIN"),
+        quantity=Decimal("100"),
+        avg_cost=Decimal("400"),
+    )
+
+    result = await RiskAgent(max_positions=6).run(PortfolioProposal(
+        positions=[],
+        target_weights={},
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("40000"),
+            nav_eur=Decimal("100000"),
+            holdings=[PortfolioHoldingValue(
+                position=held,
+                underlying_isin="GROWN-UNDERLYING",
+                sector="Technology",
+                bid_price_eur=Decimal("600"),
+                market_value_eur=Decimal("60000"),
+                quote_timestamp_utc=datetime.now(timezone.utc),
+            )],
+        ),
+    ))
+
+    assert result.close_positions == []
+    assert any("above the position cap" in warning for warning in result.portfolio_warnings)
+    assert any("above the sector cap" in warning for warning in result.portfolio_warnings)
 
 
 @pytest.mark.asyncio
@@ -315,7 +613,11 @@ async def test_execution_dry_run_does_not_raise():
     result = await agent.run(
         RiskAssessment(
             approved_positions=[
-                Position(ticker=ticker, quantity=Decimal("500"), avg_cost=Decimal("0"))
+                PlannedPosition(
+                    ticker=ticker,
+                    notional_eur=Decimal("500"),
+                    target_weight=0.05,
+                )
             ],
             rejected_positions=[],
             risk_notes={},
@@ -1270,6 +1572,7 @@ def test_warrant_selection_scoring_tracks_active_maturity_range():
 
 @pytest.mark.asyncio
 async def test_monitoring_no_holdings_reports_full_free_slots_from_config_override(monkeypatch):
+    from app.models.signals import PortfolioAccountSnapshot
     from app.orchestrator import Pipeline
 
     pipeline = Pipeline()
@@ -1277,7 +1580,15 @@ async def test_monitoring_no_holdings_reports_full_free_slots_from_config_overri
     async def fake_fetch_holdings(_run: dict) -> list[Position]:
         return []
 
+    async def fake_account_snapshot(*_args, **_kwargs):
+        return PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("99636.35"),
+            nav_eur=Decimal("99636.35"),
+        )
+
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
+    monkeypatch.setattr(pipeline, "_fetch_portfolio_account_snapshot", fake_account_snapshot)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A"), Ticker(symbol="B"), Ticker(symbol="C")],
@@ -1295,6 +1606,9 @@ async def test_monitoring_no_holdings_reports_full_free_slots_from_config_overri
     assert len(result.entry_candidates) == 3
     assert result.positions_to_keep == []
     assert result.positions_to_sell == []
+    assert result.nav_eur == Decimal("99636.35")
+    assert result.available_cash_eur == Decimal("99636.35")
+    assert result.valuation_errors == []
 
 
 @pytest.mark.asyncio
@@ -1447,6 +1761,150 @@ async def test_fetch_holdings_maps_average_purchase_price_to_avg_cost(monkeypatc
 
     assert len(holdings) == 1
     assert holdings[0].avg_cost == Decimal("12.34")
+
+
+@pytest.mark.asyncio
+async def test_portfolio_account_snapshot_values_virtual_holding_at_fresh_bid(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, _query: dict) -> dict:
+            return {"depot_id": "d1", "depot_type": "virtual"}
+
+    class FakeSnapshotsCollection:
+        async def find_one(self, _query: dict, sort: list[tuple[str, int]]) -> dict:
+            return {"current_cash": 45_000.0}
+
+    position = Position(
+        ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+        quantity=Decimal("10"),
+        avg_cost=Decimal("2.5"),
+    )
+    quote_time = datetime.now(timezone.utc)
+    pipeline = Pipeline()
+    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(
+        orchestrator_module,
+        "virtual_depot_snapshots_collection",
+        lambda: FakeSnapshotsCollection(),
+    )
+
+    async def fake_underlying_map(_run: dict, _holdings: list[Position]) -> dict[str, str]:
+        return {"ISIN1": "AAPL"}
+
+    async def fake_quotes(_isins: list[str]) -> dict[str, WarrantSnapshot]:
+        return {
+            "ISIN1": WarrantSnapshot(
+                warrant_isin="ISIN1",
+                bid=5.0,
+                currency="EUR",
+                timestamp_utc=quote_time,
+                issuer_action=True,
+                issuer_no_fee_action=True,
+            )
+        }
+
+    monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_underlying_map)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_quotes)
+
+    snapshot = await pipeline._fetch_portfolio_account_snapshot(
+        {"quant_system_id": "qs1"},
+        [position],
+        {"US0378331005": "Technology"},
+        {"AAPL": "US0378331005"},
+    )
+
+    assert snapshot.available_cash_eur == Decimal("45000.0")
+    assert snapshot.holdings[0].bid_price_eur == Decimal("5.0")
+    assert snapshot.holdings[0].market_value_eur == Decimal("50.0")
+    assert snapshot.holdings[0].sector == "Technology"
+    assert snapshot.holdings[0].underlying_isin == "US0378331005"
+    assert snapshot.holdings[0].issuer_action is True
+    assert snapshot.holdings[0].issuer_no_fee_action is True
+    assert snapshot.nav_eur == Decimal("45050.0")
+    assert snapshot.valuation_errors == []
+
+
+@pytest.mark.asyncio
+async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, _query: dict) -> dict:
+            return {"depot_id": "real-1", "depot_type": "real"}
+
+    class FakeRealSnapshots:
+        async def find_one(self, _query: dict, sort: list[tuple[str, int]]) -> dict:
+            return {"account_name": "account-1"}
+
+    class FakeBalanceCursor:
+        def sort(self, *_args):
+            return self
+
+        async def to_list(self, length=None):
+            return [
+                {"account_type": "Verrechnungskonto", "balance": {"value": "101865.98", "unit": "EUR"}},
+                {"account_type": "Tagesgeld PLUS-Konto", "balance": {"value": "0.03", "unit": "EUR"}},
+                {"account_type": "Girokonto", "balance": {"value": "106.03", "unit": "EUR"}},
+            ]
+
+    class FakeAccountBalances:
+        def find(self, _query: dict, _projection: dict):
+            return FakeBalanceCursor()
+
+    class FakeFinanceDB:
+        def __getitem__(self, collection: str):
+            if collection == "depot_snapshots":
+                return FakeRealSnapshots()
+            if collection == "account_balances":
+                return FakeAccountBalances()
+            raise KeyError(collection)
+
+    pipeline = Pipeline()
+    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(orchestrator_module, "finance_db", lambda: FakeFinanceDB())
+
+    snapshot = await pipeline._fetch_portfolio_account_snapshot(
+        {"quant_system_id": "qs1"},
+        [],
+        {},
+        {},
+    )
+
+    assert snapshot.source == "real"
+    assert snapshot.available_cash_eur == Decimal("101972.04")
+    assert snapshot.nav_eur == Decimal("101972.04")
+    assert snapshot.valuation_errors == []
+
+
+def test_portfolio_quote_validation_rejects_stale_and_non_eur_quotes():
+    from app.orchestrator import Pipeline
+
+    now = datetime(2026, 10, 3, 12, tzinfo=timezone.utc)
+    stale = WarrantSnapshot(
+        warrant_isin="STALE",
+        bid=2.0,
+        currency="EUR",
+        timestamp_utc=now - timedelta(hours=73),
+    )
+    foreign = WarrantSnapshot(
+        warrant_isin="USD",
+        bid=2.0,
+        currency="USD",
+        timestamp_utc=now,
+    )
+
+    assert Pipeline._portfolio_quote_error(stale, now) == "quote is older than 72 hours"
+    weekend_quote = WarrantSnapshot(
+        warrant_isin="WEEKEND",
+        bid=2.0,
+        currency="EUR",
+        timestamp_utc=now - timedelta(hours=72),
+    )
+    assert Pipeline._portfolio_quote_error(weekend_quote, now) is None
+    assert Pipeline._portfolio_quote_error(foreign, now) == "quote currency is not EUR"
 
 
 @pytest.mark.asyncio
@@ -1813,9 +2271,19 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
         async def get_warrant_detail(self, isin: str) -> dict | None:
             if isin == "ISIN1":
                 return {
-                    "market_data": {"spread_percent": 1.8, "bid": 1.9, "ask": 2.1},
+                    "market_data": {
+                        "spread_percent": 1.8,
+                        "bid": 1.9,
+                        "ask": 2.1,
+                        "timestamp_utc": "2026-10-02T19:59:00Z",
+                    },
                     "analytics": {"leverage": 4.2, "delta": 0.44},
-                    "reference_data": {"maturity_date": (today + timedelta(days=120)).isoformat()},
+                    "reference_data": {
+                        "maturity_date": (today + timedelta(days=120)).isoformat(),
+                        "currency": "EUR",
+                        "issuer_action": True,
+                        "issuer_no_fee_action": False,
+                    },
                 }
             if isin == "ISIN2":
                 return {"market_data": {}, "analytics": {}, "reference_data": {}}
@@ -1832,4 +2300,12 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
     assert snap.leverage == 4.2
     assert snap.delta == 0.44
     assert snap.days_to_maturity == 120
+    assert snap.bid == 1.9
+    assert snap.ask == 2.1
+    assert snap.currency == "EUR"
+    assert snap.timestamp_utc is not None
+    assert snap.issuer_action is True
+    assert snap.issuer_no_fee_action is False
+    assert snap.timestamp_utc.isoformat() == "2026-10-02T19:59:00+00:00"
     assert snap.bid_ask_midprice == 2.0
+    assert Pipeline._parse_utc_timestamp("2026-10-02T19:59:00") is None

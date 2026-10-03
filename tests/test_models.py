@@ -1,12 +1,15 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.agents.monitoring import MonitoringInput, WarrantSnapshot
 from app.config import MonitoringSettings
-from app.models.market import Order, Ticker
+from app.models.market import Order, Position, Ticker
 from app.models.quant_system import VirtualDepotPosition
 from app.models.signals import (
     ExecutionPlan,
     MonitoringResult,
+    PortfolioAccountSnapshot,
+    PortfolioHoldingValue,
     PositionReview,
     RollReplacement,
     SelectionResult,
@@ -27,11 +30,13 @@ def test_order_requires_limit_price_when_limit_type():
     order = Order(
         ticker=Ticker(symbol="AAPL"),
         side="buy",
-        quantity=Decimal("10"),
+        notional_eur=Decimal("1500"),
         order_type="limit",
         limit_price=Decimal("150.00"),
     )
     assert order.limit_price == Decimal("150.00")
+    assert order.notional_eur == Decimal("1500")
+    assert order.quantity is None
 
 
 def test_selection_result_roundtrip():
@@ -100,6 +105,37 @@ def test_monitoring_result_defaults_positions_to_roll():
     )
 
     assert result.positions_to_roll == []
+
+
+def test_portfolio_account_snapshot_roundtrip_preserves_eur_value_and_utc_quote_time():
+    quote_time = datetime(2026, 10, 2, 20, tzinfo=timezone.utc)
+    snapshot = PortfolioAccountSnapshot(
+        source="real",
+        available_cash_eur=Decimal("45000"),
+        holdings=[PortfolioHoldingValue(
+            position=Position(
+                ticker=Ticker(symbol="WKN1", isin="ISIN1"),
+                quantity=Decimal("100"),
+                avg_cost=Decimal("2.5"),
+            ),
+            underlying_isin="US0378331005",
+            underlying_symbol="AAPL",
+            sector="Technology",
+            bid_price_eur=Decimal("2.90"),
+            market_value_eur=Decimal("290"),
+            quote_timestamp_utc=quote_time,
+        )],
+        nav_eur=Decimal("45290"),
+        recorded_at_utc=quote_time,
+    )
+
+    restored = PortfolioAccountSnapshot.model_validate(snapshot.model_dump())
+
+    assert restored.available_cash_eur == Decimal("45000")
+    assert restored.holdings[0].market_value_eur == Decimal("290")
+    assert restored.holdings[0].underlying_isin == "US0378331005"
+    assert restored.holdings[0].quote_timestamp_utc == quote_time
+    assert restored.nav_eur == Decimal("45290")
 
 
 def test_monitoring_input_accepts_warrant_snapshots():

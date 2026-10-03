@@ -8,7 +8,7 @@ Tests cover:
 - Orchestrator metadata collection and wiring
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -422,6 +422,9 @@ async def test_position_review_captures_snapshot_data(monkeypatch):
                 leverage=5.5,
                 delta=0.5,
                 days_to_maturity=100,
+                bid=2.0,
+                currency="EUR",
+                timestamp_utc=datetime(2026, 10, 2, 20, tzinfo=timezone.utc),
             )
         }
 
@@ -452,6 +455,10 @@ async def test_position_review_captures_snapshot_data(monkeypatch):
     assert position.leverage == 5.5
     assert position.delta == 0.5
     assert position.days_to_maturity == 100
+    assert position.quantity == Decimal("1")
+    assert position.bid_price == 2.0
+    assert position.quote_currency == "EUR"
+    assert position.quote_timestamp_utc == datetime(2026, 10, 2, 20, tzinfo=timezone.utc)
     assert position.monitoring_score is not None
     assert position.monitoring_score > 0.0
     assert position.decision_reason == "warrant healthy, trend intact"

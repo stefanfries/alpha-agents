@@ -31,7 +31,8 @@ One daily candlestick bar.
 
 ### `Position`
 
-A current or proposed holding (stocks or warrants).
+A current held instrument position. `quantity` is always instrument units; planned EUR BUY
+amounts use `PlannedPosition.notional_eur` instead.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
@@ -47,9 +48,12 @@ A trade instruction produced by the Execution Agent.
 | ----- | ---- | ----------- |
 | `ticker` | `Ticker` | Security to trade |
 | `side` | `Literal["buy", "sell"]` | Direction |
-| `quantity` | `Decimal` | Units to trade |
+| `quantity` | `Decimal \| None` | Instrument units for a SELL; absent for BUY |
+| `notional_eur` | `Decimal \| None` | EUR amount for a BUY; absent for SELL |
 | `order_type` | `Literal["market", "limit"]` | Execution type |
 | `limit_price` | `Decimal \| None` | Required when `order_type="limit"` |
+
+BUY orders require `notional_eur`; SELL orders require `quantity`.
 
 ### `Warrant`
 
@@ -299,6 +303,7 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `underlying_name` | `str \| None` | Display name for the underlying (preferred universe name; fallback cached warrant-derived name) |
 | `warrant_isin` | `str` | ISIN of the held warrant |
 | `warrant_wkn` | `str` | WKN of the held warrant (key in depot transactions) |
+| `quantity` | `Decimal \| None` | Held warrant units from the depot snapshot |
 | `held_since` | `date \| None` | Held-since date from latest snapshot position (`held_since_date`); for virtual depots may fall back to most recent BUY transaction; `None` if unavailable |
 | `buy_price` | `float \| None` | Average buy price (`avg_cost`) of the held position |
 | `current_price` | `float \| None` | Current warrant midprice from monitoring snapshot |
@@ -332,6 +337,9 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 | `free_positions` | `int` | `max_positions − len(current_holdings) + len(positions_to_sell)` (`Free now`, including confirmed sells) |
 | `excluded_symbols` | `list[str]` | Held or recently sold underlying symbols blocked from entry in this run |
 | `reentry_blocked_symbols` | `set[str]` | Recent virtual-depot SELL underlyings blocked for the configured prevention window |
+| `nav_eur` | `Decimal \| None` | Total NAV from current EUR cash plus fresh held-warrant bid values; absent if incomplete |
+| `available_cash_eur` | `Decimal \| None` | Current free EUR cash |
+| `valuation_errors` | `list[str]` | Missing or invalid cash/quote valuation details shown in Monitoring |
 
 ### `PortfolioProposal`
 
@@ -339,24 +347,62 @@ Output of `PortfolioConstructionAgent`. Input of `RiskAgent`.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `positions` | `list[Position]` | Proposed warrant position sizes |
-| `target_weights` | `dict[str, float]` | Target weight per ISIN |
-| `new_positions` | `list[Warrant]` | Warrants not currently held (new trades) |
-| `existing_positions` | `list[Warrant]` | Already held — no action needed |
+| `positions` | `list[PlannedPosition]` | Proposed warrant EUR notionals |
+| `target_weights` | `dict[str, float]` | Proposed notional as a share of NAV, keyed by warrant symbol |
+| `new_positions` | `list[PlannedPosition]` | Proposed BUYs not currently held |
+| `existing_positions` | `list[PlannedPosition]` | Selected positions already held |
 | `close_positions` | `list[Position]` | Current holdings to close (not in shortlist) |
-| `roll_trades` | `list[RollTrade]` | Confirmed incumbent/replacement pairs, kept separate from ordinary new positions |
+| `roll_trades` | `list[RollTrade]` | Confirmed incumbent/replacement pairs |
+| `account_snapshot` | `PortfolioAccountSnapshot \| None` | Current NAV, cash, held-position values, and quote validity |
+| `standard_buy_amount_eur` | `Decimal \| None` | Shared equal-size amount for each BUY |
+| `expected_net_sell_proceeds_eur` | `Decimal \| None` | Expected proceeds from planned SELLs after modeled sell costs |
+| `cost_reserve_eur` | `Decimal \| None` | Estimated transaction fees and slippage |
+| `sizing_blocked_reason` | `str \| None` | Why no risk-increasing notional was produced |
+
+### `PlannedPosition`
+
+A proposed BUY amount, distinct from a held position's instrument-unit quantity.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `ticker` | `Ticker` | Warrant to buy |
+| `notional_eur` | `Decimal` | Planned BUY amount in EUR |
+| `target_weight` | `float` | Notional as a share of current NAV |
+| `underlying_isin` | `str \| None` | Canonical underlying identity |
+| `underlying_symbol` | `str \| None` | Supporting/display symbol |
+| `sector` | `str \| None` | Sector used for concentration checks |
+| `issuer_action` | `bool` | Comdirect issuer-action fee exception |
+| `issuer_no_fee_action` | `bool` | Comdirect no-fee issuer action; takes precedence |
+
+### `PortfolioAccountSnapshot`
+
+Current account valuation input to Portfolio and Risk. Held-warrant values use fresh FinHub
+bid quotes in EUR; invalid or stale values are represented as valuation errors and must not be
+treated as zero.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `source` | `Literal["real", "virtual"]` | Depot source |
+| `available_cash_eur` | `Decimal \| None` | Current available cash in EUR |
+| `holdings` | `list[PortfolioHoldingValue]` | Current held positions with marks and underlying metadata |
+| `nav_eur` | `Decimal \| None` | Cash plus held-position bid values; absent if incomplete |
+| `recorded_at_utc` | `datetime \| None` | Snapshot assembly time |
+| `valuation_errors` | `list[str]` | Missing/invalid account valuation data |
+
+`PortfolioHoldingValue` includes the held `Position`, canonical `underlying_isin`, optional
+`underlying_symbol` and `sector`, `bid_price_eur`, `market_value_eur`, `quote_timestamp_utc`,
+`issuer_action`, `issuer_no_fee_action`, and `quote_error`.
 
 ### `RollTrade`
 
-Paired replacement of a held warrant. Portfolio sizes `replacement.quantity` from the
-incumbent's recorded cost basis; Risk and Execution keep the pair together so an
-unapproved or undersized replacement does not create a naked incumbent SELL.
+Paired replacement of a held warrant. The incumbent is a held `Position`; the replacement is
+a `PlannedPosition` sized to the standard BUY amount. Risk and Execution keep the pair atomic.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | `incumbent` | `Position` | Held warrant to sell |
-| `replacement` | `Position` | Selected warrant to buy |
-| `target_weight` | `float` | Replacement allocation as a share of portfolio capital |
+| `replacement` | `PlannedPosition` | Selected warrant and EUR notional to buy |
+| `target_weight` | `float` | Replacement notional as a share of NAV |
 
 ### `RiskAssessment`
 
@@ -364,12 +410,13 @@ Output of `RiskAgent`. Input of `TradeExecutionAgent`.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `approved_positions` | `list[Position]` | Positions that passed risk checks |
-| `rejected_positions` | `list[Position]` | Positions blocked by risk limits |
+| `approved_positions` | `list[PlannedPosition]` | EUR notionals that passed risk checks |
+| `rejected_positions` | `list[PlannedPosition]` | EUR notionals blocked by risk limits |
 | `risk_notes` | `dict[str, str]` | Reason for each rejection |
 | `close_positions` | `list[Position]` | Positions carried through for SELL order generation |
 | `approved_roll_trades` | `list[RollTrade]` | Roll pairs approved independently of new-entry slots |
-| `rejected_roll_trades` | `list[RollTrade]` | Roll pairs rejected by the position-weight check |
+| `rejected_roll_trades` | `list[RollTrade]` | Roll pairs rejected by risk checks |
+| `portfolio_warnings` | `list[str]` | Existing over-limit position/sector warnings; no automatic SELL |
 
 ### `ExecutionPlan`
 
@@ -378,7 +425,7 @@ Output of `TradeExecutionAgent`. Final pipeline output.
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | `orders` | `list[Order]` | Orders ready for broker submission |
-| `skipped` | `list[Position]` | Positions with no action needed |
+| `skipped` | `list[PlannedPosition]` | Planned BUY notionals below the minimum trade size |
 
 ---
 
@@ -391,6 +438,9 @@ Output of `TradeExecutionAgent`. Final pipeline output.
 - Numeric amount values are stored as strings in nested amount objects (for example `{"value": "123.45", "unit": "EUR"}`) and are explicitly converted to `Decimal` before calculations.
 - `held_since_date` and `purchase_price_at_entry` can be `null`; consumers must handle missing values without crashing.
 - Current holdings are always read from the latest snapshot per depot (`max(recorded_at)`).
+- Real-depot free cash is the sum of the newest EUR `account_balances` record for each of
+  `Girokonto`, `Tagesgeld PLUS-Konto`, and `Verrechnungskonto`, selected by `account_type`.
+  Unchanged balances may have older `recorded_at` values and remain valid until superseded.
 
 ### `Execution` document (`executions` collection)
 

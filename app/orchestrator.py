@@ -3,10 +3,11 @@ import logging
 import re
 import traceback
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app import warrant_availability
+from app.accounting import sum_latest_cash_balances_eur
 from app.agents.execution import TradeExecutionAgent
 from app.agents.monitoring import MonitoringAgent, MonitoringInput, WarrantSnapshot
 from app.agents.portfolio import PortfolioConstructionAgent
@@ -23,12 +24,15 @@ from app.db import (
     update_stage_progress,
     virtual_depot_snapshots_collection,
     virtual_depot_transactions_collection,
+    virtual_depots_collection,
     warrant_underlying_map_collection,
 )
 from app.models.market import Position, Ticker
 from app.models.signals import (
     ExecutionPlan,
     MonitoringResult,
+    PortfolioAccountSnapshot,
+    PortfolioHoldingValue,
     PortfolioProposal,
     ResearchResult,
     RiskAssessment,
@@ -324,6 +328,14 @@ class Pipeline:
         # No holdings → pass all screening candidates through as entry candidates.
         # Warrant selection fills up to free_positions from this pool (backfill).
         if not current_holdings:
+            account_snapshot = await self._fetch_portfolio_account_snapshot(
+                run,
+                [],
+                {},
+                {},
+                underlying_map={},
+                warrant_quotes={},
+            )
             free = max_positions
             return MonitoringResult(
                 positions_to_sell=[],
@@ -332,6 +344,9 @@ class Pipeline:
                 entry_candidates=screening.selected,
                 free_positions=free,
                 excluded_symbols=[],
+                nav_eur=account_snapshot.nav_eur,
+                available_cash_eur=account_snapshot.available_cash_eur,
+                valuation_errors=account_snapshot.valuation_errors,
             )
 
         warrant_underlying_map = await self._fetch_warrant_underlying_map(run, current_holdings)
@@ -342,6 +357,14 @@ class Pipeline:
             }
         warrant_isins = [pos.ticker.isin for pos in current_holdings if pos.ticker.isin]
         warrant_snapshots = await self._fetch_warrant_snapshots(warrant_isins)
+        account_snapshot = await self._fetch_portfolio_account_snapshot(
+            run,
+            current_holdings,
+            {},
+            {},
+            underlying_map=warrant_underlying_map,
+            warrant_quotes=warrant_snapshots,
+        )
         # Prefer canonical universe names by resolving each held warrant to underlying ISIN via /instruments.
         names_from_universe = await self._resolve_underlying_names_from_universe(
             holdings=current_holdings,
@@ -393,8 +416,11 @@ class Pipeline:
         result.keep_existing_isins = []
         result.roll_underlyings = sorted({p.underlying_symbol for p in result.positions_to_roll if p.underlying_symbol})
         result.roll_keep_underlyings = []
-
-        return result
+        return result.model_copy(update={
+            "nav_eur": account_snapshot.nav_eur,
+            "available_cash_eur": account_snapshot.available_cash_eur,
+            "valuation_errors": account_snapshot.valuation_errors,
+        })
 
     @staticmethod
     def _normalize_underlying_symbol_for_screening(
@@ -443,6 +469,7 @@ class Pipeline:
                 bid = self._as_float(md.get("bid"))
                 ask = self._as_float(md.get("ask"))
                 bid_ask_midprice = (bid + ask) / 2.0 if bid is not None and ask is not None else None
+                timestamp_utc = self._parse_utc_timestamp(md.get("timestamp_utc"))
 
                 if all(
                     value is None
@@ -457,12 +484,32 @@ class Pipeline:
                     leverage=leverage,
                     days_to_maturity=days_to_maturity,
                     delta=delta,
+                    bid=bid,
+                    ask=ask,
+                    currency=md.get("currency") or rd.get("currency"),
+                    timestamp_utc=timestamp_utc,
+                    issuer_action=bool(rd.get("issuer_action")),
+                    issuer_no_fee_action=bool(rd.get("issuer_no_fee_action")),
                     bid_ask_midprice=bid_ask_midprice,
                     strike=strike,
                     maturity_date=maturity_date,
                 )
 
         return snapshots
+
+    @staticmethod
+    def _parse_utc_timestamp(value: Any) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = value if isinstance(value, datetime) else datetime.fromisoformat(
+                str(value).replace("Z", "+00:00")
+            )
+        except ValueError:
+            return None
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return None
+        return parsed.astimezone(timezone.utc)
 
     @staticmethod
     def _as_float(value: Any) -> float | None:
@@ -763,21 +810,201 @@ class Pipeline:
         }
 
         current_holdings = await self._fetch_holdings(run)
+        research_data = run.get("stages", {}).get("research", {}).get("result", {}) or {}
+        raw_fundamentals = research_data.get("fundamentals", {})
+        underlying_isins_by_symbol = {
+            ticker["symbol"]: ticker["isin"]
+            for ticker in research_data.get("tickers", [])
+            if ticker.get("symbol") and ticker.get("isin")
+        }
+        sectors_by_underlying_isin = {
+            underlying_isins_by_symbol[symbol]: str(fundamentals["sector"])
+            for symbol, fundamentals in raw_fundamentals.items()
+            if (
+                symbol in underlying_isins_by_symbol
+                and isinstance(fundamentals, dict)
+                and fundamentals.get("sector")
+            )
+        }
+        account_snapshot = await self._fetch_portfolio_account_snapshot(
+            run,
+            current_holdings,
+            sectors_by_underlying_isin,
+            underlying_isins_by_symbol,
+        )
         # Warrant ISINs that monitoring decided to keep — excluded from close_positions
         kept_warrant_isins: set[str] = set()
         monitoring_data = run.get("stages", {}).get("monitoring", {}).get("result")
         if monitoring_data:
             monitoring = MonitoringResult.model_validate(monitoring_data)
             kept_warrant_isins = {p.warrant_isin for p in monitoring.positions_to_keep if p.warrant_isin}
+        portfolio_overrides = run.get("config_overrides", {}).get("portfolio", {})
         return await PortfolioConstructionAgent(
             capital_eur=run.get("capital_eur", settings.portfolio.capital_eur),
             current_holdings=current_holdings,
             sizing_method=settings.portfolio.sizing_method,
-            max_position_weight=settings.portfolio.max_position_weight,
+            max_positions=self._portfolio_max_positions(run),
+            slippage_bps=portfolio_overrides.get("slippage_bps", settings.portfolio.slippage_bps),
+            planned_metadata_by_isin={
+                warrant.warrant_isin: {
+                    "underlying_isin": warrant.underlying.isin or "",
+                    "underlying_symbol": warrant.underlying.symbol,
+                    "sector": sectors_by_underlying_isin.get(warrant.underlying.isin or "", ""),
+                    "issuer_action": warrant.issuer_action,
+                    "issuer_no_fee_action": warrant.issuer_no_fee_action,
+                }
+                for warrant in [*warrant_result.selected, *warrant_result.roll_selected]
+            },
             kept_warrant_isins=kept_warrant_isins,
             roll_replacements=warrant_result.roll_selected,
             roll_incumbent_isins=roll_incumbent_isins,
+            account_snapshot=account_snapshot,
         ).run(selection)
+
+    async def _fetch_portfolio_account_snapshot(
+        self,
+        run: dict,
+        holdings: list[Position],
+        sectors_by_underlying_isin: dict[str, str],
+        underlying_isins_by_symbol: dict[str, str],
+        *,
+        underlying_map: dict[str, str] | None = None,
+        warrant_quotes: dict[str, WarrantSnapshot] | None = None,
+    ) -> PortfolioAccountSnapshot:
+        qs_id = run.get("quant_system_id")
+        qs = await quant_systems_collection().find_one({"quant_system_id": qs_id}) if qs_id else None
+        depot_id = qs.get("depot_id") if qs else None
+        source = (qs or {}).get("depot_type", "virtual")
+        errors: list[str] = []
+        cash_eur: Decimal | None = None
+
+        if not depot_id:
+            errors.append("No depot is linked to this Quant System")
+        elif source == "real":
+            depot_snapshot = await finance_db()["depot_snapshots"].find_one(
+                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
+            )
+            if depot_snapshot:
+                account_name = depot_snapshot.get("account_name")
+                if account_name:
+                    balance_records = await finance_db()["account_balances"].find(
+                        {"account_name": account_name},
+                        {"account_type": 1, "balance": 1, "recorded_at": 1, "_id": 0},
+                    ).sort("recorded_at", -1).to_list(length=None)
+                    cash_eur, cash_errors = sum_latest_cash_balances_eur(balance_records)
+                    errors.extend(cash_errors)
+            else:
+                errors.append("No real-depot snapshot is available")
+            if cash_eur is None:
+                errors.append("Current EUR cash balance is unavailable")
+        else:
+            depot_snapshot = await virtual_depot_snapshots_collection().find_one(
+                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
+            ) if depot_id else None
+            if depot_snapshot and depot_snapshot.get("current_cash") is not None:
+                cash_eur = self._parse_eur_amount(depot_snapshot["current_cash"], assume_eur=True)
+            elif depot_id:
+                virtual_depot = await virtual_depots_collection().find_one({"depot_id": depot_id})
+                starting_capital = (virtual_depot or {}).get("starting_capital")
+                if starting_capital is not None:
+                    cash_eur = self._parse_eur_amount(starting_capital, assume_eur=True)
+            if cash_eur is None:
+                errors.append("Current virtual-depot EUR cash is unavailable")
+
+        if underlying_map is None:
+            underlying_map = await self._fetch_warrant_underlying_map(run, holdings)
+        if warrant_quotes is None:
+            warrant_quotes = await self._fetch_warrant_snapshots(
+                [position.ticker.isin for position in holdings if position.ticker.isin]
+            )
+        now = datetime.now(timezone.utc)
+        valued_holdings: list[PortfolioHoldingValue] = []
+        total_position_value = Decimal("0")
+
+        for position in holdings:
+            isin = position.ticker.isin or ""
+            underlying = underlying_map.get(isin)
+            quote = warrant_quotes.get(isin)
+            quote_error = self._portfolio_quote_error(
+                quote,
+                now,
+                settings.portfolio.quote_max_age_hours,
+            )
+            bid_eur = None
+            market_value_eur = None
+            if quote_error:
+                errors.append(f"{isin or position.ticker.symbol}: {quote_error}")
+            else:
+                bid_eur = Decimal(str(quote.bid))
+                market_value_eur = position.quantity * bid_eur
+                total_position_value += market_value_eur
+
+            valued_holdings.append(PortfolioHoldingValue(
+                position=position,
+                underlying_isin=underlying_isins_by_symbol.get(underlying or ""),
+                underlying_symbol=underlying,
+                sector=sectors_by_underlying_isin.get(
+                    underlying_isins_by_symbol.get(underlying or "", "")
+                ),
+                bid_price_eur=bid_eur,
+                market_value_eur=market_value_eur,
+                quote_timestamp_utc=quote.timestamp_utc if quote else None,
+                issuer_action=quote.issuer_action if quote else False,
+                issuer_no_fee_action=quote.issuer_no_fee_action if quote else False,
+                quote_error=quote_error,
+            ))
+
+        all_quotes_valid = all(item.market_value_eur is not None for item in valued_holdings)
+        nav_eur = cash_eur + total_position_value if cash_eur is not None and all_quotes_valid else None
+        if holdings and nav_eur is None:
+            errors.append("NAV is incomplete because one or more held-position quotes are invalid")
+
+        return PortfolioAccountSnapshot(
+            source=source,
+            available_cash_eur=cash_eur,
+            holdings=valued_holdings,
+            nav_eur=nav_eur,
+            recorded_at_utc=now,
+            valuation_errors=list(dict.fromkeys(errors)),
+        )
+
+    @staticmethod
+    def _parse_eur_amount(value: Any, *, assume_eur: bool = False) -> Decimal | None:
+        amount = value
+        if isinstance(value, dict):
+            unit = value.get("unit")
+            if unit and unit.upper() != "EUR":
+                return None
+            amount = value.get("value")
+        elif not assume_eur:
+            return None
+        if amount in (None, ""):
+            return None
+        try:
+            parsed = Decimal(str(amount))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        return parsed if parsed.is_finite() else None
+
+    @staticmethod
+    def _portfolio_quote_error(
+        quote: WarrantSnapshot | None,
+        now: datetime,
+        max_age_hours: int = 72,
+    ) -> str | None:
+        if quote is None or quote.bid is None or quote.bid <= 0:
+            return "missing or invalid bid quote"
+        if (quote.currency or "").upper() != "EUR":
+            return "quote currency is not EUR"
+        timestamp = quote.timestamp_utc
+        if timestamp is None or timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            return "quote timestamp is missing or not timezone-aware"
+        age = now - timestamp.astimezone(timezone.utc)
+        if age.total_seconds() < 0:
+            return "quote timestamp is in the future"
+        if age > timedelta(hours=max_age_hours):
+            return f"quote is older than {max_age_hours} hours"
+        return None
 
     async def _fetch_holdings(self, run: dict) -> list[Position]:
         """Return current holdings from the depot linked to the QuantSystem."""
@@ -824,8 +1051,10 @@ class Pipeline:
     async def _run_risk(self, run: dict) -> RiskAssessment:
         proposal = PortfolioProposal.model_validate(run["stages"]["portfolio"]["result"])
         return await RiskAgent(
-            max_position_weight=settings.risk.max_position_weight,
-            max_positions=settings.risk.max_positions,
+            max_position_multiple=settings.risk.max_position_multiple,
+            max_sector_weight=settings.risk.max_sector_weight,
+            max_positions=self._portfolio_max_positions(run),
+            quote_max_age_hours=settings.portfolio.quote_max_age_hours,
         ).run(proposal)
 
     async def _run_execution(self, run: dict) -> ExecutionPlan:

@@ -1,12 +1,15 @@
+import math
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.accounting import sum_latest_cash_balances_eur
+from app.config import settings
 from app.db import (
     finance_db,
     quant_systems_collection,
@@ -155,13 +158,13 @@ async def create_quant_system(
 async def depot_capital(depot_id: str) -> JSONResponse:
     """Return estimated capital (EUR) for a real depot.
 
-    Capital = sum(position.current_value) + latest cash account balance.
-    depot_snapshots is keyed by depot_id; account_balances is keyed by account_name
-    (same account_name appears in both collections).
+    Capital = sum(position.current_value) plus the latest balance per supported cash account
+    type (Girokonto, Tagesgeld PLUS-Konto, Verrechnungskonto). Balances can be old when
+    unchanged, so choose newest-per-type rather than applying quote-age validation.
     """
     db = finance_db()
 
-    # Latest depot snapshot — gives us positions and the account_name for the cash lookup
+    # Latest depot snapshot — gives us positions and the account_name for balance lookup.
     snapshot = await db["depot_snapshots"].find_one(
         {"depot_id": depot_id},
         {"positions": 1, "account_name": 1, "_id": 0},
@@ -178,17 +181,24 @@ async def depot_capital(depot_id: str) -> JSONResponse:
             _assert_no_legacy_position_fields(pos)
             positions_value += _amount_to_decimal(pos.get("current_value") or {})
 
-    # Latest cash balance — joined via account_name
     cash_value = Decimal("0")
     if account_name:
-        bal_doc = await db["account_balances"].find_one(
+        balance_records = await db["account_balances"].find(
             {"account_name": account_name},
-            {"balance": 1, "_id": 0},
-            sort=[("recorded_at", -1)],
+            {"account_type": 1, "balance": 1, "recorded_at": 1, "_id": 0},
+        ).sort("recorded_at", -1).to_list(length=None)
+        cash_value, cash_errors = sum_latest_cash_balances_eur(balance_records)
+        if cash_errors:
+            return JSONResponse(
+                {"error": "Cash account data is incomplete", "valuation_errors": cash_errors},
+                status_code=409,
+            )
+        assert cash_value is not None
+    else:
+        return JSONResponse(
+            {"error": "Depot snapshot has no linked account name"},
+            status_code=409,
         )
-        if bal_doc:
-            bal = bal_doc.get("balance") or {}
-            cash_value = _amount_to_decimal(bal)
 
     total = float(positions_value + cash_value)
     return JSONResponse({"capital_eur": total})
@@ -220,6 +230,7 @@ async def edit_quant_system(request: Request, qs_id: str) -> HTMLResponse:
         "virtual_depots": virtual_depots,
         "indices": INDICES,
         "index_options": _index_options(),
+        "default_slippage_bps": settings.portfolio.slippage_bps,
     })
 
 
@@ -232,22 +243,44 @@ async def save_quant_system(
     indices: Annotated[list[str], Form()],
     capital_eur: Annotated[float, Form()],
     max_positions: Annotated[int, Form()] = 15,
+    slippage_bps: Annotated[str, Form()] = "",
     status: Annotated[str, Form()] = "draft",
 ) -> RedirectResponse:
     safe_max_positions = max(1, min(max_positions, 100))
+    slippage_override: float | None = None
+    if slippage_bps.strip():
+        try:
+            parsed_slippage = Decimal(slippage_bps)
+            slippage_override = float(parsed_slippage)
+        except (InvalidOperation, OverflowError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="Slippage must be a non-negative number of basis points",
+            ) from exc
+        if not parsed_slippage.is_finite() or parsed_slippage < 0 or not math.isfinite(slippage_override):
+            raise HTTPException(
+                status_code=422,
+                detail="Slippage must be a non-negative number of basis points",
+            )
     resolved_depot_type = await _resolve_depot_type(depot_id=depot_id, depot_type=depot_type)
+    set_fields = {
+        "name": name.strip(),
+        "depot_id": depot_id,
+        "depot_type": resolved_depot_type,
+        "indices": indices,
+        "capital_eur": capital_eur,
+        "config_overrides.portfolio.max_positions": safe_max_positions,
+        "status": status,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    update: dict[str, dict[str, object]] = {"$set": set_fields}
+    if slippage_override is None:
+        update["$unset"] = {"config_overrides.portfolio.slippage_bps": ""}
+    else:
+        set_fields["config_overrides.portfolio.slippage_bps"] = slippage_override
     await quant_systems_collection().update_one(
         {"quant_system_id": qs_id},
-        {"$set": {
-            "name": name.strip(),
-            "depot_id": depot_id,
-            "depot_type": resolved_depot_type,
-            "indices": indices,
-            "capital_eur": capital_eur,
-            "config_overrides.portfolio.max_positions": safe_max_positions,
-            "status": status,
-            "updated_at": datetime.now(timezone.utc),
-        }},
+        update,
     )
     return RedirectResponse(url=f"/quant-systems/{qs_id}/edit", status_code=303)
 

@@ -58,7 +58,7 @@ Wizard form with the following fields (in order):
 
 Index labels are centralized in the backend route (`app/routes/quant_systems.py`) via a single value->label mapping and reused by New/Edit/List views.
 
-**Depot capital auto-calculation**: selecting a real depot triggers `GET /quant-systems/depot-capital/{depot_id}` via JavaScript `fetch()`. The endpoint returns `{"capital_eur": <total>}` where total = sum of position `current_value` fields from the latest `finance.depot_snapshots` + latest `balance` from `finance.account_balances` (joined via `account_name`). The result is populated into the capital input with a "(auto-calculated from depot)" hint; the value remains editable.
+**Depot capital auto-calculation**: selecting a real depot triggers `GET /quant-systems/depot-capital/{depot_id}` via JavaScript `fetch()`. The endpoint returns `{"capital_eur": <total>}` where total = sum of position `current_value` fields from the latest `finance.depot_snapshots` plus the newest EUR balance for each of Girokonto, Tagesgeld PLUS-Konto, and Verrechnungskonto (joined by `account_name` and selected by `account_type`). Unchanged account balances may have older timestamps. The result is populated into the capital input with a "(auto-calculated from depot)" hint; the value remains editable.
 
 A virtual depot can be created inline via HTMX without leaving the form.
 
@@ -216,7 +216,9 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 #### 4.4 Monitoring — `/stages/monitoring`
 
-**Summary cards** (left to right): `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, `Free after sells`, `Entry candidates`.
+**Summary cards** include `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, and `Entry candidates` on the left, with `Total NAV` and `Free cash` aligned right. Held warrant quantities are shown as whole units with dot thousands separators.
+
+If NAV is incomplete, an alert lists the affected held-warrant quote or cash valuation errors.
 
 **Summary intent:**
 
@@ -240,6 +242,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 | Symbol | Underlying symbol |
 | Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
 | Warrant WKN | Held warrant |
+| Qty | Held warrant units from the depot snapshot |
 | Held since | Held-since date from latest depot snapshot position; for virtual depots, fallback to recent BUY transaction when snapshot value is missing |
 | Buy (EUR) | Average buy price of the current position |
 | Current (EUR) | Current warrant price (bid/ask midprice snapshot) |
@@ -406,29 +409,20 @@ Below the split panel — **maturity, strike, and filter controls**:
 
 #### 4.7 Risk — `/stages/risk`
 
-**Summary**: `{approved} positions approved. {rejected} positions rejected by risk rules.`
+**Summary**: Approved and rejected planned BUY notionals, plus warnings for existing
+positions or sector exposures that exceed their limits.
 
-**Risk rule table**: one row per configured rule.
-
-| Column | Description |
-| ------ | ----------- |
-| Rule | e.g. `Max position weight 10%` |
-| Status | `PASS` / `FAIL` badge |
-| Details | e.g. `All positions within limit` or `2 positions exceeded` |
-
-**Rejected positions table** (if any):
+**Position review table**:
 
 | Column | Description |
 | ------ | ----------- |
-| Underlying | Ticker |
-| Warrant | WKN |
-| Violated rule | Rule name |
-| Reason | `risk_notes` value from `RiskAssessment` |
+| Symbol | Planned warrant symbol |
+| Status | Approved or rejected |
+| Note | `risk_notes` value from `RiskAssessment` |
 
-**Approved positions** weight bar chart:
-
-- Horizontal bar chart of approved positions by weight %
-- Dashed vertical line at `risk_max_position_weight` limit
+The Risk review lists approved and rejected planned positions with reasons, and shows
+warnings for existing holdings or sector exposures above the configured limits. It does not
+offer an override for rejected orders.
 
 **User actions at approve:** none (risk rules are hard constraints; the user cannot override rejections here — they must restart from an earlier stage with adjusted parameters or config).
 
@@ -500,8 +494,8 @@ Each restart form shows only the parameters relevant to the stage being re-run. 
 | Universe | Indices (multi-checkbox: DAX, MDAX, SDAX, TecDAX) |
 | Screening | `stock_selection_top_n`, `stock_selection_min_adx`, `stock_selection_allow_starting_trends` |
 | Warrant selection | Min/Max maturity (months), Min/Max strike factor, `Min score`, `Max spread %` |
-| Portfolio | `portfolio_capital_eur`, `portfolio_sizing_method`, `portfolio_max_position_weight` |
-| Risk | `risk_max_position_weight`, `risk_max_sector_weight`, `risk_max_positions` |
+| Portfolio | `portfolio.max_positions` and `portfolio.slippage_bps` are set on the Quant System; quote max age is an application setting (72-hour default) |
+| Risk | No per-stage restart controls; uses the shared Portfolio position count and global `risk.max_position_multiple` / `risk.max_sector_weight` settings |
 | Execution | `execution_dry_run`, `execution_min_trade_eur`, `execution_order_type` |
 
 The Research stage has no editable parameters — restarting from Research simply re-fetches OHLCV data with the same universe.
@@ -535,8 +529,8 @@ All `/charts/` endpoints return an HTML fragment for inline insertion and read d
 | ----- | ---------- | ------- | ------- |
 | Screening | Interactive candlestick + EMA/SMA overlays + SuperTrend + ADX sub-pane | Lightweight Charts v4 | Click ticker row (vanilla `fetch()`) |
 | Warrant selection | Interactive candlestick + EMA overlays + SuperTrend + strike/expiry markers + NEW/BREAK markers | Lightweight Charts v4 | Click warrant row in top-3 panel |
-| Portfolio | Donut (position weights) | — (stub) | Page load |
-| Risk | Horizontal bar (position weights + limit line) | — (stub) | Page load |
+| Portfolio | None | — | — |
+| Risk | None | — | — |
 
 The screening chart is an HTML fragment returned by the `/charts/screening/{ticker}` endpoint. It embeds all indicator data as a `data-chart` JSON attribute and is initialized client-side by `initDataCharts()` in `base.html`. The Lightweight Charts library is loaded from CDN (`lightweight-charts@4.1.3`). All indicators (EMA, SMA, ADX, SuperTrend via ATR) are computed server-side using TA-Lib before the fragment is returned.
 

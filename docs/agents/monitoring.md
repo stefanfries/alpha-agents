@@ -49,6 +49,9 @@ class MonitoringResult(BaseModel):
     entry_candidates: list[Ticker]           # all eligible screening candidates (NOT capped to free_positions)
     free_positions: int                      # max_positions − len(current_holdings) + confirmed sells
     excluded_symbols: list[str]              # held or recently sold underlyings (blocked from entry)
+    nav_eur: Decimal | None                  # total NAV from current cash + fresh warrant bids
+    available_cash_eur: Decimal | None        # current free EUR cash
+    valuation_errors: list[str]               # quote/cash issues displayed in the Monitoring UI
     # Metadata for warrant selection integration:
     reentry_blocked_symbols: set[str]        # recent virtual-depot SELL underlyings
 ```
@@ -56,12 +59,13 @@ class MonitoringResult(BaseModel):
 `PositionReview` fields:
 
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
-- Holding context: `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
+- Holding context: `quantity` (held units), `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
 - Pricing context: `buy_price` (average buy price), `current_price` (snapshot midprice), `performance_pct`
 - Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity`, `strike`, `maturity_date` (all optional)
 - Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
 - Trend status: `trend_status` (UI-ready status label)
 - Health assessment: `monitoring_score` (0-1 health score), `warrant_health_status`, `warrant_health_reason`, `decision_reason`
+- Account summary: `nav_eur`, `available_cash_eur`, and per-holding valuation errors
 
 ## Tools used
 

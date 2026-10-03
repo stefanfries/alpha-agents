@@ -81,6 +81,15 @@
              min="1" max="100" step="1">
     </div>
 
+    <div class="mb-3">
+      <label class="form-label fw-semibold" for="slippage-bps">Slippage buffer (bps)</label>
+      <input type="number" class="form-control" name="slippage_bps" id="slippage-bps"
+             value="{{ qs.get('config_overrides', {}).get('portfolio', {}).get('slippage_bps', default_slippage_bps if default_slippage_bps is not none else '') }}"
+             min="0" step="1"
+             placeholder="{{ default_slippage_bps if default_slippage_bps is not none else '' }}">
+      <div class="form-text">Per-order allowance beyond the displayed bid/ask. Leave blank to use the global default.</div>
+    </div>
+
     <!-- Status -->
     <div class="mb-4">
       <label class="form-label fw-semibold">Status</label>

@@ -39,6 +39,10 @@ Market regime
    replacements. Confirmed rolls now flow through Portfolio, Risk, and Execution as
    paired incumbent SELL/replacement BUY orders. See
   [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
+- Portfolio and Risk now use a current bid-valued account snapshot, explicit EUR BUY notionals,
+   a 3× target-slot position cap, and a one-third sector cap. BUY sizing remains blocked until
+   slippage bps are configured. See
+   [portfolio-risk-plan.md](portfolio-risk-plan.md).
 - The baseline warrant score is refactored and covered by parity tests. See
   [warrant-scoring-refactor-plan.md](warrant-scoring-refactor-plan.md).
 
