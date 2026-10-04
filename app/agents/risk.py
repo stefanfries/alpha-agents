@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from app.agents.base import Agent
+from app.formatting import format_eur
 from app.models.signals import (
     PlannedPosition,
     PortfolioAccountSnapshot,
@@ -76,7 +77,7 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
             if value > position_limit:
                 warnings.append(
                     f"Existing position {isin} is above the position cap "
-                    f"({value:.2f} EUR > {position_limit:.2f} EUR)"
+                    f"({format_eur(value)} > {format_eur(position_limit)})"
                 )
             if not holding.sector:
                 unknown_sector_holdings.append(isin)
@@ -87,7 +88,7 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
             if value > sector_limit:
                 warnings.append(
                     f"Existing {sector} exposure is above the sector cap "
-                    f"({value:.2f} EUR > {sector_limit:.2f} EUR)"
+                    f"({format_eur(value)} > {format_eur(sector_limit)})"
                 )
 
         for roll in input.roll_trades:
@@ -110,8 +111,8 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
             if replacement.notional_eur > position_limit:
                 rejected_rolls.append(roll)
                 notes[symbol] = (
-                    f"Notional {replacement.notional_eur:.2f} EUR exceeds position cap "
-                    f"{position_limit:.2f} EUR"
+                    f"Notional {format_eur(replacement.notional_eur)} exceeds position cap "
+                    f"{format_eur(position_limit)}"
                 )
                 continue
 
@@ -127,7 +128,7 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
                 rejected_rolls.append(roll)
                 notes[symbol] = (
                     f"{replacement.sector} exposure would exceed sector cap "
-                    f"{sector_limit:.2f} EUR"
+                    f"{format_eur(sector_limit)}"
                 )
                 continue
             sector_exposure = trial_exposure
@@ -149,8 +150,8 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
             if position.notional_eur > position_limit:
                 rejected.append(position)
                 notes[symbol] = (
-                    f"Notional {position.notional_eur:.2f} EUR exceeds position cap "
-                    f"{position_limit:.2f} EUR"
+                    f"Notional {format_eur(position.notional_eur)} exceeds position cap "
+                    f"{format_eur(position_limit)}"
                 )
                 continue
             if free_slots <= 0:
@@ -161,7 +162,7 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
             if projected_sector > sector_limit:
                 rejected.append(position)
                 notes[symbol] = (
-                    f"{position.sector} exposure would exceed sector cap {sector_limit:.2f} EUR"
+                    f"{position.sector} exposure would exceed sector cap {format_eur(sector_limit)}"
                 )
                 continue
             approved.append(position)

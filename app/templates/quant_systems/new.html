@@ -61,7 +61,8 @@
     <div class="mb-3">
       <label class="form-label fw-semibold">Capital (EUR)</label>
       <div class="d-flex gap-2 align-items-center">
-        <input type="number" class="form-control" name="capital_eur" id="capital-input" value="100000" step="1" min="10000">
+        <input type="hidden" name="capital_eur" id="capital-value" value="100000">
+        <input type="text" class="form-control" id="capital-input" inputmode="decimal" value="100000" required autocomplete="off">
         <span id="capital-hint" class="text-muted small" style="white-space:nowrap"></span>
       </div>
     </div>
@@ -87,15 +88,16 @@
             </div>
             <div class="col-sm-4">
               <label class="form-label small">Starting capital (EUR)</label>
-              <input type="number" class="form-control form-control-sm" id="vd-capital" value="100000" step="1000" min="1000">
+              <input type="hidden" id="vd-capital-value" value="100000">
+              <input type="text" class="form-control form-control-sm" id="vd-capital" inputmode="decimal" value="100000" required autocomplete="off">
             </div>
             <div class="col-sm-2">
               <button type="button" class="btn btn-sm btn-primary w-100"
                       hx-post="/quant-systems/depots/virtual"
-                      hx-vals='js:{name: document.getElementById("vd-name").value, starting_capital: document.getElementById("vd-capital").value}'
+                      hx-vals='js:{name: document.getElementById("vd-name").value, starting_capital: document.getElementById("vd-capital-value").value}'
                       hx-target="#virtual-optgroup"
                       hx-swap="innerHTML"
-                      onclick="this.closest('form').querySelector('[name=depot_type]').value='virtual'">
+                      onclick="if (!syncVirtualCapital()) { document.getElementById('vd-capital').reportValidity(); return false; } this.closest('form').querySelector('[name=depot_type]').value='virtual'">
                 Create
               </button>
             </div>
@@ -112,6 +114,22 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+  var capitalInput = document.getElementById('capital-input');
+  var syncCapitalValue = window.currencyFormat.bindInput(
+    capitalInput, document.getElementById('capital-value'), 10000, 1
+  );
+  document.querySelector('form').addEventListener('submit', function(event) {
+    if (!syncCapitalValue()) {
+      event.preventDefault();
+      capitalInput.reportValidity();
+    }
+  });
+
+  var virtualCapitalInput = document.getElementById('vd-capital');
+  var syncVirtualCapital = window.currencyFormat.bindInput(
+    virtualCapitalInput, document.getElementById('vd-capital-value'), 1000, 1000
+  );
+
   async function fetchDepotCapital(depotId) {
     var hint = document.getElementById('capital-hint');
     hint.textContent = 'Loading…';
@@ -120,7 +138,8 @@
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       var data = await resp.json();
       var val = Math.round(data.capital_eur);
-      document.getElementById('capital-input').value = val;
+      capitalInput.value = window.currencyFormat.formatAmount(val);
+      syncCapitalValue();
       hint.textContent = '(auto-calculated from depot)';
     } catch (e) {
       hint.textContent = '(could not fetch)';

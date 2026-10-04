@@ -27,11 +27,11 @@
       {% endif %}
       {% if r.account_snapshot %}
         <div class="flex-shrink-0 d-flex flex-wrap gap-3 small text-muted mb-2">
-          <span>NAV: <strong class="text-body">{{ "%.2f" | format(r.account_snapshot.nav_eur | float) if r.account_snapshot.nav_eur is not none else "unavailable" }} EUR</strong></span>
-          <span>Cash: <strong class="text-body">{{ "%.2f" | format(r.account_snapshot.available_cash_eur | float) if r.account_snapshot.available_cash_eur is not none else "unavailable" }} EUR</strong></span>
-          <span>Expected net SELL proceeds: <strong class="text-body">{{ "%.2f" | format(r.expected_net_sell_proceeds_eur | float) if r.expected_net_sell_proceeds_eur is not none else "—" }} EUR</strong></span>
-          <span>Cost reserve: <strong class="text-body">{{ "%.2f" | format(r.cost_reserve_eur | float) if r.cost_reserve_eur is not none else "unconfigured" }} EUR</strong></span>
-          <span>Standard BUY: <strong class="text-body">{{ "%.2f" | format(r.standard_buy_amount_eur | float) if r.standard_buy_amount_eur is not none else "—" }} EUR</strong></span>
+          <span>NAV: <strong class="text-body">{{ r.account_snapshot.nav_eur | eur if r.account_snapshot.nav_eur is not none else "unavailable" }}</strong></span>
+          <span>Cash: <strong class="text-body">{{ r.account_snapshot.available_cash_eur | eur if r.account_snapshot.available_cash_eur is not none else "unavailable" }}</strong></span>
+          <span>Expected net SELL proceeds: <strong class="text-body">{{ r.expected_net_sell_proceeds_eur | eur if r.expected_net_sell_proceeds_eur is not none else "—" }}</strong></span>
+          <span>Cost reserve: <strong class="text-body">{{ r.cost_reserve_eur | eur if r.cost_reserve_eur is not none else "unconfigured" }}</strong></span>
+          <span>Standard BUY: <strong class="text-body">{{ r.standard_buy_amount_eur | eur if r.standard_buy_amount_eur is not none else "—" }}</strong></span>
         </div>
       {% endif %}
       <p class="flex-shrink-0 text-muted small mb-2"><strong class="text-body">{{ r.positions | length }}</strong> positions.</p>
@@ -48,7 +48,7 @@
                 <tr>
                   <td><code>{{ sym }}</code></td>
                   <td class="text-end">{{ "%.1f" | format(r.target_weights.get(sym, 0) * 100) }}%</td>
-                  <td class="text-end text-muted small">{{ "%.2f" | format(pos.notional_eur | float) }}</td>
+                  <td class="text-end text-muted small">{{ pos.notional_eur | eur }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

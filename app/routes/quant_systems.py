@@ -15,9 +15,11 @@ from app.db import (
     quant_systems_collection,
     virtual_depots_collection,
 )
+from app.formatting import register_currency_filters
 
 router = APIRouter(prefix="/quant-systems")
 templates = Jinja2Templates(directory="app/templates")
+register_currency_filters(templates.env)
 
 _NO_ID = {"_id": 0}
 

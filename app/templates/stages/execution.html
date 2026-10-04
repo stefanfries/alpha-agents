@@ -40,7 +40,7 @@
             <tr>
               <td><code>{{ order.ticker.symbol }}</code></td>
               <td><span class="badge bg-success">{{ order.side }}</span></td>
-              <td class="text-end">{{ "%.2f" | format((order.notional_eur if order.side == "buy" else order.quantity) | float) }}</td>
+              <td class="text-end">{% if order.side == "buy" %}{{ order.notional_eur | eur }}{% else %}{{ "%.2f" | format(order.quantity | float) }}{% endif %}</td>
               <td class="text-muted small">{{ order.order_type }}</td>
             </tr>
             {% endfor %}

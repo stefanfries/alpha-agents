@@ -28,7 +28,7 @@
             {% endfor %}
           </p>
           <p class="small text-muted mb-1">
-            <span class="fw-semibold">Capital:</span> {{ "%.0f"|format(qs.capital_eur) }} EUR
+            <span class="fw-semibold">Capital:</span> {{ qs.capital_eur | eur }}
           </p>
           <p class="small text-muted mb-0">
             <span class="fw-semibold">Depot:</span>

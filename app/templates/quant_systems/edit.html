@@ -67,8 +67,10 @@
     <div class="mb-3">
       <label class="form-label fw-semibold">Capital (EUR)</label>
       <div class="d-flex gap-2 align-items-center">
-        <input type="number" class="form-control" name="capital_eur" id="capital-input"
-               value="{{ qs.capital_eur }}" step="1" min="10000">
+         <input type="hidden" name="capital_eur" id="capital-value" value="{{ qs.capital_eur }}">
+         <input type="text" class="form-control" id="capital-input" inputmode="decimal" required
+           value="{{ qs.capital_eur }}"
+           aria-describedby="capital-hint" autocomplete="off">
         <span id="capital-hint" class="text-muted small" style="white-space:nowrap"></span>
       </div>
     </div>
@@ -119,6 +121,11 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+  var capitalInput = document.getElementById('capital-input');
+  var syncCapitalValue = window.currencyFormat.bindInput(
+    capitalInput, document.getElementById('capital-value'), 10000, 1
+  );
+
   async function fetchDepotCapital(depotId) {
     var hint = document.getElementById('capital-hint');
     hint.textContent = 'Loading…';
@@ -127,12 +134,20 @@
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       var data = await resp.json();
       var val = Math.round(data.capital_eur);
-      document.getElementById('capital-input').value = val;
+      capitalInput.value = window.currencyFormat.formatAmount(val);
+      syncCapitalValue();
       hint.textContent = '(auto-calculated from depot)';
     } catch (e) {
       hint.textContent = '(could not fetch)';
     }
   }
+
+  document.querySelector('form[action$="/{{ qs.quant_system_id }}"]').addEventListener('submit', function(event) {
+    if (!syncCapitalValue()) {
+      event.preventDefault();
+      capitalInput.reportValidity();
+    }
+  });
 
   document.getElementById('depot-select').addEventListener('change', function() {
     var opt = this.selectedOptions[0];

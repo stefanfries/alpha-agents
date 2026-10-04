@@ -145,11 +145,11 @@
         </div>
         <div class="d-flex flex-wrap gap-3 ms-auto">
           <div class="card text-center px-4 py-3 shadow-sm border-info">
-            <div class="fs-3 fw-bold text-info">{{ "%.2f" | format(r.nav_eur | float) if r.nav_eur is not none else "—" }}</div>
+            <div class="fs-3 fw-bold text-info">{{ r.nav_eur | eur if r.nav_eur is not none else "—" }}</div>
             <div class="text-muted small">Total NAV (EUR)</div>
           </div>
           <div class="card text-center px-4 py-3 shadow-sm border-info">
-            <div class="fs-3 fw-bold text-info">{{ "%.2f" | format(r.available_cash_eur | float) if r.available_cash_eur is not none else "—" }}</div>
+            <div class="fs-3 fw-bold text-info">{{ r.available_cash_eur | eur if r.available_cash_eur is not none else "—" }}</div>
             <div class="text-muted small">Free cash (EUR)</div>
           </div>
         </div>
@@ -194,8 +194,8 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td class="text-end text-muted small">{{ "%.2f" | format(p.buy_price) if p.buy_price is not none else "—" }}</td>
-                <td class="text-end text-muted small">{{ "%.2f" | format(p.current_price) if p.current_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>
@@ -248,8 +248,8 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td class="text-end text-muted small">{{ "%.2f" | format(p.buy_price) if p.buy_price is not none else "—" }}</td>
-                <td class="text-end text-muted small">{{ "%.2f" | format(p.current_price) if p.current_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>
@@ -302,8 +302,8 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td class="text-end text-muted small">{{ "%.2f" | format(p.buy_price) if p.buy_price is not none else "—" }}</td>
-                <td class="text-end text-muted small">{{ "%.2f" | format(p.current_price) if p.current_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
+                <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>

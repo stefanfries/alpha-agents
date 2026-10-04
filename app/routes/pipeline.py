@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from app import warrant_availability
 from app.config import resolve_warrant_selection_settings, settings
 from app.db import executions_collection, quant_systems_collection
+from app.formatting import register_currency_filters
 from app.indicators import supertrend_bands
 from app.models.market import Ticker
 from app.orchestrator import get_pipeline
@@ -124,6 +125,7 @@ def _compute_signal_markers(
 
 router = APIRouter(prefix="/quant-systems")
 templates = Jinja2Templates(directory="app/templates")
+register_currency_filters(templates.env)
 
 STAGES = ["universe", "research", "screening", "monitoring", "warrant_selection", "portfolio", "risk", "execution"]
 

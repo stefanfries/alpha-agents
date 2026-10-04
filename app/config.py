@@ -181,6 +181,7 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
     )
 
+    currency_locale: str = "de_DE"
     db: DBSettings = DBSettings()
     broker: BrokerSettings = BrokerSettings()
     finhub: FinHubSettings = FinHubSettings()
