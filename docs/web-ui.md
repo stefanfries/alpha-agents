@@ -216,7 +216,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 #### 4.4 Monitoring — `/stages/monitoring`
 
-**Summary cards** include `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, and `Entry candidates` on the left, with `Total NAV` and `Free cash` aligned right. Held warrant quantities are shown as whole units with dot thousands separators.
+**Summary cards** include `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, and `Entry candidates` on the left, with `Total NAV`, `Held positions`, and `Free cash` aligned right. The three monetary cards show each amount's share of Total NAV. Held positions value is Total NAV minus available cash. Held warrant quantities are shown as whole units with dot thousands separators.
 
 If NAV is incomplete, an alert lists the affected held-warrant quote or cash valuation errors.
 
@@ -244,6 +244,7 @@ If NAV is incomplete, an alert lists the affected held-warrant quote or cash val
 | Warrant WKN | Held warrant |
 | Qty | Held warrant units from the depot snapshot |
 | Held since | Held-since date from latest depot snapshot position; for virtual depots, fallback to recent BUY transaction when snapshot value is missing |
+| Weight | Current bid-valued position amount (`quantity × bid`) as a percentage of Total NAV; unavailable when bid, EUR quote, or NAV is missing |
 | Buy (EUR) | Average buy price of the current position |
 | Current (EUR) | Current warrant price (bid/ask midprice snapshot) |
 | Perf % | Position performance percentage (`(current - buy) / buy * 100`), green if positive else red |

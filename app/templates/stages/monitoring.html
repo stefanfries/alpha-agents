@@ -23,6 +23,8 @@
   {% set r = stage_result %}
   {% set unresolved = r.positions_to_keep | selectattr('underlying_symbol', 'equalto', '') | list %}
   {% set rolls = r.positions_to_roll | default([], true) | list %}
+  {% set holdings_value = (r.nav_eur | float) - (r.available_cash_eur | float) if r.nav_eur is not none and r.available_cash_eur is not none else none %}
+  {% set has_nav = r.nav_eur is not none and (r.nav_eur | float) > 0 %}
   {% macro trend_status(p) %}
     {% if p.trend_status == "trend intact" %}
       <span class="badge bg-secondary">intact</span>
@@ -57,6 +59,13 @@
       <span class="text-success">{{ "%+.2f%%" | format(p.performance_pct) }}</span>
     {% else %}
       <span class="text-danger">{{ "%+.2f%%" | format(p.performance_pct) }}</span>
+    {% endif %}
+  {% endmacro %}
+  {% macro nav_weight(p) %}
+    {% if has_nav and p.quantity is not none and p.bid_price is not none and p.quote_currency and p.quote_currency.upper() == "EUR" %}
+      {{ ((p.quantity | float) * (p.bid_price | float) / (r.nav_eur | float)) | pct }}
+    {% else %}
+      <span class="text-muted">—</span>
     {% endif %}
   {% endmacro %}
   {% macro decision_rationale(p) %}
@@ -147,10 +156,17 @@
           <div class="card text-center px-4 py-3 shadow-sm border-info">
             <div class="fs-3 fw-bold text-info">{{ r.nav_eur | eur if r.nav_eur is not none else "—" }}</div>
             <div class="text-muted small">Total NAV (EUR)</div>
+            <div class="text-muted small">{{ 1 | pct if has_nav else "—" }} of NAV</div>
+          </div>
+          <div class="card text-center px-4 py-3 shadow-sm border-info">
+            <div class="fs-3 fw-bold text-info">{{ holdings_value | eur if holdings_value is not none else "—" }}</div>
+            <div class="text-muted small">Held positions (EUR)</div>
+            <div class="text-muted small">{{ (holdings_value / (r.nav_eur | float)) | pct if holdings_value is not none and has_nav else "—" }} of NAV</div>
           </div>
           <div class="card text-center px-4 py-3 shadow-sm border-info">
             <div class="fs-3 fw-bold text-info">{{ r.available_cash_eur | eur if r.available_cash_eur is not none else "—" }}</div>
             <div class="text-muted small">Free cash (EUR)</div>
+            <div class="text-muted small">{{ ((r.available_cash_eur | float) / (r.nav_eur | float)) | pct if r.available_cash_eur is not none and has_nav else "—" }} of NAV</div>
           </div>
         </div>
       </div>
@@ -170,6 +186,7 @@
               <col style="width:7%">
               <col style="width:5%">
               <col style="width:8%">
+              <col style="width:5%">
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:7%">
@@ -184,7 +201,7 @@
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_sell %}
@@ -194,6 +211,7 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
@@ -278,6 +296,7 @@
               <col style="width:7%">
               <col style="width:5%">
               <col style="width:8%">
+              <col style="width:5%">
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:7%">
@@ -292,7 +311,7 @@
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
@@ -302,6 +321,7 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
@@ -330,7 +350,9 @@
               <col style="width:9%">
               <col style="width:15%">
               <col style="width:7%">
+              <col style="width:5%">
               <col style="width:8%">
+              <col style="width:5%">
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:7%">
@@ -345,14 +367,14 @@
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th colspan="14"></th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th colspan="16"></th></tr>
             </thead>
             <tbody>
               {% for t in r.entry_candidates %}
               <tr>
                 <td><code>{{ t.symbol }}</code></td>
                 <td>{{ t.name or "—" }}</td>
-                <td colspan="14"></td>
+                <td colspan="16"></td>
               </tr>
               {% endfor %}
             </tbody>
