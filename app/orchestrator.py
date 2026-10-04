@@ -817,6 +817,11 @@ class Pipeline:
             for ticker in research_data.get("tickers", [])
             if ticker.get("symbol") and ticker.get("isin")
         }
+        underlying_names_by_symbol = {
+            ticker["symbol"]: ticker["name"]
+            for ticker in research_data.get("tickers", [])
+            if ticker.get("symbol") and ticker.get("name")
+        }
         sectors_by_underlying_isin = {
             underlying_isins_by_symbol[symbol]: str(fundamentals["sector"])
             for symbol, fundamentals in raw_fundamentals.items()
@@ -831,6 +836,7 @@ class Pipeline:
             current_holdings,
             sectors_by_underlying_isin,
             underlying_isins_by_symbol,
+            underlying_names_by_symbol,
         )
         # Warrant ISINs that monitoring decided to keep — excluded from close_positions
         kept_warrant_isins: set[str] = set()
@@ -849,6 +855,8 @@ class Pipeline:
                 warrant.warrant_isin: {
                     "underlying_isin": warrant.underlying.isin or "",
                     "underlying_symbol": warrant.underlying.symbol,
+                    "ask": warrant.ask,
+                    "reason": warrant.rationale,
                     "sector": sectors_by_underlying_isin.get(warrant.underlying.isin or "", ""),
                     "issuer_action": warrant.issuer_action,
                     "issuer_no_fee_action": warrant.issuer_no_fee_action,
@@ -867,6 +875,7 @@ class Pipeline:
         holdings: list[Position],
         sectors_by_underlying_isin: dict[str, str],
         underlying_isins_by_symbol: dict[str, str],
+        underlying_names_by_symbol: dict[str, str] | None = None,
         *,
         underlying_map: dict[str, str] | None = None,
         warrant_quotes: dict[str, WarrantSnapshot] | None = None,
@@ -943,6 +952,7 @@ class Pipeline:
                 position=position,
                 underlying_isin=underlying_isins_by_symbol.get(underlying or ""),
                 underlying_symbol=underlying,
+                underlying_name=(underlying_names_by_symbol or {}).get(underlying or ""),
                 sector=sectors_by_underlying_isin.get(
                     underlying_isins_by_symbol.get(underlying or "", "")
                 ),

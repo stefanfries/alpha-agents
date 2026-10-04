@@ -34,27 +34,94 @@
           <span>Standard BUY: <strong class="text-body">{{ r.standard_buy_amount_eur | eur if r.standard_buy_amount_eur is not none else "—" }}</strong></span>
         </div>
       {% endif %}
-      <p class="flex-shrink-0 text-muted small mb-2"><strong class="text-body">{{ r.positions | length }}</strong> positions.</p>
+      <p class="flex-shrink-0 text-muted small mb-2">Planned actions: <strong class="text-body">{{ portfolio_actions.sells | length + portfolio_actions.buys | length }}</strong>; keep: <strong class="text-body">{{ portfolio_actions.keeps | length }}</strong>. Roll legs are paired by underlying for risk approval.</p>
       <div class="flex-grow-1 overflow-auto" style="min-height:0">
-        <div class="row">
-          <div class="col-lg-7">
-            <table class="table table-sm table-hover bg-white rounded shadow-sm">
-              <thead class="table-light">
-                <tr><th>Symbol</th><th class="text-end">Weight</th><th class="text-end">EUR</th></tr>
-              </thead>
-              <tbody>
-                {% for pos in r.positions %}
-                {% set sym = pos.ticker.symbol %}
-                <tr>
-                  <td><code>{{ sym }}</code></td>
-                  <td class="text-end">{{ "%.1f" | format(r.target_weights.get(sym, 0) * 100) }}%</td>
-                  <td class="text-end text-muted small">{{ pos.notional_eur | eur }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          <div class="col-lg-5">
+        <div class="d-flex flex-column gap-3">
+          {% if portfolio_actions.sells %}
+          <section>
+            <h6 class="text-danger mb-2">SELL plan</h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0" style="table-layout:fixed;width:100%;font-size:0.85rem">
+                <colgroup><col style="width:9%"><col style="width:7%"><col style="width:14%"><col style="width:8%"><col style="width:10%"><col style="width:7%"><col style="width:9%"><col style="width:7%"><col style="width:7%"><col style="width:22%"></colgroup>
+                <thead class="table-light"><tr><th>Type</th><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Current bid</th><th class="text-end">Qty to sell</th><th class="text-end">Gross proceeds</th><th>Reason</th></tr></thead>
+                <tbody>
+                  {% for row in portfolio_actions.sells %}
+                  <tr>
+                    <td><span class="badge bg-danger bg-opacity-10 text-danger">{{ row.action_type }}</span></td>
+                    <td><code>{{ row.symbol }}</code></td>
+                    <td>{{ row.underlying_name or "—" }}</td>
+                    <td><code>{{ row.warrant_wkn }}</code></td>
+                    <td>{{ row.held_since or "—" }}</td>
+                    <td class="text-end">{{ row.weight | pct if row.weight is not none else "—" }}</td>
+                    <td class="text-end">{{ row.current_price_eur | eur if row.current_price_eur is not none else "—" }}</td>
+                    <td class="text-end">{{ "{:,.0f}".format(row.quantity | float) if row.quantity is not none else "—" }}</td>
+                    <td class="text-end">{{ row.total_price_eur | eur if row.total_price_eur is not none else "—" }}</td>
+                    <td class="small">{{ row.reason or "—" }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          {% endif %}
+
+          {% if portfolio_actions.buys %}
+          <section>
+            <h6 class="text-success mb-2">BUY plan</h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0" style="table-layout:fixed;width:100%;font-size:0.85rem">
+                <colgroup><col style="width:9%"><col style="width:7%"><col style="width:14%"><col style="width:8%"><col style="width:10%"><col style="width:7%"><col style="width:9%"><col style="width:7%"><col style="width:7%"><col style="width:22%"></colgroup>
+                <thead class="table-light"><tr><th>Type</th><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Current ask</th><th class="text-end">Qty to buy (est.)</th><th class="text-end">Est. purchase cost</th><th>Reason</th></tr></thead>
+                <tbody>
+                  {% for row in portfolio_actions.buys %}
+                  <tr>
+                    <td><span class="badge bg-success bg-opacity-10 text-success">{{ row.action_type }}</span></td>
+                    <td><code>{{ row.symbol }}</code></td>
+                    <td>{{ row.underlying_name or "—" }}</td>
+                    <td><code>{{ row.warrant_wkn }}</code></td>
+                    <td>{{ row.held_since or "—" }}</td>
+                    <td class="text-end">{{ row.weight | pct if row.weight is not none else "—" }}</td>
+                    <td class="text-end">{{ row.current_price_eur | eur if row.current_price_eur is not none else "—" }}</td>
+                    <td class="text-end">{{ "{:,.0f}".format(row.quantity | float) if row.quantity is not none else "—" }}</td>
+                    <td class="text-end">{{ row.total_price_eur | eur if row.total_price_eur is not none else "—" }}</td>
+                    <td class="small">{{ row.reason or "—" }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          {% endif %}
+
+          {% if portfolio_actions.keeps %}
+          <section>
+            <h6 class="text-secondary mb-2">KEEP</h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover bg-white rounded shadow-sm mb-0" style="table-layout:fixed;width:100%;font-size:0.85rem">
+                <colgroup><col style="width:9%"><col style="width:7%"><col style="width:14%"><col style="width:8%"><col style="width:10%"><col style="width:7%"><col style="width:9%"><col style="width:7%"><col style="width:7%"><col style="width:22%"></colgroup>
+                <thead class="table-light"><tr><th>Type</th><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Current bid</th><th class="text-end">Qty held</th><th class="text-end">Market value</th><th>Reason</th></tr></thead>
+                <tbody>
+                  {% for row in portfolio_actions.keeps %}
+                  <tr>
+                    <td><span class="badge bg-secondary bg-opacity-10 text-secondary">KEEP</span></td>
+                    <td><code>{{ row.symbol }}</code></td>
+                    <td>{{ row.underlying_name or "—" }}</td>
+                    <td><code>{{ row.warrant_wkn }}</code></td>
+                    <td>{{ row.held_since or "—" }}</td>
+                    <td class="text-end">{{ row.weight | pct if row.weight is not none else "—" }}</td>
+                    <td class="text-end">{{ row.current_price_eur | eur if row.current_price_eur is not none else "—" }}</td>
+                    <td class="text-end">{{ "{:,.0f}".format(row.quantity | float) if row.quantity is not none else "—" }}</td>
+                    <td class="text-end">{{ row.total_price_eur | eur if row.total_price_eur is not none else "—" }}</td>
+                    <td class="small">{{ row.reason or "—" }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          {% endif %}
+
+          <div class="mt-2">
             {% include "partials/chart_panel.html" %}
           </div>
         </div>

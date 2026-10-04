@@ -54,8 +54,9 @@ Universe Res.  Screen. Monitor. Warrant Portfolio Risk  Execution
 6. **Warrant Selection Agent**: For each entry candidate, fetches available Call Warrants from the **FinHub API** using configurable maturity and strike-factor filters; scores each warrant using the optionsschein scoring model (spread 25%, leverage 25%, days-to-expiry 20%, delta 30%); `delta_peak` is automatically aligned with the midpoint of the active strike-factor band; returns the best warrant plus a top-3 shortlist per underlying
 7. **Portfolio Construction Agent**: Builds a current account snapshot from depot cash and
    fresh FinHub bid quotes, then sizes equal BUY notionals from opening cash plus expected net
-   proceeds from all planned SELLs (including roll incumbents), less the fee/slippage reserve,
-   divided by the shared `max_positions`. Unused slots/cash are not redistributed.
+   proceeds from all planned SELLs (including roll incumbents), reserving estimated BUY
+   fees/slippage and dividing across available BUY slots after planned closes plus roll
+   replacements. Unused slots/cash are not redistributed.
 8. **Risk Agent**: Blocks risk-increasing orders when NAV/quotes are incomplete; enforces a
    per-warrant cap of `3 × NAV / max_positions` and a one-third-of-NAV sector cap using
    underlying ISINs. Existing over-limit holdings are reported, not automatically sold.

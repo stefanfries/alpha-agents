@@ -368,6 +368,8 @@ A proposed BUY amount, distinct from a held position's instrument-unit quantity.
 | `ticker` | `Ticker` | Warrant to buy |
 | `notional_eur` | `Decimal` | Planned BUY amount in EUR |
 | `target_weight` | `float` | Notional as a share of current NAV |
+| `buy_price_eur` | `Decimal \| None` | Selected warrant ask used for estimated whole-unit quantity and purchase cost in the Portfolio UI |
+| `reason` | `str \| None` | Warrant-selection rationale displayed for an Entry or ROLL/BUY |
 | `underlying_isin` | `str \| None` | Canonical underlying identity |
 | `underlying_symbol` | `str \| None` | Supporting/display symbol |
 | `sector` | `str \| None` | Sector used for concentration checks |
@@ -390,8 +392,8 @@ treated as zero.
 | `valuation_errors` | `list[str]` | Missing/invalid account valuation data |
 
 `PortfolioHoldingValue` includes the held `Position`, canonical `underlying_isin`, optional
-`underlying_symbol` and `sector`, `bid_price_eur`, `market_value_eur`, `quote_timestamp_utc`,
-`issuer_action`, `issuer_no_fee_action`, and `quote_error`.
+`underlying_symbol`, `underlying_name` and `sector`, `bid_price_eur`, `market_value_eur`,
+`quote_timestamp_utc`, `issuer_action`, `issuer_no_fee_action`, and `quote_error`.
 
 ### `RollTrade`
 

@@ -16,6 +16,11 @@ from app.db import executions_collection, quant_systems_collection
 from app.formatting import register_currency_filters
 from app.indicators import supertrend_bands
 from app.models.market import Ticker
+from app.models.signals import (
+    MonitoringResult,
+    PortfolioProposal,
+    WarrantSelectionResult,
+)
 from app.orchestrator import get_pipeline
 from app.policies.trend_detection import (
     TrendDetectionPolicyConfig,
@@ -23,6 +28,7 @@ from app.policies.trend_detection import (
     build_trend_indicator_series,
     passes_rule_group,
 )
+from app.portfolio_review import build_portfolio_action_tables
 from app.tools.finhub import FinHubTool
 from app.tools.yfinance import YFinanceTool
 
@@ -256,6 +262,14 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "delta_max":            wh_overrides.get("delta_max",            defs.delta_max),
             "min_days_to_maturity": wh_overrides.get("min_days_to_maturity", defs.min_days_to_maturity),
         }
+    if stage == "portfolio" and ctx.get("stage_result"):
+        monitoring_data = (execution.get("stages", {}).get("monitoring", {}) or {}).get("result")
+        warrant_selection_data = (execution.get("stages", {}).get("warrant_selection", {}) or {}).get("result")
+        ctx["portfolio_actions"] = build_portfolio_action_tables(
+            PortfolioProposal.model_validate(ctx["stage_result"]),
+            MonitoringResult.model_validate(monitoring_data) if monitoring_data else None,
+            WarrantSelectionResult.model_validate(warrant_selection_data) if warrant_selection_data else None,
+        )
     if stage == "universe" and request.query_params.get("partial") == "1":
         return templates.TemplateResponse(request, "stages/partials/universe_stage_body.html", ctx)
     return templates.TemplateResponse(request, f"stages/{stage}.html", ctx)

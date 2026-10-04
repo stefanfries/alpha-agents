@@ -1,6 +1,6 @@
 # Strategy Improvement Roadmap
 
-**Status:** Canonical planning index as of 2026-09-20. This document consolidates
+**Status:** Canonical planning index as of 2026-10-04. This document consolidates
 open improvement ideas and their ordering. Detailed documents remain the design and
 implementation records for their individual initiatives.
 
@@ -40,9 +40,12 @@ Market regime
    paired incumbent SELL/replacement BUY orders. See
   [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
 - Portfolio and Risk now use a current bid-valued account snapshot, explicit EUR BUY notionals,
-   a 3× target-slot position cap, and a one-third sector cap. BUY sizing remains blocked until
-   slippage bps are configured. See
+   slot-based BUY sizing, a 3× target-slot position cap, and a one-third sector cap. BUY sizing
+   remains blocked until slippage bps are configured. The Portfolio review presents ordered
+   SELL, BUY, and KEEP action tables with current bid/ask estimates and upstream reasons. See
    [portfolio-risk-plan.md](portfolio-risk-plan.md).
+- Currency display is centralized through Babel/Jinja formatters and uses the `CURRENCY_LOCALE`
+   setting (default `de_DE`) for EUR, USD, and percentages.
 - The baseline warrant score is refactored and covered by parity tests. See
   [warrant-scoring-refactor-plan.md](warrant-scoring-refactor-plan.md).
 

@@ -1,5 +1,6 @@
 import logging
 from decimal import Decimal
+from typing import Any
 
 from app.agents.base import Agent
 from app.models.market import Position, Ticker
@@ -34,7 +35,7 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
         account_snapshot: PortfolioAccountSnapshot | None = None,
         max_positions: int = 15,
         slippage_bps: float | None = None,
-        planned_metadata_by_isin: dict[str, dict[str, str | bool]] | None = None,
+        planned_metadata_by_isin: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self._capital = capital_eur
         self._holdings = {p.ticker.isin for p in (current_holdings or []) if p.ticker.isin}
@@ -48,6 +49,17 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
         self._max_positions = max_positions
         self._slippage_bps = slippage_bps
         self._planned_metadata = planned_metadata_by_isin or {}
+
+    @staticmethod
+    def _buy_price_eur(metadata: dict[str, Any]) -> Decimal | None:
+        ask = metadata.get("ask")
+        if ask in (None, ""):
+            return None
+        try:
+            price = Decimal(str(ask))
+        except (ArithmeticError, TypeError, ValueError):
+            return None
+        return price if price.is_finite() and price > 0 else None
 
     async def run(self, input: SelectionResult) -> PortfolioProposal:
         if self._account_snapshot is not None and self._sizing_method == "equal":
@@ -76,11 +88,14 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
             weight = weights.get(symbol, 0.0)
             if weight <= 0:
                 continue
+            metadata = self._planned_metadata.get(ticker.isin or "", {})
             capital_allocated = self._capital * weight
             position = PlannedPosition(
                 ticker=ticker,
                 notional_eur=Decimal(str(round(capital_allocated, 2))),
                 target_weight=weight,
+                buy_price_eur=self._buy_price_eur(metadata),
+                reason=metadata.get("reason"),
             )
             positions.append(position)
             target_weights[symbol] = weight
@@ -219,6 +234,8 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
                     ticker=ticker,
                     notional_eur=standard_buy_amount,
                     target_weight=float(standard_buy_amount / snapshot.nav_eur),
+                    buy_price_eur=self._buy_price_eur(metadata),
+                    reason=metadata.get("reason"),
                     underlying_isin=metadata.get("underlying_isin"),
                     underlying_symbol=metadata.get("underlying_symbol"),
                     sector=metadata.get("sector"),
@@ -291,6 +308,8 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
                         name=replacement.underlying.name,
                     ),
                     notional_eur=allocated_eur,
+                    buy_price_eur=self._buy_price_eur(metadata),
+                    reason=metadata.get("reason"),
                     target_weight=float(
                         allocated_eur / nav_eur
                         if nav_eur

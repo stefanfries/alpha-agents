@@ -181,6 +181,8 @@ class PlannedPosition(BaseModel):
     ticker: Ticker
     notional_eur: Decimal
     target_weight: float
+    buy_price_eur: Decimal | None = None
+    reason: str | None = None
     underlying_isin: str | None = None
     underlying_symbol: str | None = None
     sector: str | None = None
@@ -200,6 +202,7 @@ class PortfolioHoldingValue(BaseModel):
     position: Position
     underlying_isin: str | None = None
     underlying_symbol: str | None = None
+    underlying_name: str | None = None
     sector: str | None = None
     bid_price_eur: Decimal | None = None
     market_value_eur: Decimal | None = None

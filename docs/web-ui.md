@@ -19,6 +19,13 @@ Every page shares a base template with:
 - **Left sidebar** (execution pages): pipeline progress indicator showing all 8 stages with status badges (pending / running / awaiting review / approved / error). Clicking a completed stage navigates to its review page.
 - **Main content area**: page-specific content
 
+### Locale Formatting
+
+Currency and percentage displays use the shared locale-aware formatters. Configure
+`CURRENCY_LOCALE` in `.env` (default `de_DE`; for example `en_US` for US separators and currency
+placement). Jinja templates use the `eur`, `usd`, and `pct` filters; browser-side capital inputs
+use the same locale for display and parsing.
+
 ### Template Organization
 
 Use a two-level partial strategy to keep templates understandable as the UI grows:
@@ -369,35 +376,15 @@ Below the split panel — **maturity, strike, and filter controls**:
 
 #### 4.6 Portfolio Construction — `/stages/portfolio`
 
-**Summary**: `{N} positions. {new} new, {existing} unchanged, {close} to close. Total capital: {EUR}.`
+**Summary** shows current NAV, free cash, expected net SELL proceeds, cost reserve, and the standard BUY budget. Action rows are proposed at this stage and may be rejected by Risk.
 
-**Three-section layout:**
+**Action tables** span the content width and appear in execution order:
 
-1. **New positions** table:
+1. **SELL plan**: trend-break `SELL` rows first, other planned closes next, then `ROLL/SELL` incumbents. Each row shows its action reason, held units, current bid, current NAV weight, and gross proceeds estimate; `Qty to sell` precedes `Gross proceeds`. SELL reasons combine Monitoring trend and warrant-health information, with roll context where relevant. The summary's expected net SELL proceeds incorporates estimated fees and slippage.
+2. **BUY plan**: `ROLL/BUY` replacement rows first, then new-entry `BUY` rows. Rows show target weight, current ask, estimated whole-unit quantity, estimated purchase cost, and a final reason from Warrant Selection. `Qty to buy (est.)` precedes `Est. purchase cost`, followed by the BUY rationale; the BUY budget remains in the summary above the table. Entry and roll rows share `Held since`, which reads `Next business day (planned)`; this is not a confirmed execution or fill date. Actual fills may differ.
+3. **KEEP**: all current holdings not scheduled to close or roll, with held units, current bid, market value, current NAV weight, and a Monitoring reason such as `Trend intact; warrant healthy`.
 
-| Column | Description |
-| ------ | ----------- |
-| Underlying | Ticker |
-| Warrant | WKN — Strike, Maturity |
-| Weight % | Proposed allocation |
-| Capital (EUR) | Allocated amount |
-
-1. **Existing positions** table (no trade needed):
-
-| Column | Description |
-| ------ | ----------- |
-| Underlying | Ticker |
-| Warrant | WKN |
-| Current weight % | In current portfolio |
-
-1. **Positions to close** table:
-
-| Column | Description |
-| ------ | ----------- |
-| Underlying | Ticker |
-| Warrant | WKN |
-| Current value (EUR) | Approximate proceeds |
-| Reason | `not in shortlist` |
+Roll SELL and BUY rows share the underlying symbol and are treated as an atomic pair by Risk. Badges distinguish `SELL` / `ROLL/SELL` (red), `ROLL/BUY` / `BUY` (green), and `KEEP` (gray). All three tables share the same first six column headings and widths through `Weight`, then use action-specific columns.
 
 **Portfolio weight chart** (rendered on page load, not on-demand):
 

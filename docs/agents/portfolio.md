@@ -25,11 +25,14 @@ remain represented separately as `Position.quantity`.
 `PortfolioProposal` contains:
 
 - `positions`, `new_positions`, and `existing_positions` as `PlannedPosition` values with
-  `notional_eur`, target weight, underlying ISIN/symbol, and sector.
+  `notional_eur`, target weight, optional selected-warrant ask (`buy_price_eur`) and selection
+  rationale, underlying ISIN/symbol, and sector.
 - `close_positions` as held `Position` values; their `quantity` is instrument units.
 - `roll_trades` as atomic incumbent `Position` / replacement `PlannedPosition` pairs.
 - The account snapshot, standard BUY amount, expected net SELL proceeds, cost reserve, and an
   explicit sizing-block reason when inputs are incomplete or cost assumptions are unset.
+- `PortfolioHoldingValue` includes the held underlying display name where available, alongside
+  its bid and current market value.
 
 ## Sizing
 
@@ -72,6 +75,16 @@ Per-order fees are computed by `app/policies/transaction_costs.py`:
   the replacement directly to consume the incumbent's full value.
 - Risk approves/rejects both legs together. Execution lists all approved SELLs before any
   BUYs and omits both roll legs if the replacement is rejected or undersized.
+
+## Portfolio review UI
+
+The Portfolio stage presents three action tables in order: SELL, BUY, then KEEP. SELL rows
+combine the Monitoring trend status and warrant-health status/reason; failed roll searches and
+paired replacement context are added where applicable. BUY rows retain the Warrant Selection
+rationale, distinguish new entries from roll replacements, estimate whole units by flooring
+the allocated EUR BUY amount over the selected warrant ask, and show estimated spend. This
+estimate is not a guaranteed fill; the BUY budget remains in the summary. KEEP rows show current
+bid-marked value and NAV weight plus the Monitoring reason. Roll legs are paired by underlying.
 
 ## Quote and identity rules
 

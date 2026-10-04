@@ -196,6 +196,26 @@ async def test_portfolio_account_equal_sizing_uses_available_buy_slots():
 
 
 @pytest.mark.asyncio
+async def test_portfolio_entry_retains_ask_price_for_quantity_estimate():
+    ticker = Ticker(symbol="WKN1", isin="ISIN1", name="Example Corp")
+    agent = PortfolioConstructionAgent(
+        capital_eur=10_000,
+        max_positions=1,
+        slippage_bps=0.0,
+        planned_metadata_by_isin={"ISIN1": {"ask": 2.45}},
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("10000"),
+            nav_eur=Decimal("10000"),
+        ),
+    )
+
+    result = await agent.run(SelectionResult(selected=[ticker], scores={}, rationale={}))
+
+    assert result.new_positions[0].buy_price_eur == Decimal("2.45")
+
+
+@pytest.mark.asyncio
 async def test_portfolio_account_sizing_fills_available_slots_after_costs():
     held_positions = [
         Position(
@@ -1853,6 +1873,7 @@ async def test_portfolio_account_snapshot_values_virtual_holding_at_fresh_bid(mo
         [position],
         {"US0378331005": "Technology"},
         {"AAPL": "US0378331005"},
+        underlying_names_by_symbol={"AAPL": "Apple Inc."},
     )
 
     assert snapshot.available_cash_eur == Decimal("45000.0")
@@ -1860,6 +1881,7 @@ async def test_portfolio_account_snapshot_values_virtual_holding_at_fresh_bid(mo
     assert snapshot.holdings[0].market_value_eur == Decimal("50.0")
     assert snapshot.holdings[0].sector == "Technology"
     assert snapshot.holdings[0].underlying_isin == "US0378331005"
+    assert snapshot.holdings[0].underlying_name == "Apple Inc."
     assert snapshot.holdings[0].issuer_action is True
     assert snapshot.holdings[0].issuer_no_fee_action is True
     assert snapshot.nav_eur == Decimal("45050.0")

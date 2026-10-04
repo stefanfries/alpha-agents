@@ -50,6 +50,13 @@ scoring changes are out of scope here.
   orders use `Order.quantity` in instrument units.
 - `portfolio.max_positions` is now the shared target/slot count for Monitoring, Portfolio, and
   Risk. The 10% caps were removed; Risk uses the 3× position multiple and one-third sector cap.
+- Portfolio equal sizing divides available funds across BUY-slot capacity after planned closes,
+  including roll replacements, rather than across configured `max_positions` when fewer BUY
+  slots are open.
+- The Portfolio review uses action-ordered SELL, BUY, and KEEP tables. BUY unit and spend values
+  are estimates from the selected warrant ask; held values and weights use fresh EUR bid marks.
+  SELL/KEEP reasons combine Monitoring trend and warrant-health context; BUY reasons carry the
+  Warrant Selection rationale.
 - Sector metadata is joined and aggregated by underlying ISIN; symbols are supporting metadata.
 - Focused tests cover account snapshot serialization, virtual NAV from cash plus bid value,
   real EUR cash extraction, stale/non-EUR quote rejection, equal sizing, planned SELL proceeds,
@@ -232,7 +239,8 @@ appropriate during final verification.
 1. Update `docs/agents/portfolio.md`, `docs/agents/risk.md`, and `docs/data-models.md` to
    match runtime inputs, outputs, capital units, and rules.
 2. Show NAV, cash, reserve, target BUY size, post-trade exposures, and risk rejection reasons
-   in the stage results/UI where needed for human review.
+  in stage results/UI. Portfolio review presents the ordered SELL/BUY/KEEP action plan with
+  estimated quantities, current prices, values, weights, and upstream reasons.
 3. Update `docs/improvement-roadmap.md` only after focused tests and implementation status
    are complete.
 
