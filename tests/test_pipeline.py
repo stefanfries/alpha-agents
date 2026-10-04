@@ -171,7 +171,7 @@ async def test_portfolio_equal_weights():
 
 
 @pytest.mark.asyncio
-async def test_portfolio_account_equal_sizing_uses_cash_over_target_positions():
+async def test_portfolio_account_equal_sizing_uses_available_buy_slots():
     tickers = [Ticker(symbol="A", isin="A-ISIN"), Ticker(symbol="B", isin="B-ISIN")]
     agent = PortfolioConstructionAgent(
         capital_eur=100_000,
@@ -193,6 +193,46 @@ async def test_portfolio_account_equal_sizing_uses_cash_over_target_positions():
     ]
     assert result.cost_reserve_eur == Decimal("47.26")
     assert result.target_weights == {"A": 0.0749212, "B": 0.0749212}
+
+
+@pytest.mark.asyncio
+async def test_portfolio_account_sizing_fills_available_slots_after_costs():
+    held_positions = [
+        Position(
+            ticker=Ticker(symbol=f"HELD{i}", isin=f"HELD-{i}"),
+            quantity=Decimal("1"),
+            avg_cost=Decimal("100"),
+        )
+        for i in range(8)
+    ]
+    holdings = [
+        PortfolioHoldingValue(position=position, market_value_eur=Decimal("1000"))
+        for position in held_positions
+    ]
+    new_tickers = [Ticker(symbol=f"NEW{i}", isin=f"NEW-{i}") for i in range(7)]
+    agent = PortfolioConstructionAgent(
+        capital_eur=100_000,
+        current_holdings=held_positions,
+        max_positions=15,
+        slippage_bps=25.0,
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("458136.40"),
+            nav_eur=Decimal("466136.40"),
+            holdings=holdings,
+        ),
+    )
+
+    result = await agent.run(SelectionResult(
+        selected=[position.ticker for position in held_positions] + new_tickers,
+        scores={},
+        rationale={},
+    ))
+
+    assert result.standard_buy_amount_eur == Decimal("65225.09")
+    assert result.cost_reserve_eur == Decimal("1560.72")
+    assert len(result.new_positions) == 7
+    assert result.standard_buy_amount_eur * 7 + result.cost_reserve_eur == Decimal("458136.35")
 
 
 @pytest.mark.asyncio

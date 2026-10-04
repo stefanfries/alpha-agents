@@ -33,11 +33,16 @@ remain represented separately as `Position.quantity`.
 
 ## Sizing
 
-For `equal` sizing, let `N = max_positions`. The standard per-BUY amount is derived from
-opening cash plus expected net proceeds from every planned SELL, including roll incumbents,
-less transaction fees and slippage. It is divided by `N`, not by the number of selected BUYs.
-Only vacant slots after planned SELLs are available to ordinary entries. Rolls replace an
-occupied slot but their proceeds join the same run-wide BUY funding pool.
+For `equal` sizing, calculate BUY-slot capacity as vacant slots after planned close SELLs plus
+planned roll replacements. The standard per-BUY amount allocates opening cash plus expected
+net proceeds from every planned SELL across that capacity, reserving transaction fees and
+slippage for planned BUYs. It is not divided by configured `max_positions` when fewer slots
+are available. Only vacant slots after planned SELLs are available to ordinary entries; rolls
+replace occupied slots but their proceeds join the same run-wide BUY funding pool.
+
+When fewer entry candidates are selected than the available slot capacity, keep the same
+per-slot amount and leave the unallocated balance in cash. Do not increase individual BUYs to
+consume cash reserved for unfilled slots. Risk-rejected allocations also remain cash.
 
 BUYs are not sized unless NAV, cash, quote validity, and slippage input are available. Slippage
 defaults to 25 bps and can be overridden per Quant System. Fees follow the Comdirect schedule

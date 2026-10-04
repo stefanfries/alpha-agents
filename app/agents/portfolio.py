@@ -133,6 +133,7 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
         )
         new_tickers = new_tickers[:free_slots]
         buy_count = len(new_tickers) + len(valid_rolls)
+        buy_slots = free_slots + len(valid_rolls)
         sell_positions = close_positions + [
             self._holding_positions[self._roll_incumbent_isins[item.underlying.symbol]]
             for item in valid_rolls
@@ -158,7 +159,7 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
                 blocked_reason = "Account valuation is incomplete; risk-increasing orders are blocked"
             elif self._slippage_bps is None:
                 blocked_reason = "Configure slippage basis points before sizing BUYs"
-            elif self._max_positions <= 0:
+            elif self._max_positions <= 0 or buy_slots <= 0:
                 blocked_reason = "max_positions must be positive before sizing BUYs"
             else:
                 holdings_by_isin = {
@@ -190,7 +191,7 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
                 ]
                 standard_buy_amount, buy_cost_reserve = calculate_equal_buy_amount_eur(
                     snapshot.available_cash_eur + expected_net_sell_proceeds,
-                    self._max_positions,
+                    buy_slots,
                     [
                         (
                             bool(metadata.get("issuer_action", False)),

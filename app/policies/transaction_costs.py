@@ -45,16 +45,16 @@ def calculate_slippage_eur(notional_eur: Decimal, slippage_bps: float | Decimal 
 
 def calculate_equal_buy_amount_eur(
     available_funds_eur: Decimal,
-    max_positions: int,
+    buy_slots: int,
     buy_issuer_flags: Sequence[tuple[bool, bool]],
     slippage_bps: float | Decimal | None,
 ) -> tuple[Decimal | None, Decimal | None]:
-    if available_funds_eur <= 0 or max_positions <= 0 or not buy_issuer_flags or slippage_bps is None:
+    if available_funds_eur <= 0 or buy_slots <= 0 or not buy_issuer_flags or slippage_bps is None:
         return None, None
 
     low_cents = 0
     high_cents = int(
-        (available_funds_eur / Decimal(max_positions) / _CENT).to_integral_value(rounding=ROUND_DOWN)
+        (available_funds_eur / Decimal(buy_slots) / _CENT).to_integral_value(rounding=ROUND_DOWN)
     )
     while low_cents <= high_cents:
         middle_cents = (low_cents + high_cents) // 2
@@ -71,7 +71,7 @@ def calculate_equal_buy_amount_eur(
             ),
             start=Decimal("0"),
         )
-        if candidate * max_positions + buy_costs <= available_funds_eur:
+        if candidate * buy_slots + buy_costs <= available_funds_eur:
             low_cents = middle_cents + 1
         else:
             high_cents = middle_cents - 1

@@ -95,23 +95,26 @@ scoring changes are out of scope here.
 
 ### Equal sizing
 
-Let `N = max_positions`. Include opening cash and expected net proceeds from all planned
-SELLs, then subtract the configured reserve for BUY costs and slippage:
+Let `S` be the BUY-slot capacity: vacant portfolio slots after planned close SELLs, plus
+planned roll replacements. Include opening cash and expected net proceeds from all planned
+SELLs, then reserve estimated costs and slippage for the BUYs:
 
 ```text
-spendable_cash = opening_cash + expected_net_sell_proceeds - buy_cost_reserve
-standard_buy_amount = max(0, spendable_cash) / N
+available_funds = opening_cash + expected_net_sell_proceeds
+standard_buy_amount = max amount where (standard_buy_amount * S) + estimated_buy_costs <= available_funds
 ```
 
 Each accepted ordinary BUY uses this standard amount. The number of ordinary new BUYs is
 limited by vacant slots after planned SELLs. Unused cash remains cash; do not divide the full
-cash balance only among the few candidates selected in a run.
+cash balance only among the few candidates selected in a run. When there are enough entry
+candidates to fill the available slots, the run allocates the available funds across those
+slots, after estimated BUY costs. If fewer candidates are available, size each at the same
+slot-based amount and leave the unallocated balance as cash.
 
-This preserves the agreed example when there are no planned SELLs: with €45,000 opening cash
-and `N = 6`, the standard amount is €7,500 per BUY, even when only two new positions are
-selected. Buying two uses €15,000 and leaves €30,000 in cash before costs. When planned SELLs
-exist, their expected net proceeds are added to opening cash before calculating the same
-run-wide standard BUY amount.
+For example, with €45,000 opening cash and six available BUY slots, size up to €7,500 gross per
+slot before estimated BUY costs. If only two new positions are selected, allocate two such
+BUYs and leave the remainder in cash. When planned SELLs exist, their expected net proceeds
+are added to opening cash before sizing across the available BUY slots.
 
 ### Rolls
 
@@ -153,6 +156,9 @@ run-wide standard BUY amount.
 - Expected net proceeds from ordinary SELLs and roll-incumbent SELLs fund same-run BUY sizing.
   Execution emits all SELLs before all BUYs; the operator verifies actual fills/cash before
   placing BUYs.
+- Standard BUY sizing divides spendable funds across available BUY slots after planned closes,
+  including roll replacements, rather than across configured `max_positions` when fewer slots
+  are open.
 - The Comdirect fee schedule is implemented in `app/policies/transaction_costs.py`: €4.90
   Grundentgelt + 0.25% Orderprovision, clamped to €9.90–€59.90, with €0.00 venue charge;
   issuer-action costs €3.90 and issuer-no-fee-action costs €0.00 (which wins if both flags
@@ -196,9 +202,10 @@ rejection are implemented. More coverage for missing snapshots remains appropria
 ### P2 — Implement Portfolio sizing and roll allocation — implemented, costs require configuration
 
 1. Use one shared `max_positions` value for monitoring capacity, Portfolio, and Risk.
-2. Compute standard BUY size as opening cash plus expected net proceeds from all planned
-  SELLs, less the configured buy-cost reserve, divided by `max_positions`. Limit ordinary
-  entry count to vacant slots after planned SELLs.
+2. Compute standard BUY size by allocating opening cash plus expected net proceeds from all
+  planned SELLs across vacant slots after planned closes plus roll replacements, reserving
+  estimated BUY costs and slippage. Limit ordinary entry count to vacant slots after planned
+  SELLs.
 3. Apply the same standard BUY size to roll replacements; sell the entire incumbent and keep
    any excess proceeds as cash.
 4. Keep rejected/unused allocations as cash; do not enlarge other orders after Risk rejection.
@@ -236,9 +243,9 @@ diagnostics pass.
 
 - NAV and available cash use current, complete, EUR-denominated account data under an
   explicit quote freshness policy.
-- New BUY sizing matches opening cash plus expected net SELL proceeds, less Comdirect fees and
-  slippage, divided by `max_positions`; slippage uses the 25 bps default or the Quant System
-  override.
+- New BUY sizing allocates opening cash plus expected net SELL proceeds across available BUY
+  slots after planned closes, including roll replacements, less estimated Comdirect fees and
+  slippage; slippage uses the 25 bps default or the Quant System override.
 - Portfolio and Risk use the same maximum-position count.
 - A roll sells the complete incumbent and buys only the standard per-BUY amount; its paired
   orders are approved/rejected together; all SELLs appear before all BUYs, and BUY sizing
