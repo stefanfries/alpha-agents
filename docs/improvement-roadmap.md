@@ -40,7 +40,7 @@ Market regime
    paired incumbent SELL/replacement BUY orders. See
   [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
 - Portfolio and Risk now use a current bid-valued account snapshot, explicit EUR BUY notionals,
-   slot-based BUY sizing, a 3× target-slot position cap, and a one-third sector cap. BUY sizing
+   slot-based BUY sizing, a 3× target-slot position cap, and an 80% sector cap. BUY sizing
    remains blocked until slippage bps are configured. The Portfolio review presents ordered
    SELL, BUY, and KEEP action tables with current bid/ask estimates and upstream reasons. See
    [portfolio-risk-plan.md](portfolio-risk-plan.md).

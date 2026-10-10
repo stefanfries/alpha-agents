@@ -58,7 +58,7 @@ Universe Res.  Screen. Monitor. Warrant Portfolio Risk  Execution
    fees/slippage and dividing across available BUY slots after planned closes plus roll
    replacements. Unused slots/cash are not redistributed.
 8. **Risk Agent**: Blocks risk-increasing orders when NAV/quotes are incomplete; enforces a
-   per-warrant cap of `3 × NAV / max_positions` and a one-third-of-NAV sector cap using
+   per-warrant cap of `3 × NAV / max_positions` and an 80%-of-NAV sector cap using
    underlying ISINs. Existing over-limit holdings are reported, not automatically sold.
 9. **Trade Execution Agent**: Produces explicit EUR-notional BUY orders and unit-quantity SELL
    orders, listing all SELLs before all BUYs. Execution remains manual/dry-run.

@@ -21,7 +21,7 @@ class RiskAgent(Agent[PortfolioProposal, RiskAssessment]):
     def __init__(
         self,
         max_position_multiple: float = 3.0,
-        max_sector_weight: float = 1.0 / 3.0,
+        max_sector_weight: float = 0.8,
         max_positions: int = 15,
         quote_max_age_hours: int = 72,
     ) -> None:

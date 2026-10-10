@@ -10,7 +10,7 @@ from app.agents.portfolio import PortfolioConstructionAgent
 from app.agents.risk import RiskAgent
 from app.agents.screening import SecuritySelectionAgent
 from app.agents.warrant_selection import WarrantSelectionAgent
-from app.config import MonitoringSettings
+from app.config import MonitoringSettings, RiskSettings
 from app.models.market import OHLCV, Position, Ticker
 from app.models.signals import (
     MarketRegime,
@@ -193,6 +193,10 @@ async def test_portfolio_account_equal_sizing_uses_available_buy_slots():
     ]
     assert result.cost_reserve_eur == Decimal("47.26")
     assert result.target_weights == {"A": 0.0749212, "B": 0.0749212}
+
+
+def test_risk_sector_cap_defaults_to_eighty_percent():
+    assert RiskSettings().max_sector_weight == 0.8
 
 
 @pytest.mark.asyncio
@@ -558,8 +562,8 @@ async def test_risk_rejects_sector_overflow_but_approves_other_sector():
     )
     tech = PlannedPosition(
         ticker=Ticker(symbol="TECH"),
-        notional_eur=Decimal("4000"),
-        target_weight=0.04,
+        notional_eur=Decimal("15000"),
+        target_weight=0.15,
         sector="Technology",
     )
     health = PlannedPosition(
@@ -572,17 +576,17 @@ async def test_risk_rejects_sector_overflow_but_approves_other_sector():
 
     result = await RiskAgent(max_positions=6).run(PortfolioProposal(
         positions=[tech, health],
-        target_weights={"TECH": 0.04, "HEALTH": 0.04},
+        target_weights={"TECH": 0.15, "HEALTH": 0.04},
         account_snapshot=PortfolioAccountSnapshot(
             source="virtual",
-            available_cash_eur=Decimal("70000"),
+            available_cash_eur=Decimal("30000"),
             nav_eur=Decimal("100000"),
             holdings=[PortfolioHoldingValue(
                 position=held,
                 underlying_isin="HELD-UNDERLYING",
                 sector="Technology",
-                bid_price_eur=Decimal("300"),
-                market_value_eur=Decimal("30000"),
+                bid_price_eur=Decimal("700"),
+                market_value_eur=Decimal("70000"),
                 quote_timestamp_utc=snapshot_time,
             )],
         ),
@@ -646,14 +650,14 @@ async def test_risk_reports_existing_over_limit_positions_without_forced_sell():
         target_weights={},
         account_snapshot=PortfolioAccountSnapshot(
             source="virtual",
-            available_cash_eur=Decimal("40000"),
+            available_cash_eur=Decimal("10000"),
             nav_eur=Decimal("100000"),
             holdings=[PortfolioHoldingValue(
                 position=held,
                 underlying_isin="GROWN-UNDERLYING",
                 sector="Technology",
-                bid_price_eur=Decimal("600"),
-                market_value_eur=Decimal("60000"),
+                bid_price_eur=Decimal("900"),
+                market_value_eur=Decimal("90000"),
                 quote_timestamp_utc=datetime.now(timezone.utc),
             )],
         ),
@@ -2373,9 +2377,9 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
     assert snap.currency == "EUR"
     assert snap.timestamp_utc is not None
     assert snap.issuer_action is True
-    assert snap.prev_close == 1.8
-    assert quote_calls == []
     assert snap.issuer_no_fee_action is False
     assert snap.timestamp_utc.isoformat() == "2026-10-02T19:59:00+00:00"
     assert snap.bid_ask_midprice == 2.0
+    assert snap.prev_close == 1.8
+    assert quote_calls == []
     assert Pipeline._parse_utc_timestamp("2026-10-02T19:59:00") is None
