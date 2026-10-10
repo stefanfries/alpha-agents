@@ -247,6 +247,7 @@ class TestPositionReviewFieldPopulation:
                     "DE000UG7LBL4": WarrantSnapshot(
                         warrant_isin="DE000UG7LBL4",
                         bid_ask_midprice=8.2,
+                        prev_close=7.5,
                         spread_pct=1.2,
                     )
                 },
@@ -258,6 +259,7 @@ class TestPositionReviewFieldPopulation:
         review = result.positions_to_keep[0]
         assert review.buy_price == pytest.approx(6.89)
         assert review.current_price == pytest.approx(8.2)
+        assert review.pct_change_from_prev_close == pytest.approx((8.2 - 7.5) / 7.5 * 100.0)
         assert review.performance_pct == pytest.approx((8.2 - 6.89) / 6.89 * 100.0)
 
 

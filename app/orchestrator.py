@@ -491,6 +491,7 @@ class Pipeline:
                     issuer_action=bool(rd.get("issuer_action")),
                     issuer_no_fee_action=bool(rd.get("issuer_no_fee_action")),
                     bid_ask_midprice=bid_ask_midprice,
+                    prev_close=self._as_float(md.get("prev_close")),
                     strike=strike,
                     maturity_date=maturity_date,
                 )

@@ -33,7 +33,7 @@ Trend-following is vulnerable to warrant quality degradation — a warrant can b
 
 The implementation evolved from the initial draft in this file. Current production behavior is:
 
-- Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`.
+- Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`. Its position snapshot includes `pct_change_from_prev_close`, calculated from the warrant's current bid/ask midpoint and `market_data.prev_close` from the same `/v1/warrants/{isin}` response.
 - Monitoring no longer resolves or attaches replacement warrants.
 - Warrant Selection owns replacement lookup for roll underlyings and applies replacement guardrails.
 - If a warrant is degraded and marked for `ROLL`, but no replacement clears the score

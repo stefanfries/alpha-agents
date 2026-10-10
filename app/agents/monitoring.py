@@ -27,6 +27,7 @@ class WarrantSnapshot(BaseModel):
     issuer_action: bool = False
     issuer_no_fee_action: bool = False
     bid_ask_midprice: float | None = None
+    prev_close: float | None = None
     strike: float | None = None
     maturity_date: date | None = None
 
@@ -74,6 +75,12 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             return buy_price, current_price, None
         performance_pct = ((current_price - buy_price) / buy_price) * 100.0
         return buy_price, current_price, performance_pct
+
+    @staticmethod
+    def _pct_change_from_prev_close(current_price: float | None, prev_close: float | None) -> float | None:
+        if current_price is None or prev_close is None or prev_close <= 0:
+            return None
+        return ((current_price - prev_close) / prev_close) * 100.0
 
     def _check_warrant_health(
         self,
@@ -266,6 +273,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 # Can't map to underlying — keep as-is (safe default)
                 warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
                 buy_price, current_price, performance_pct = self._price_metrics(pos, warrant_snapshot)
+                pct_change_from_prev_close = self._pct_change_from_prev_close(
+                    current_price, warrant_snapshot.prev_close if warrant_snapshot else None
+                )
                 positions_to_keep.append(PositionReview(
                     underlying_symbol="",
                     underlying_name=None,
@@ -279,6 +289,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                     quote_currency=warrant_snapshot.currency if warrant_snapshot else None,
                     quote_timestamp_utc=warrant_snapshot.timestamp_utc if warrant_snapshot else None,
                     performance_pct=performance_pct,
+                    pct_change_from_prev_close=pct_change_from_prev_close,
                     spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
                     leverage=warrant_snapshot.leverage if warrant_snapshot else None,
                     delta=warrant_snapshot.delta if warrant_snapshot else None,
@@ -319,6 +330,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 is_degraded, degrade_detail = self._check_warrant_health(warrant_isin, warrant_snapshot)
             monitoring_score = self._monitoring_score(warrant_snapshot)
             buy_price, current_price, performance_pct = self._price_metrics(pos, warrant_snapshot)
+            pct_change_from_prev_close = self._pct_change_from_prev_close(
+                current_price, warrant_snapshot.prev_close if warrant_snapshot else None
+            )
 
             review = PositionReview(
                 underlying_symbol=underlying_sym,
@@ -333,6 +347,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 quote_currency=warrant_snapshot.currency if warrant_snapshot else None,
                 quote_timestamp_utc=warrant_snapshot.timestamp_utc if warrant_snapshot else None,
                 performance_pct=performance_pct,
+                pct_change_from_prev_close=pct_change_from_prev_close,
                 spread_pct=warrant_snapshot.spread_pct if warrant_snapshot else None,
                 leverage=warrant_snapshot.leverage if warrant_snapshot else None,
                 delta=warrant_snapshot.delta if warrant_snapshot else None,

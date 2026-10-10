@@ -2322,6 +2322,7 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
     from app.orchestrator import Pipeline
 
     today = date.today()
+    quote_calls = []
 
     class FakeFinHubTool:
         async def __aenter__(self):
@@ -2337,6 +2338,7 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
                         "spread_percent": 1.8,
                         "bid": 1.9,
                         "ask": 2.1,
+                        "prev_close": 1.8,
                         "timestamp_utc": "2026-10-02T19:59:00Z",
                     },
                     "analytics": {"leverage": 4.2, "delta": 0.44},
@@ -2350,6 +2352,10 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
             if isin == "ISIN2":
                 return {"market_data": {}, "analytics": {}, "reference_data": {}}
             return None
+
+        async def get_quote(self, isin: str) -> dict | None:
+            quote_calls.append(isin)
+            return {"prev_close": 0.1}
 
     monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHubTool)
 
@@ -2367,6 +2373,8 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
     assert snap.currency == "EUR"
     assert snap.timestamp_utc is not None
     assert snap.issuer_action is True
+    assert snap.prev_close == 1.8
+    assert quote_calls == []
     assert snap.issuer_no_fee_action is False
     assert snap.timestamp_utc.isoformat() == "2026-10-02T19:59:00+00:00"
     assert snap.bid_ask_midprice == 2.0

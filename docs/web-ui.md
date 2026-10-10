@@ -254,6 +254,7 @@ If NAV is incomplete, an alert lists the affected held-warrant quote or cash val
 | Weight | Current bid-valued position amount (`quantity × bid`) as a percentage of Total NAV; unavailable when bid, EUR quote, or NAV is missing |
 | Buy (EUR) | Average buy price of the current position |
 | Current (EUR) | Current warrant price (bid/ask midprice snapshot) |
+| Change vs. Previous Close (%) | Warrant's percentage change since previous close, calculated from the current midpoint and `market_data.prev_close` in the `/v1/warrants/{isin}` snapshot; green if positive, red if negative |
 | Perf % | Position performance percentage (`(current - buy) / buy * 100`), green if positive else red |
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |

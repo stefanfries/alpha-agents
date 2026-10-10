@@ -307,6 +307,7 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `held_since` | `date \| None` | Held-since date from latest snapshot position (`held_since_date`); for virtual depots may fall back to most recent BUY transaction; `None` if unavailable |
 | `buy_price` | `float \| None` | Average buy price (`avg_cost`) of the held position |
 | `current_price` | `float \| None` | Current warrant midprice from monitoring snapshot |
+| `pct_change_from_prev_close` | `float \| None` | Warrant price change since previous close: `((current_price - prev_close) / prev_close) * 100`; based on the current bid/ask midpoint and `market_data.prev_close` from `/v1/warrants/{isin}` |
 | `performance_pct` | `float \| None` | Percentage performance: `((current_price - buy_price) / buy_price) * 100` |
 | `sell_reason` | `Literal["exit_signal", "warrant_degraded"] \| None` | Reason for SELL decision; `None` when position is KEEP or ROLL |
 | `spread_pct` | `float \| None` | Bid-ask spread as percentage (from warrant snapshot) |

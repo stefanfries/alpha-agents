@@ -141,6 +141,7 @@ class PositionReview(BaseModel):
     quote_currency: str | None = None
     quote_timestamp_utc: datetime | None = None
     performance_pct: float | None = None
+    pct_change_from_prev_close: float | None = None
     # Health snapshot (from current warrant, if available)
     spread_pct: float | None = None
     leverage: float | None = None

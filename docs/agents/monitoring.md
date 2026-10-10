@@ -33,7 +33,7 @@ The orchestrator builds `MonitoringInput` from:
 - `held_since_map` via `_fetch_held_since()`:
   - real depots: latest `finance.depot_snapshots.positions[].held_since_date`
   - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
-- `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()` (also captures `strike`/`maturity_date` for display and roll re-scoring, in addition to spread/leverage/delta/days-to-maturity). Each per-ISIN detail fetch uses the shared `retry_call()` helper (`app/tools/retry.py`); a warrant is skipped (all snapshot fields `None`) only if all retry attempts fail.
+- `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()` (captures bid/ask, `prev_close`, and `strike`/`maturity_date` for display and roll re-scoring, in addition to spread/leverage/delta/days-to-maturity). `prev_close` is read from `market_data` in the same `/v1/warrants/{isin}` response as bid/ask; no separate `/quotes` request is made. Each per-ISIN detail fetch uses the shared `retry_call()` helper (`app/tools/retry.py`); a warrant is skipped (all snapshot fields `None`) only if all retry attempts fail.
 - `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
 - `enabled_break_rules` from the execution's screening config (`TrendDetectionPolicyConfig.exit_enabled_rules()`), so only selected BREAK criteria are reported as degradation reasons
 - `last_break_age_bars` forwarded from `SelectionResult.last_break_age_bars` (used for aged-out BREAK explanation text)
@@ -60,7 +60,7 @@ class MonitoringResult(BaseModel):
 
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
 - Holding context: `quantity` (held units), `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
-- Pricing context: `buy_price` (average buy price), `current_price` (snapshot midprice), `performance_pct`
+- Pricing context: `buy_price` (average buy price), `current_price` (snapshot midprice), `pct_change_from_prev_close` (`((current_price - prev_close) / prev_close) * 100`, or `None` when `prev_close` is missing/non-positive), `performance_pct`
 - Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity`, `strike`, `maturity_date` (all optional)
 - Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
 - Trend status: `trend_status` (UI-ready status label)

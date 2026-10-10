@@ -61,6 +61,16 @@
       <span class="text-danger">{{ "%+.2f%%" | format(p.performance_pct) }}</span>
     {% endif %}
   {% endmacro %}
+  {% macro pct_change_from_prev_close_value(p) %}
+    {% set pct_change_from_prev_close = p.get("pct_change_from_prev_close", p.get("day_change_pct")) %}
+    {% if pct_change_from_prev_close is none %}
+      <span class="text-muted">—</span>
+    {% elif pct_change_from_prev_close >= 0 %}
+      <span class="text-success">{{ "%+.2f%%" | format(pct_change_from_prev_close) }}</span>
+    {% else %}
+      <span class="text-danger">{{ "%+.2f%%" | format(pct_change_from_prev_close) }}</span>
+    {% endif %}
+  {% endmacro %}
   {% macro nav_weight(p) %}
     {% if has_nav and p.quantity is not none and p.bid_price is not none and p.quote_currency and p.quote_currency.upper() == "EUR" %}
       {{ ((p.quantity | float) * (p.bid_price | float) / (r.nav_eur | float)) | pct }}
@@ -190,6 +200,7 @@
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:7%">
+              <col style="width:6%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
@@ -201,7 +212,7 @@
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_sell %}
@@ -214,6 +225,7 @@
                 <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
+                <td class="text-end small">{{ pct_change_from_prev_close_value(p) }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>
@@ -242,9 +254,11 @@
               <col style="width:7%">
               <col style="width:5%">
               <col style="width:8%">
+              <col style="width:5%">
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:7%">
+              <col style="width:6%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
@@ -256,7 +270,7 @@
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in rolls %}
@@ -266,8 +280,10 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
+                <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
+                <td class="text-end small">{{ pct_change_from_prev_close_value(p) }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>
@@ -300,6 +316,7 @@
               <col style="width:6%">
               <col style="width:6%">
               <col style="width:7%">
+              <col style="width:6%">
               <col style="width:5%">
               <col style="width:5%">
               <col style="width:5%">
@@ -311,7 +328,7 @@
               <col style="width:4%">
             </colgroup>
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
@@ -324,6 +341,7 @@
                 <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
+                <td class="text-end small">{{ pct_change_from_prev_close_value(p) }}</td>
                 <td class="text-end small">{{ performance_value(p) }}</td>
                 <td class="text-end text-muted small">{{ "%.2f%%" | format(p.spread_pct) if p.spread_pct is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ "%.2f" | format(p.leverage) if p.leverage is not none else "—" }}</td>

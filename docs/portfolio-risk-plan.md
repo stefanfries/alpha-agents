@@ -27,9 +27,11 @@ scoring changes are out of scope here.
   balance for each of Girokonto, Tagesgeld PLUS-Konto, and Verrechnungskonto.
 - The Quant System's configured `capital_eur` remains stored for reference; account-backed
   sizing and Risk use NAV/cash from the current depot snapshot.
-- Monitoring fetches a FinHub warrant snapshot and now retains bid, ask, currency, and
-  timezone-aware quote timestamp; the existing midpoint metric remains unchanged. The fields
-  are also copied into persisted `PositionReview` results.
+- Monitoring fetches a FinHub warrant snapshot and retains bid, ask, `market_data.prev_close`,
+  currency, and timezone-aware quote timestamp; the midpoint metric remains unchanged.
+  `pct_change_from_prev_close` is calculated from the midpoint and `prev_close` from the same
+  `/v1/warrants/{identifier}` response, so no additional `/v1/quotes/{identifier}` request is
+  needed. The snapshot fields and percentage are copied into persisted `PositionReview` results.
 - `_fetch_portfolio_account_snapshot()` now reads real-depot cash by summing the latest EUR
   balance per supported cash account type, or virtual cash from the latest snapshot (falling back to starting capital before
   the first snapshot), fetches FinHub held-warrant bids, applies the 72-hour/EUR checks,

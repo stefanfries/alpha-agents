@@ -215,7 +215,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   The result maps `warrant_isin -> underlying_symbol`.
 6. Normalizes mapped underlying symbols to screening symbols before monitoring decisions.
   Example: `ASML.AS` is normalized to `ASML` when `ASML` exists in `screening.trend_signals`.
-7. Calls `_fetch_warrant_snapshots(warrant_isins)` — fetches `GET /v1/warrants/{isin}` per held warrant via the shared `retry_call()` helper (3 attempts, exponential backoff); a warrant's snapshot is only omitted if all retry attempts fail.
+7. Calls `_fetch_warrant_snapshots(warrant_isins)` — fetches `GET /v1/warrants/{isin}` per held warrant via the shared `retry_call()` helper (3 attempts, exponential backoff). The snapshot reads bid, ask, and `market_data.prev_close` from this same response; `pct_change_from_prev_close` is calculated from the current midpoint and previous close, so no separate `/v1/quotes/{isin}` request is made. A warrant's snapshot is only omitted if all detail-fetch retry attempts fail.
 8. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
 9. Calls `_fetch_held_since(run)` — builds `{wkn -> date}` from latest snapshot position field `held_since_date`.
   For virtual depots only, missing snapshot dates fall back to most recent BUY from `virtual_depot_transactions`.
