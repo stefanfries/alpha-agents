@@ -13,6 +13,7 @@ thresholds, and a shared state machine that emits `NEW`, `HOLD`, `BREAK`, or no 
 
 For the current contract use [screening-policy-refactor-plan.md](../screening-policy-refactor-plan.md).
 For future work and priority use [improvement-roadmap.md](../improvement-roadmap.md).
+Current screening and warrant charts also expose on-demand per-candle indicator snapshots for hover; changed policy states are marked against the preceding candle. These snapshots are not persisted in `SelectionResult`, whose `tsi`, `policy_results`, and `trend_signals` fields remain latest-bar summaries.
 
 ## Context
 

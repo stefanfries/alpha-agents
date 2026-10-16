@@ -27,6 +27,7 @@ from app.policies.trend_detection import (
     bar_indicator_values,
     build_trend_indicator_series,
     passes_rule_group,
+    trend_quality_at_index,
 )
 from app.portfolio_review import build_portfolio_action_tables
 from app.tools.finhub import FinHubTool
@@ -97,6 +98,7 @@ def _compute_supertrend(bars: list[Any], period: int = 10, multiplier: float = 3
 def _compute_signal_markers(
     bars: list[Any],
     policy_cfg: TrendDetectionPolicyConfig,
+    series: Any | None = None,
 ) -> list[dict]:
     """Return NEW/BREAK transition markers across the full bar history."""
     n = len(bars)
@@ -104,7 +106,8 @@ def _compute_signal_markers(
         return []
 
     dates  = [b.date.isoformat() for b in bars]
-    series = build_trend_indicator_series(bars, policy_cfg)
+    if series is None:
+        series = build_trend_indicator_series(bars, policy_cfg)
 
     entry_rules = policy_cfg.entry_enabled_rules()
     exit_rules = policy_cfg.exit_enabled_rules()
@@ -127,6 +130,63 @@ def _compute_signal_markers(
             markers.append({"time": dates[i], "position": "aboveBar", "color": "#ef5350", "shape": "arrowDown", "text": "BREAK"})
             state = "OUT"
     return markers
+
+
+def _compute_trend_indicator_snapshots(
+    bars: list[Any],
+    policy_cfg: TrendDetectionPolicyConfig,
+    series: Any | None = None,
+    supertrend_data: list[dict] | None = None,
+) -> list[dict]:
+    if series is None:
+        series = build_trend_indicator_series(bars, policy_cfg)
+    if supertrend_data is None:
+        supertrend_data = _compute_supertrend(bars)
+
+    highs = np.array([float(bar.high) for bar in bars])
+    lows = np.array([float(bar.low) for bar in bars])
+    sma200 = talib.SMA(series.close, timeperiod=200)
+    plus_di = talib.PLUS_DI(highs, lows, series.close, timeperiod=14)
+    minus_di = talib.MINUS_DI(highs, lows, series.close, timeperiod=14)
+    supertrend_by_time = {point["time"]: point["value"] for point in supertrend_data}
+
+    snapshots: list[dict] = []
+    previous_states: dict[str, bool] | None = None
+    for idx, bar in enumerate(bars):
+        states = {
+            key: bool(value)
+            for key, value in bar_indicator_values(idx, series, policy_cfg, 60, 20).items()
+        }
+        changed = (
+            [key for key, value in states.items() if previous_states[key] != value]
+            if previous_states is not None
+            else []
+        )
+
+        def value_or_none(values: np.ndarray, decimals: int = 2) -> float | None:
+            value = float(values[idx])
+            return round(value, decimals) if np.isfinite(value) else None
+
+        snapshots.append({
+            "time": bar.date.isoformat(),
+            "values": {
+                "ema20": value_or_none(series.ema20),
+                "ema50": value_or_none(series.ema50),
+                "sma200": value_or_none(sma200),
+                "adx": value_or_none(series.adx),
+                "plus_di": value_or_none(plus_di),
+                "minus_di": value_or_none(minus_di),
+                "tsi": value_or_none(series.tsi),
+                "tq60": round(trend_quality_at_index(series.close, series.atr20, idx, 60), 4),
+                "tq20": round(trend_quality_at_index(series.close, series.atr20, idx, 20), 4),
+                "supertrend": supertrend_by_time.get(bar.date.isoformat()),
+            },
+            "states": states,
+            "changed": changed,
+        })
+        previous_states = states
+
+    return snapshots
 
 
 router = APIRouter(prefix="/quant-systems")
@@ -621,7 +681,14 @@ async def chart_screening(
         for d, b in zip(dates, bars)
     ]
     adx_data, plus_di, minus_di = _compute_adx(bars)
-    signal_markers = _compute_signal_markers(bars, policy_cfg) if signals != 0 else []
+    trend_series = build_trend_indicator_series(bars, policy_cfg)
+    supertrend_data = _compute_supertrend(bars)
+    trend_indicators = _compute_trend_indicator_snapshots(
+        bars, policy_cfg, trend_series, supertrend_data
+    )
+    signal_markers = (
+        _compute_signal_markers(bars, policy_cfg, trend_series) if signals != 0 else []
+    )
     show_regressions = regressions != 0
     chart_data = json.dumps({
         "ticker":         ticker,
@@ -634,7 +701,8 @@ async def chart_screening(
         "adx":            adx_data,
         "plus_di":        plus_di,
         "minus_di":       minus_di,
-        "supertrend":     _compute_supertrend(bars),
+        "supertrend":     supertrend_data,
+        "trend_indicators": trend_indicators,
         "min_adx":        policy_cfg.min_adx,
         "signal_markers": signal_markers,
     })
@@ -700,14 +768,20 @@ async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: floa
          "low": float(b.low), "close": float(b.close)}
         for d, b in zip(dates, bars)
     ]
-    signal_markers = _compute_signal_markers(bars, policy_cfg)
+    trend_series = build_trend_indicator_series(bars, policy_cfg)
+    supertrend_data = _compute_supertrend(bars)
+    trend_indicators = _compute_trend_indicator_snapshots(
+        bars, policy_cfg, trend_series, supertrend_data
+    )
+    signal_markers = _compute_signal_markers(bars, policy_cfg, trend_series)
     chart_data = json.dumps({
         "ticker":     plot_symbol,
         "ohlcv":      ohlcv,
         "ema20":      _compute_ema(closes, dates, 20),
         "ema50":      _compute_ema(closes, dates, 50),
         "sma200":     _compute_sma(closes, dates, 200),
-        "supertrend": _compute_supertrend(bars),
+        "supertrend": supertrend_data,
+        "trend_indicators": trend_indicators,
         "adx":        [],
         "plus_di":    [],
         "minus_di":   [],

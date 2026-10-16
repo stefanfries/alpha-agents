@@ -199,6 +199,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 - **Overlay indicators** (toggle buttons): EMA 20 (blue, default on), EMA 50 (orange), SMA 200 (purple), SuperTrend (green/red segments)
 - **ADX sub-pane** (toggle, synchronized scroll/zoom): ADX line (gold), +DI (green), −DI (red), threshold line at `min_adx` (default 20, dashed, lineWidth=2)
 - **Policy signal markers** on the price chart: green ▲ NEW when the NEW group first passes after failing; red ▼ BREAK when the active BREAK group passes while the ticker is in trend. BREAK does not require a new false-to-true edge and can therefore occur on the bar immediately after NEW. Markers are computed server-side over the full 1460-bar history, respecting the current `config_overrides.screening` policy configuration.
+- **Indicator hover readout**: hovering a candle shows EMA20/EMA50/SMA200, SuperTrend, ADX, +DI/−DI, TSI, TQ-60/TQ-20 values and trend-policy states. States that differ from the previous candle are marked `changed`.
 - **Market regime line is clickable**: clicking it loads the corresponding index candle chart in the same right-side panel.
 - **Index chart behavior (regime click path)**:
   - NEW/BREAK markers are hidden.
@@ -351,8 +352,9 @@ Right side — two vertically stacked panels:
 **Underlying stock chart** (bottom-right, remaining height):
 
 - Candlestick chart powered by Lightweight Charts v4
-- EMA 20/50, SuperTrend
+- EMA 20/50, SMA 200, SuperTrend
 - NEW/BREAK policy signal markers on price candles (computed server-side from active screening policy config)
+- Hovering a candle shows its EMA20/EMA50/SMA200, SuperTrend, ADX, +DI/−DI, TSI, TQ-60/TQ-20 values and trend-policy states. States that differ from the previous candle are marked `changed`.
 - **Orange dashed horizontal line** at the selected warrant's strike price (labelled "Strike")
 - **Orange arrow marker** at the maturity date (labelled "Expiry")
 - Time range selector: 3M / 6M / 1Y (default) / 3Y
@@ -516,12 +518,12 @@ All `/charts/` endpoints return an HTML fragment for inline insertion and read d
 
 | Stage | Chart type | Library | Trigger |
 | ----- | ---------- | ------- | ------- |
-| Screening | Interactive candlestick + EMA/SMA overlays + SuperTrend + ADX sub-pane | Lightweight Charts v4 | Click ticker row (vanilla `fetch()`) |
-| Warrant selection | Interactive candlestick + EMA overlays + SuperTrend + strike/expiry markers + NEW/BREAK markers | Lightweight Charts v4 | Click warrant row in top-3 panel |
+| Screening | Interactive candlestick + EMA/SMA overlays + SuperTrend + ADX sub-pane + per-candle indicator hover | Lightweight Charts v4 | Click ticker row (vanilla `fetch()`) |
+| Warrant selection | Interactive candlestick + EMA/SMA overlays + SuperTrend + per-candle indicator hover + strike/expiry and NEW/BREAK markers | Lightweight Charts v4 | Click warrant row in top-3 panel |
 | Portfolio | None | — | — |
 | Risk | None | — | — |
 
-The screening chart is an HTML fragment returned by the `/charts/screening/{ticker}` endpoint. It embeds all indicator data as a `data-chart` JSON attribute and is initialized client-side by `initDataCharts()` in `base.html`. The Lightweight Charts library is loaded from CDN (`lightweight-charts@4.1.3`). All indicators (EMA, SMA, ADX, SuperTrend via ATR) are computed server-side using TA-Lib before the fragment is returned.
+The screening and warrant charts are HTML fragments returned by their `/charts/...` endpoints. Each embeds its indicator data, including one trend-indicator snapshot per OHLCV bar, as a `data-chart` JSON attribute and is initialized client-side by `initDataCharts()` in `base.html`. The crosshair uses the candle date to display that snapshot and flags policy states that changed since the prior bar. The Lightweight Charts library is loaded from CDN (`lightweight-charts@4.1.3`). Indicators are computed server-side using TA-Lib before each fragment is returned; chart snapshots are not persisted in `SelectionResult`.
 
 ---
 

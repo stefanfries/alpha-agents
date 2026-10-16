@@ -73,7 +73,7 @@ Same formula as TQ but computed over the last 20 bars instead of 60. Detects ear
 
 TSI = 100 * EMA_slow(EMA_fast(dClose)) / EMA_slow(EMA_fast(|dClose|))
 
-With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillator in `[-100, 100]`. Displayed as a context signal; not used in selection.
+With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillator in `[-100, 100]`. Its `SelectionResult.tsi` value and screening-table column show the latest bar only. TSI does not affect the ranking score, but its configurable NEW/BREAK rules can affect candidate selection and trend signals.
 
 ---
 
@@ -103,6 +103,7 @@ NEW group rules:
 | `policy_price_above_ema50` | Close[-1] > EMA50[-1] | on |
 | `policy_tq60_above` | TQ-60 > `policy_tq60_min` | off |
 | `policy_tq20_above` | TQ-20 > `policy_tq20_min` | off |
+| `policy_tsi_above` | TSI > `policy_tsi_new_min` | on |
 | `new_min_true` | Required true count among active NEW rules (`None` = all) | `None` |
 
 BREAK group rules:
@@ -114,6 +115,7 @@ BREAK group rules:
 | `policy_adx_below_break` | ADX[-1] <= `min_adx` | on |
 | `policy_adx_falling_break` | ADX[-5:] slope <= 0 | on |
 | `policy_price_below_ema50_break` | Close[-1] <= EMA50[-1] | on |
+| `policy_tsi_below_break` | TSI < `policy_tsi_break_max` | on |
 | `break_min_true` | Required true count among active BREAK rules (`None` = all) | `None` |
 
 If zero candidates result, the user can relax NEW rules in HITL and re-run screening without creating a new run.
@@ -138,6 +140,10 @@ The stored `trend_signals` value is then derived from the most recent event and 
 | `None` | The state machine is `OUT` and there is no recent `BREAK` signal to expose |
 
 This signal is purely observational. It informs entry timing at the screening stage; it does not trigger orders.
+
+### Per-candle chart indicators
+
+Screening and warrant-selection chart endpoints compute indicator snapshots for every OHLCV bar supplied to the chart. Hovering a candle shows its EMA20/EMA50/SMA200, SuperTrend, ADX, +DI/−DI, TSI, TQ-60/TQ-20, and the trend-policy states for that bar. Policy states that differ from the preceding bar are marked as changed. These chart snapshots are generated on demand and are not persisted in `SelectionResult`; the result's `tsi`, `policy_results`, and `trend_signals` remain per-ticker latest-bar summaries.
 
 Additionally, `last_break_age_bars` stores the distance (in bars) to the most recent BREAK event, even when `trend_signals[symbol]` has already aged out to `None`. Monitoring uses this both to render aged-out-BREAK explanatory UI text and — since the state machine has already settled to `OUT` at that point — to trigger a SELL for held positions (see [docs/agents/monitoring.md](agents/monitoring.md)).
 
@@ -173,10 +179,14 @@ The agent compares the current TQ ranking against prior rankings stored in the d
 | `policy_tq20_above` | `False` | Enable TQ-20 threshold NEW rule |
 | `policy_tq60_min` | `0.05` | TQ-60 threshold when `policy_tq60_above` is enabled |
 | `policy_tq20_min` | `0.0` | TQ-20 threshold when `policy_tq20_above` is enabled |
+| `policy_tsi_above` | `True` | Enable TSI-above-threshold NEW rule |
+| `policy_tsi_new_min` | `25.0` | TSI threshold for the NEW rule |
 | `new_min_true` | `None` | Required true NEW rules (`None` = all active NEW rules) |
 | `policy_supertrend_break` | `True` | Enable SuperTrend bearish BREAK rule |
 | `policy_ema20_falling_break` | `True` | Enable EMA20 falling BREAK rule |
 | `policy_adx_below_break` | `True` | Enable ADX-below-threshold BREAK rule |
 | `policy_adx_falling_break` | `True` | Enable ADX-falling BREAK rule |
 | `policy_price_below_ema50_break` | `True` | Enable price-below-EMA50 BREAK rule |
+| `policy_tsi_below_break` | `True` | Enable TSI-below-threshold BREAK rule |
+| `policy_tsi_break_max` | `20.0` | TSI threshold for the BREAK rule |
 | `break_min_true` | `None` | Required true BREAK rules (`None` = all active BREAK rules) |

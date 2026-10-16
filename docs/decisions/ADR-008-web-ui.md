@@ -64,7 +64,7 @@ Key structural choices:
 | **Lightweight Charts v4** | HTML fragment + `data-chart` JSON payload | Full (zoom, pan, crosshair, range toggles, indicator toggles) | **Current implementation** |
 | **mplfinance** | PNG or SVG rendered to a byte buffer | Static | Optional fallback for specialised chart types |
 
-Chart fragments are generated in FastAPI route handlers (`HTMLResponse`) and include indicator/marker series in `data-chart`. The browser initializes the chart via shared JS (`initDataCharts()` in `base.html`).
+Chart fragments are generated in FastAPI route handlers (`HTMLResponse`) and include indicator/marker series in `data-chart`. Screening and warrant chart payloads also include per-candle trend-indicator snapshots; the shared browser initializer (`initDataCharts()` in `base.html`) displays the snapshot for the crosshair candle and flags policy-state changes from the preceding candle. These snapshots are generated on demand and are not persisted with pipeline results.
 
 mplfinance charts can be used for specialised static chart outputs. They are rendered to a PNG byte buffer via `io.BytesIO`, base64-encoded, and embedded as `<img src="data:image/png;base64,...">`.
 

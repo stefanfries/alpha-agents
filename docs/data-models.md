@@ -263,10 +263,10 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `scores` | `dict[str, float]` | Primary TQ score ($R^2_{60} \times Slope_{60}/ATR_{20}$) per ticker |
 | `rationale` | `dict[str, str]` | Human-readable summary per ticker |
 | `tq_short` | `dict[str, float]` | TQ-20 short-window score per ticker |
-| `tsi` | `dict[str, float]` | True Strength Index value per ticker |
+| `tsi` | `dict[str, float]` | Latest-bar True Strength Index value per ticker; historical per-bar values are calculated on demand for chart hover and are not part of this model |
 | `extension_scores` | `dict[str, float]` | `(close - EMA20) / ATR20` per ticker; retained for future composite entry-timing analysis, not a standalone policy or table signal |
 | `weekly_confirmed` | `dict[str, bool]` | Latest completed weekly close is above a rising weekly EMA20; advisory only, not a NEW/BREAK policy |
-| `policy_results` | `dict[str, dict[str, bool]]` | Per-ticker indicator booleans used by NEW/BREAK policy groups: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above` |
+| `policy_results` | `dict[str, dict[str, bool]]` | Latest-bar per-ticker indicator booleans used by NEW/BREAK policy groups: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above`, `tsi_above`, `tsi_below` |
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below). `BREAK` is emitted when the active BREAK group passes while the ticker is in trend; it does not require a new edge. |
@@ -274,6 +274,8 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `latest_candle_dates` | `dict[str, date]` | Date of the most recent OHLCV bar per ticker |
 | `previous_candle_dates` | `dict[str, date]` | Date of bars[-2] per ticker (second-to-last closed candle) |
 | `market_regime` | `MarketRegime \| None` | Forwarded market regime context for Screening UI |
+
+Per-candle chart snapshots are not fields on `SelectionResult`. Screening and warrant chart endpoints calculate them on demand from their OHLCV series and include them in the chart fragment's `data-chart` payload.
 
 ### `WarrantSelectionResult`
 

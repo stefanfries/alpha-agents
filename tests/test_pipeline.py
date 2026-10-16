@@ -761,6 +761,35 @@ def _make_synthetic_bars(ticker: Ticker, closes: list[float]) -> list[OHLCV]:
     return bars
 
 
+def test_trend_indicator_snapshots_cover_bars_and_mark_state_changes():
+    import json
+
+    from app.policies.trend_detection import TrendDetectionPolicyConfig
+    from app.routes.pipeline import _compute_trend_indicator_snapshots
+
+    ticker = Ticker(symbol="SYN")
+    closes = [100.0 + i * 0.5 for i in range(60)] + [130.0 - i * 0.8 for i in range(20)]
+    bars = _make_synthetic_bars(ticker, closes)
+
+    snapshots = _compute_trend_indicator_snapshots(bars, TrendDetectionPolicyConfig())
+
+    assert len(snapshots) == len(bars)
+    assert [snapshot["time"] for snapshot in snapshots] == [bar.date.isoformat() for bar in bars]
+    assert {
+        "ema20", "ema50", "sma200", "adx", "plus_di", "minus_di",
+        "tsi", "tq60", "tq20", "supertrend",
+    } <= snapshots[-1]["values"].keys()
+    json.dumps(snapshots)
+    assert any(snapshot["changed"] for snapshot in snapshots[1:])
+    for previous, current in zip(snapshots, snapshots[1:]):
+        expected = [
+            key
+            for key, value in current["states"].items()
+            if previous["states"][key] != value
+        ]
+        assert current["changed"] == expected
+
+
 def test_trend_signal_k2_emits_new_before_break_phase():
     from app.config import ScreeningSettings
 
