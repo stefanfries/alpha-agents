@@ -44,20 +44,44 @@ async def test_screening_filters_low_market_cap():
 
 
 @pytest.mark.asyncio
-async def test_screening_selected_preserves_score_order():
+@pytest.mark.parametrize(
+    ("ranking_metric", "expected_symbols", "expected_a_rank_change"),
+    [
+        ("tq60", ["A", "B"], 2),
+        ("tq20", ["B", "C"], -2),
+        ("tsi", ["C", "A"], 1),
+    ],
+)
+async def test_screening_selected_uses_configured_rank_order_and_top_n(
+    ranking_metric, expected_symbols, expected_a_rank_change
+):
     from app.config import ScreeningSettings
 
-    agent = SecuritySelectionAgent(ScreeningSettings(top_n=2))
-    tickers = [Ticker(symbol="LOW"), Ticker(symbol="HIGH")]
+    agent = SecuritySelectionAgent(ScreeningSettings(top_n=2, ranking_metric=ranking_metric))
+    tickers = [Ticker(symbol=symbol) for symbol in ("A", "B", "C")]
     bars = {
-        ticker.symbol: _make_synthetic_bars(ticker, [100.0 + i for i in range(70)])
+        ticker.symbol: _make_synthetic_bars(ticker, [100.0 + i for i in range(100)])
         for ticker in tickers
     }
 
-    agent._trend_quality = lambda ticker_bars, _lookback: (
-        0.5 if ticker_bars[0].ticker.symbol == "LOW" else 1.0
-    )
-    agent._tsi = lambda _bars: 0.0
+    current_tq = {
+        "A": {60: 3.0, 20: 1.0},
+        "B": {60: 2.0, 20: 3.0},
+        "C": {60: 1.0, 20: 2.0},
+    }
+    historical_tq = {
+        "A": {60: 1.0, 20: 3.0},
+        "B": {60: 2.0, 20: 2.0},
+        "C": {60: 3.0, 20: 1.0},
+    }
+    current_tsi = {"A": 20.0, "B": 10.0, "C": 30.0}
+    historical_tsi = {"A": 10.0, "B": 30.0, "C": 20.0}
+    agent._trend_quality = lambda ticker_bars, lookback: (
+        current_tq if len(ticker_bars) == 100 else historical_tq
+    )[ticker_bars[0].ticker.symbol][lookback]
+    agent._tsi = lambda ticker_bars: (
+        current_tsi if len(ticker_bars) == 100 else historical_tsi
+    )[ticker_bars[0].ticker.symbol]
     agent._evaluate_policies = lambda _bars: {
         "supertrend": True,
         "supertrend_bearish": False,
@@ -81,11 +105,12 @@ async def test_screening_selected_preserves_score_order():
         ResearchResult(
             tickers=tickers,
             bars=bars,
-            fundamentals={symbol: {"marketCap": 1_000_000_000} for symbol in ("LOW", "HIGH")},
+            fundamentals={ticker.symbol: {"marketCap": 1_000_000_000} for ticker in tickers},
         )
     )
 
-    assert [ticker.symbol for ticker in result.selected] == ["HIGH", "LOW"]
+    assert [ticker.symbol for ticker in result.selected] == expected_symbols
+    assert result.rank_changes["A"][0] == expected_a_rank_change
 
 
 @pytest.mark.asyncio
@@ -970,6 +995,8 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         stage="screening",
         from_stage="screening",
         policies_submitted="1",
+        ranking_metric="tq20",
+        top_n="7",
         policy_supertrend="on",
         policy_ema20_rising="on",
         policy_adx_above=None,
@@ -1001,6 +1028,8 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
 
     screening_cfg = update["$set"]["config_overrides.screening"]
     assert screening_cfg == {
+        "top_n": 7,
+        "ranking_metric": "tq20",
         "policy_supertrend": True,
         "policy_ema20_rising": True,
         "policy_adx_above": False,
@@ -1051,6 +1080,8 @@ async def test_restart_stage_clamps_tq_thresholds_and_handles_invalid(monkeypatc
         stage="screening",
         from_stage="screening",
         policies_submitted="1",
+        ranking_metric="unsupported",
+        top_n="invalid",
         policy_supertrend="on",
         policy_ema20_rising="on",
         policy_adx_above="on",
@@ -1076,8 +1107,54 @@ async def test_restart_stage_clamps_tq_thresholds_and_handles_invalid(monkeypatc
     _, update = fake_collection.calls[0]
     screening_cfg = update["$set"]["config_overrides.screening"]
 
+    assert screening_cfg["top_n"] == 20
+    assert screening_cfg["ranking_metric"] == "tsi"
     assert screening_cfg["policy_tq60_min"] == 1.0
     assert screening_cfg["policy_tq20_min"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_screening_stage_context_includes_config_defaults_and_run_overrides(monkeypatch):
+    from starlette.requests import Request
+
+    from app.routes import pipeline as pipeline_module
+
+    execution = {
+        "execution_id": "exec1",
+        "quant_system_id": "qs1",
+        "stages": {"screening": {"status": "awaiting_review"}},
+        "config_overrides": {"screening": {"top_n": 5}},
+    }
+
+    class FakeCollection:
+        async def find_one(self, selector: dict, projection: dict) -> dict:
+            assert selector == {"execution_id": "exec1"}
+            return execution
+
+    class FakeTemplates:
+        @staticmethod
+        def TemplateResponse(request: Request, template_name: str, context: dict) -> dict:
+            assert template_name == "stages/screening.html"
+            return context
+
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: FakeCollection())
+    monkeypatch.setattr(pipeline_module, "templates", FakeTemplates())
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [],
+        "query_string": b"",
+        "scheme": "http",
+        "server": ("test", 80),
+        "client": ("test", 80),
+    })
+
+    context = await pipeline_module.stage_review(request, "qs1", "exec1", "screening")
+
+    assert context["screening_cfg"]["top_n"] == 5
+    assert context["screening_cfg"]["ranking_metric"] == "tsi"
+    assert context["screening_cfg"]["min_market_cap_eur"] == 500_000_000
 
 
 @pytest.mark.asyncio

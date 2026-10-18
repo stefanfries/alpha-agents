@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,7 +51,8 @@ class ResearchSettings(BaseModel):
 
 
 class ScreeningSettings(BaseModel):
-    top_n: int = 20
+    top_n: int = Field(default=20, ge=1)
+    ranking_metric: Literal["tq60", "tq20", "tsi"] = "tsi"
     min_market_cap_eur: int = 500_000_000
     min_adx: int = 20
     lookback_regression: int = 60

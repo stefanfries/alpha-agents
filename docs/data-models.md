@@ -258,7 +258,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `selected` | `list[Ticker]` | Top-N tickers that passed all enabled policies, sorted by TQ descending |
+| `selected` | `list[Ticker]` | Top-N tickers that passed all enabled policies, sorted descending by the configured screening rank metric (TSI by default); this order is passed downstream |
 | `all_tickers` | `list[Ticker]` | Full scored universe including non-selected tickers (for HITL display) |
 | `scores` | `dict[str, float]` | Primary TQ score ($R^2_{60} \times Slope_{60}/ATR_{20}$) per ticker |
 | `rationale` | `dict[str, str]` | Human-readable summary per ticker |
@@ -267,7 +267,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `extension_scores` | `dict[str, float]` | `(close - EMA20) / ATR20` per ticker; retained for future composite entry-timing analysis, not a standalone policy or table signal |
 | `weekly_confirmed` | `dict[str, bool]` | Latest completed weekly close is above a rising weekly EMA20; advisory only, not a NEW/BREAK policy |
 | `policy_results` | `dict[str, dict[str, bool]]` | Latest-bar per-ticker indicator booleans used by NEW/BREAK policy groups: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above`, `tsi_above`, `tsi_below` |
-| `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago |
+| `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago using the configured screening rank metric |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below). `BREAK` is emitted when the active BREAK group passes while the ticker is in trend; it does not require a new edge. |
 | `last_break_age_bars` | `dict[str, int]` | Per-ticker bars since the most recent BREAK event (present even when `trend_signals[symbol]` is `None`) |

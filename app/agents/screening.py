@@ -27,6 +27,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
     def __init__(self, settings: ScreeningSettings | None = None) -> None:
         cfg = settings or ScreeningSettings()
         self._top_n = cfg.top_n
+        self._ranking_metric = cfg.ranking_metric
         self._min_market_cap_eur = cfg.min_market_cap_eur
         self._lookback_regression = cfg.lookback_regression
         self._lookback_regression_short = cfg.lookback_regression_short
@@ -169,13 +170,18 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             if passes_new:
                 candidate_symbols.add(symbol)
 
+        ranking_values = {
+            "tq60": scores,
+            "tq20": {symbol: tq_short.get(symbol, 0.0) for symbol in scores},
+            "tsi": {symbol: tsi_vals.get(symbol, 0.0) for symbol in scores},
+        }.get(self._ranking_metric, scores)
         ranked_symbols = sorted(
-            candidate_symbols, key=lambda s: scores.get(s, 0.0), reverse=True
+            candidate_symbols, key=lambda s: ranking_values.get(s, 0.0), reverse=True
         )[: self._top_n]
         tickers_by_symbol = {ticker.symbol: ticker for ticker in input.tickers}
         selected = [tickers_by_symbol[symbol] for symbol in ranked_symbols]
 
-        rank_changes, history_labels = self._rank_changes(input, scores)
+        rank_changes, history_labels = self._rank_changes(input, ranking_values)
 
         logger.info(
             "Screening complete: %d/%d selected "
@@ -464,25 +470,35 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
     def _rank_changes(
         self,
         input: ResearchResult,
-        current_scores: dict[str, float],
+        current_values: dict[str, float],
     ) -> tuple[dict[str, list[int | None]], list[str]]:
-        # Deterministic tie-breaker keeps rank movements stable for equal TQ values.
+        # Deterministic tie-breaker keeps rank movements stable for equal values.
         def rank_items(score_map: dict[str, float]) -> list[tuple[str, float]]:
             return sorted(score_map.items(), key=lambda x: (-x[1], x[0]))
         current_ranks = {
             sym: i + 1
             for i, (sym, _) in enumerate(
-                rank_items(current_scores)
+                rank_items(current_values)
             )
         }
         hist_ranks_list: list[dict[str, int]] = []
         valid_labels: list[str] = []
         for offset, label in [(5, "1W"), (10, "2W"), (20, "4W")]:
             hist_scores: dict[str, float] = {}
-            for sym in current_scores:
+            for sym in current_values:
                 bars = input.bars.get(sym, [])
                 if len(bars) > offset + _MIN_BARS:
-                    hist_scores[sym] = self._trend_quality(bars[: len(bars) - offset], self._lookback_regression)
+                    historical_bars = bars[: len(bars) - offset]
+                    if self._ranking_metric == "tq20":
+                        hist_scores[sym] = self._trend_quality(
+                            historical_bars, self._lookback_regression_short
+                        )
+                    elif self._ranking_metric == "tsi":
+                        hist_scores[sym] = self._tsi(historical_bars)
+                    else:
+                        hist_scores[sym] = self._trend_quality(
+                            historical_bars, self._lookback_regression
+                        )
             if not hist_scores:
                 continue
             hist_ranks = {

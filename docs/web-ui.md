@@ -173,11 +173,11 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 
 **Summary**: `{N} stocks selected from {universe_size} universe` with scoring details.
 
-**All-stocks table**: every ticker that passed the pre-filter is shown, sorted by TQ descending. Selected tickers are highlighted. Columns:
+**All-stocks table**: every ticker that passed the pre-filter is shown, initially sorted by the configured ranking metric (TSI by default). Selected tickers are highlighted; their `#` rank follows the configured selection order. Click a metric header to sort by another displayed value. Columns:
 
 | Column | Description |
 | ------ | ----------- |
-| `#` | Rank among selected tickers only (`—` for non-selected) |
+| `#` | Rank among selected tickers in configured metric order (`—` for non-selected) |
 | Symbol | yfinance symbol |
 | Name | Company name |
 | ISIN | Identifier |
@@ -186,7 +186,7 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 | TSI | True Strength Index value |
 | ST / E20 / ADX / E50 | Per-policy pass/fail badges (green ✓ / red ✗) |
 | Signal | Recent trend-state signal from the screening state machine: **NEW** (green, fresh signal with 5-bar stickiness) / **HOLD** (yellow, still in trend) / **BREAK** (red, active exit event shown for up to 5 bars including the event bar) / — |
-| 1W / 2W / 4W | Rank delta vs prior runs (▲/▼/▶/—) |
+| 1W / 2W / 4W | Rank change vs those historical bar lookbacks, using the configured ranking metric (▲/▼/▶/—) |
 
 Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
 
@@ -212,6 +212,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 **Screening policies panel** (above action bar):
 
+- **Selection**: rank NEW-rule candidates by TSI (default), TQ-60, or TQ-20, and set a positive Top N limit (default 20). Both values are persisted to `config_overrides.screening` for the current run.
 - Two framed rule groups shown side-by-side:
   - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
   - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`), ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)

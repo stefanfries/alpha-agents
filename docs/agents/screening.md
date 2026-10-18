@@ -90,7 +90,9 @@ Rules are evaluated with k-of-n semantics via `passes_rule_group`:
 - If `min_true` is set, at least `min_true` active rules must be true
 - If `min_true` is empty, all active rules must be true
 
-If the NEW group passes on the latest bar, the ticker is a candidate. Candidates are sorted by TQ descending; top `top_n` are selected.
+If the NEW group passes on the latest bar, the ticker is a candidate. Candidates are sorted descending by the configured `ranking_metric` (`tq60`, `tq20`, or `tsi`; default `tsi`), and the first `top_n` are selected (`top_n` defaults to 20 and must be positive). Both settings are configurable in the screening review UI and persisted in the current run's `config_overrides.screening`. `SelectionResult.selected` preserves this ranking order for Monitoring and subsequent stages.
+
+Historical rank changes use the same selected metric. The screening table initially sorts by that metric, while its headers allow sorting by other displayed columns.
 
 NEW group rules:
 

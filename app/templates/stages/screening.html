@@ -113,8 +113,8 @@
           <div class="flex-grow-1 overflow-auto" style="min-height:0">
           {# Build selected rank lookup: only selected symbols get a rank #}
           {% set sel_syms = r.selected | map(attribute='symbol') | list %}
-          {% set sel_rank = namespace(n=0) %}
-          <table id="screening-table" class="table table-sm table-hover bg-white rounded shadow-sm mb-0">
+             <table id="screening-table" class="table table-sm table-hover bg-white rounded shadow-sm mb-0"
+               data-ranking-metric="{{ screening_cfg.ranking_metric }}">
             <thead class="table-light sticky-top">
               <tr>
                 <th data-sort-key="rank" data-sort-type="number"># <span class="sort-indicator sort-indicator--stack" aria-hidden="true"><span>▲</span><span>▼</span></span></th>
@@ -141,7 +141,7 @@
             <tbody>
               {% for sym, score in r.scores | dictsort(by='value', reverse=True) %}
               {% set selected = sym in sel_syms %}
-              {% if selected %}{% set sel_rank.n = sel_rank.n + 1 %}{% endif %}
+              {% set sel_rank = sel_syms.index(sym) + 1 if selected else none %}
               {% set deltas = r.rank_changes.get(sym, []) %}
               {% set pol = r.policy_results.get(sym, {}) %}
               {# Look up ticker metadata from all_tickers #}
@@ -151,11 +151,11 @@
                 {% set meta.isin = t.isin or "—" %}
               {% endfor %}
               <tr class="{% if selected %}table-success{% elif score <= 0 %}text-muted{% endif %}"
-                  data-selected-rank="{% if selected %}{{ sel_rank.n }}{% else %}999999{% endif %}"
+                  data-selected-rank="{% if selected %}{{ sel_rank }}{% else %}999999{% endif %}"
                   data-symbol="{{ sym }}"
                   style="cursor:pointer"
                   onclick="loadScreeningChart('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
-                <td class="small" data-sort-key="rank" data-sort-value="{% if selected %}{{ sel_rank.n }}{% else %}999999{% endif %}">{% if selected %}{{ sel_rank.n }}{% else %}—{% endif %}</td>
+                <td class="small" data-sort-key="rank" data-sort-value="{% if selected %}{{ sel_rank }}{% else %}999999{% endif %}">{% if selected %}{{ sel_rank }}{% else %}—{% endif %}</td>
                 <td data-sort-key="symbol" data-sort-value="{{ sym | upper }}"><code>{{ sym }}</code></td>
                 <td class="small" data-sort-key="company" data-sort-value="{{ (meta.name or '') | lower }}" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ meta.name }}</td>
                 <td class="small" data-sort-key="isin" data-sort-value="{{ meta.isin }}">{{ meta.isin }}</td>
@@ -207,6 +207,24 @@
             <input type="hidden" name="from_stage" value="screening">
             <input type="hidden" name="policies_submitted" value="1">
             {% set pol_cfg = execution.get("config_overrides", {}).get("screening", {}) %}
+            <fieldset class="border rounded p-2">
+              <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Selection</legend>
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="d-flex align-items-center gap-2">
+                  <label class="small mb-0" for="ranking_metric">Rank candidates by</label>
+                  <select class="form-select form-select-sm w-auto" name="ranking_metric" id="ranking_metric">
+                    <option value="tq60" {% if screening_cfg.ranking_metric == "tq60" %}selected{% endif %}>TQ-60</option>
+                    <option value="tq20" {% if screening_cfg.ranking_metric == "tq20" %}selected{% endif %}>TQ-20</option>
+                    <option value="tsi" {% if screening_cfg.ranking_metric == "tsi" %}selected{% endif %}>TSI</option>
+                  </select>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <label class="small mb-0" for="top_n">Top N</label>
+                  <input class="form-control form-control-sm" type="number" min="1" step="1"
+                         name="top_n" id="top_n" value="{{ screening_cfg.top_n }}" style="width:88px">
+                </div>
+              </div>
+            </fieldset>
             <div class="d-flex align-items-stretch gap-2 flex-wrap">
               <fieldset class="border rounded p-2" style="min-width:260px;flex:1">
                 <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">NEW</legend>
@@ -374,7 +392,7 @@
 </style>
 
 <script>
-let screeningSortKey = 'tq60';
+let screeningSortKey = 'tsi';
 let screeningSortDir = 'desc';
 
 function screeningTableBody() {
@@ -442,6 +460,8 @@ function updateSortIndicators() {
 
 function initScreeningSort() {
   const headers = document.querySelectorAll('#screening-table thead th[data-sort-key]');
+  const rankingMetric = document.querySelector('#screening-table')?.dataset.rankingMetric;
+  if (['tq60', 'tq20', 'tsi'].includes(rankingMetric)) screeningSortKey = rankingMetric;
   headers.forEach((th) => {
     th.addEventListener('click', () => {
       const key = th.dataset.sortKey;
@@ -458,7 +478,7 @@ function initScreeningSort() {
     });
   });
 
-  const defaultHeader = document.querySelector('#screening-table thead th[data-sort-key="tq60"]');
+  const defaultHeader = document.querySelector(`#screening-table thead th[data-sort-key="${screeningSortKey}"]`);
   const defaultType = defaultHeader?.dataset.sortType || 'number';
   sortScreeningRows(screeningSortKey, defaultType, screeningSortDir);
   updateSortIndicators();

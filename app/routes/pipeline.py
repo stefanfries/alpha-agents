@@ -295,6 +295,9 @@ async def execution_detail(qs_id: str, execution_id: str) -> RedirectResponse:
 async def stage_review(request: Request, qs_id: str, execution_id: str, stage: str) -> HTMLResponse:
     execution = await executions_collection().find_one({"execution_id": execution_id}, _NO_ID)
     ctx = _stage_ctx(execution, stage)
+    if stage == "screening":
+        screening_overrides = execution.get("config_overrides", {}).get("screening", {})
+        ctx["screening_cfg"] = {**settings.screening.model_dump(), **screening_overrides}
     if stage == "universe" and ctx.get("stage_result"):
         adr_isins = ctx["stage_result"].get("adr_isins", [])
         ctx["availability"] = await warrant_availability.availability_map(adr_isins)
@@ -379,6 +382,8 @@ async def restart_stage(
     stage: str,
     from_stage: Annotated[str, Form()],
     policies_submitted: Annotated[str | None, Form()] = None,
+    ranking_metric: Annotated[str | None, Form()] = None,
+    top_n: Annotated[str | None, Form()] = None,
     policy_supertrend: Annotated[str | None, Form()] = None,
     policy_ema20_rising: Annotated[str | None, Form()] = None,
     policy_adx_above: Annotated[str | None, Form()] = None,
@@ -425,6 +430,17 @@ async def restart_stage(
     updates["status"] = "running"
 
     if policies_submitted is not None:
+        try:
+            parsed_top_n = int(top_n) if top_n not in (None, "") else settings.screening.top_n
+        except (ValueError, TypeError):
+            parsed_top_n = settings.screening.top_n
+        safe_top_n = max(1, parsed_top_n)
+        allowed_ranking_metrics = {"tq60", "tq20", "tsi"}
+        safe_ranking_metric = (
+            ranking_metric
+            if ranking_metric in allowed_ranking_metrics
+            else settings.screening.ranking_metric
+        )
         parsed_new_min: int | None = None
         parsed_break_min: int | None = None
         parsed_tq60_min: float = 0.05
@@ -494,6 +510,8 @@ async def restart_stage(
         if parsed_break_min is not None and break_selected > 0:
             safe_break_min = max(1, min(parsed_break_min, break_selected))
         updates["config_overrides.screening"] = {
+            "top_n": safe_top_n,
+            "ranking_metric": safe_ranking_metric,
             "policy_supertrend": policy_supertrend is not None,
             "policy_ema20_rising": policy_ema20_rising is not None,
             "policy_adx_above": policy_adx_above is not None,
