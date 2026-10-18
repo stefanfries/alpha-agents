@@ -158,10 +158,20 @@
           });
 
           tooltip.style.display = 'block';
-          var left = Math.min(param.point.x + 14, priceEl.clientWidth - tooltip.offsetWidth - 6);
-          var top = Math.min(param.point.y + 14, priceEl.clientHeight - tooltip.offsetHeight - 6);
-          tooltip.style.left = Math.max(6, left) + 'px';
-          tooltip.style.top = Math.max(6, top) + 'px';
+          var gap = 14;
+          var margin = 6;
+          var left = param.point.x + gap;
+          var top = param.point.y + gap;
+          if (left + tooltip.offsetWidth > priceEl.clientWidth - margin) {
+            left = param.point.x - tooltip.offsetWidth - gap;
+          }
+          if (top + tooltip.offsetHeight > priceEl.clientHeight - margin) {
+            top = param.point.y - tooltip.offsetHeight - gap;
+          }
+          left = Math.max(margin, Math.min(left, priceEl.clientWidth - tooltip.offsetWidth - margin));
+          top = Math.max(margin, Math.min(top, priceEl.clientHeight - tooltip.offsetHeight - margin));
+          tooltip.style.left = left + 'px';
+          tooltip.style.top = top + 'px';
         }
         chart.subscribeCrosshairMove(onCrosshairMove);
       }
