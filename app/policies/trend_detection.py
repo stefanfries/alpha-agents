@@ -27,6 +27,7 @@ class TrendDetectionPolicyConfig:
     policy_tq60_min: float = 0.05
     policy_tq20_min: float = 0.0
     policy_tsi_above: bool = True
+    policy_tsi_rising: bool = False
     policy_tsi_new_min: float = 25.0
     new_min_true: int | None = None
 
@@ -36,6 +37,7 @@ class TrendDetectionPolicyConfig:
     policy_adx_below_break: bool = True
     policy_adx_falling_break: bool = False
     policy_price_below_ema50_break: bool = True
+    policy_tsi_falling_break: bool = False
     policy_tsi_below_break: bool = True
     policy_tsi_break_max: float = 20.0
     break_min_true: int | None = 1
@@ -61,6 +63,7 @@ class TrendDetectionPolicyConfig:
             policy_tq60_min=_as_float(src.get("policy_tq60_min"), 0.05),
             policy_tq20_min=_as_float(src.get("policy_tq20_min"), 0.0),
             policy_tsi_above=_as_bool(src.get("policy_tsi_above"), True),
+            policy_tsi_rising=_as_bool(src.get("policy_tsi_rising"), False),
             policy_tsi_new_min=_as_float(src.get("policy_tsi_new_min"), 25.0),
             new_min_true=_as_optional_int(src.get("new_min_true")),
             policy_supertrend_break=_as_bool(src.get("policy_supertrend_break"), True),
@@ -68,6 +71,7 @@ class TrendDetectionPolicyConfig:
             policy_adx_below_break=_as_bool(src.get("policy_adx_below_break"), True),
             policy_adx_falling_break=_as_bool(src.get("policy_adx_falling_break"), False),
             policy_price_below_ema50_break=_as_bool(src.get("policy_price_below_ema50_break"), True),
+            policy_tsi_falling_break=_as_bool(src.get("policy_tsi_falling_break"), False),
             policy_tsi_below_break=_as_bool(src.get("policy_tsi_below_break"), True),
             policy_tsi_break_max=_as_float(src.get("policy_tsi_break_max"), 20.0),
             break_min_true=(
@@ -91,6 +95,7 @@ class TrendDetectionPolicyConfig:
             "tq60_above": self.policy_tq60_above,
             "tq20_above": self.policy_tq20_above,
             "tsi_above": self.policy_tsi_above,
+            "tsi_rising": self.policy_tsi_rising,
         }
 
     def exit_enabled_rules(self) -> dict[str, bool]:
@@ -99,6 +104,7 @@ class TrendDetectionPolicyConfig:
             "ema20_falling": self.policy_ema20_falling_break,
             "adx_below": self.policy_adx_below_break,
             "adx_falling": self.policy_adx_falling_break,
+            "tsi_falling": self.policy_tsi_falling_break,
             "price_below_ema50": self.policy_price_below_ema50_break,
             "tsi_below": self.policy_tsi_below_break,
         }
@@ -239,6 +245,13 @@ def bar_indicator_values(
     tsi_val = float(series.tsi[idx])
     tsi_above = not np.isnan(tsi_val) and tsi_val > policy_cfg.policy_tsi_new_min
     tsi_below = not np.isnan(tsi_val) and tsi_val < policy_cfg.policy_tsi_break_max
+    tsi_seg = series.tsi[idx - 4 : idx + 1] if idx >= 4 else np.array([np.nan])
+    if not np.any(np.isnan(tsi_seg)):
+        tsi_slope = float(np.polyfit(np.arange(5, dtype=float), tsi_seg, 1)[0])
+        tsi_rising = tsi_slope > 0
+    else:
+        tsi_rising = False
+    tsi_falling = not tsi_rising
 
     return {
         "supertrend": bool(series.st_bull[idx]),
@@ -254,6 +267,8 @@ def bar_indicator_values(
         "tq60_above": tq60 > policy_cfg.policy_tq60_min,
         "tq20_above": tq20 > policy_cfg.policy_tq20_min,
         "tsi_above": tsi_above,
+        "tsi_rising": tsi_rising,
+        "tsi_falling": tsi_falling,
         "tsi_below": tsi_below,
     }
 

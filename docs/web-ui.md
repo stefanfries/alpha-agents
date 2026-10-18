@@ -184,7 +184,7 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 | TQ | Primary Trend Quality score (60-bar R² × slope / ATR) |
 | TQ-20 | Short-window Trend Quality (20-bar) |
 | TSI | True Strength Index value |
-| ST / E20 / ADX / E50 | Per-policy pass/fail badges (green ✓ / red ✗) |
+| ST / E20 / ADX / TSI↑ / E50 | Per-policy pass/fail badges (green ✓ / red ✗); TSI↑ indicates a positive five-bar TSI slope |
 | Signal | Recent trend-state signal from the screening state machine: **NEW** (green, fresh signal with 5-bar stickiness) / **HOLD** (yellow, still in trend) / **BREAK** (red, active exit event shown for up to 5 bars including the event bar) / — |
 | 1W / 2W / 4W | Rank change vs those historical bar lookbacks, using the configured ranking metric (▲/▼/▶/—) |
 
@@ -199,7 +199,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 - **Overlay indicators** (toggle buttons): EMA 20 (blue, default on), EMA 50 (orange), SMA 200 (purple), SuperTrend (green/red segments)
 - **ADX sub-pane** (toggle, synchronized scroll/zoom): ADX line (gold), +DI (green), −DI (red), threshold line at `min_adx` (default 20, dashed, lineWidth=2)
 - **Policy signal markers** on the price chart: green ▲ NEW when the NEW group first passes after failing; red ▼ BREAK when the active BREAK group passes while the ticker is in trend. BREAK does not require a new false-to-true edge and can therefore occur on the bar immediately after NEW. Markers are computed server-side over the full 1460-bar history, respecting the current `config_overrides.screening` policy configuration.
-- **Indicator hover readout**: hovering a candle shows EMA20/EMA50/SMA200, SuperTrend, ADX, +DI/−DI, TSI, TQ-60/TQ-20 values and trend-policy states. States that differ from the previous candle are marked `changed`.
+- **Indicator hover readout**: hovering a candle shows EMA20/EMA50/SMA200, SuperTrend, ADX, +DI/−DI, TSI rising/falling and threshold states, TQ-60/TQ-20 values, and trend-policy states. States that differ from the previous candle are marked `changed`.
 - **Market regime line is clickable**: clicking it loads the corresponding index candle chart in the same right-side panel.
 - **Index chart behavior (regime click path)**:
   - NEW/BREAK markers are hidden.
@@ -214,8 +214,8 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 - **Selection**: rank NEW-rule candidates by TSI (default), TQ-60, or TQ-20, and set a positive Top N limit (default 20). Both values are persisted to `config_overrides.screening` for the current run.
 - Two framed rule groups shown side-by-side:
-  - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
-  - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`), ADX < `min_adx`, ADX falling, Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
+  - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, optional TSI rising (positive slope over the latest five valid bars), Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
+  - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`), ADX < `min_adx`, ADX falling, optional TSI falling (NOT TSI rising), Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
 - **Apply & Re-run** button — re-runs screening with updated policy config without creating a new run. Uses the shared `partials/apply_rerun_btn.html` partial. Default variant is `primary`; optional variants are `outline-primary`, `secondary`, and `outline-secondary`.
 - Policy state is persisted to `config_overrides.screening` in the run document
 

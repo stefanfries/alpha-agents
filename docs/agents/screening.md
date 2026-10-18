@@ -73,7 +73,7 @@ Same formula as TQ but computed over the last 20 bars instead of 60. Detects ear
 
 TSI = 100 * EMA_slow(EMA_fast(dClose)) / EMA_slow(EMA_fast(|dClose|))
 
-With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillator in `[-100, 100]`. Its `SelectionResult.tsi` value and screening-table column show the latest bar only. TSI does not affect the ranking score, but its configurable NEW/BREAK rules can affect candidate selection and trend signals.
+With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillator in `[-100, 100]`. Its `SelectionResult.tsi` value and screening-table column show the latest bar only. The TSI-rising NEW rule fits a linear slope to the latest five valid TSI values and passes when that slope is positive; insufficient or invalid history fails the rule. TSI does not affect the ranking score, but its configurable NEW/BREAK rules can affect candidate selection and trend signals.
 
 ---
 
@@ -102,6 +102,7 @@ NEW group rules:
 | `policy_ema20_rising` | EMA20[-1] > EMA20[-6] | on |
 | `policy_adx_above` | ADX[-1] > `min_adx` | on |
 | `policy_adx_rising` | Slope of ADX[-5:] > 0 | on |
+| `policy_tsi_rising` | Slope of TSI[-5:] > 0 | off |
 | `policy_price_above_ema50` | Close[-1] > EMA50[-1] | on |
 | `policy_tq60_above` | TQ-60 > `policy_tq60_min` | off |
 | `policy_tq20_above` | TQ-20 > `policy_tq20_min` | off |
@@ -116,6 +117,7 @@ BREAK group rules:
 | `policy_ema20_falling_break` | EMA20[t-2] > EMA20[t-1] > EMA20[t] | on |
 | `policy_adx_below_break` | ADX[-1] <= `min_adx` | on |
 | `policy_adx_falling_break` | ADX[-5:] slope <= 0 | on |
+| `policy_tsi_falling_break` | NOT TSI-rising (the complement of the five-bar TSI slope rule) | off |
 | `policy_price_below_ema50_break` | Close[-1] <= EMA50[-1] | on |
 | `policy_tsi_below_break` | TSI < `policy_tsi_break_max` | on |
 | `break_min_true` | Required true count among active BREAK rules (`None` = all) | `None` |
@@ -182,13 +184,15 @@ The agent compares the current TQ ranking against prior rankings stored in the d
 | `policy_tq60_min` | `0.05` | TQ-60 threshold when `policy_tq60_above` is enabled |
 | `policy_tq20_min` | `0.0` | TQ-20 threshold when `policy_tq20_above` is enabled |
 | `policy_tsi_above` | `True` | Enable TSI-above-threshold NEW rule |
+| `policy_tsi_rising` | `False` | Enable TSI-rising NEW rule (five-bar slope > 0) |
 | `policy_tsi_new_min` | `25.0` | TSI threshold for the NEW rule |
 | `new_min_true` | `None` | Required true NEW rules (`None` = all active NEW rules) |
 | `policy_supertrend_break` | `True` | Enable SuperTrend bearish BREAK rule |
 | `policy_ema20_falling_break` | `True` | Enable EMA20 falling BREAK rule |
 | `policy_adx_below_break` | `True` | Enable ADX-below-threshold BREAK rule |
-| `policy_adx_falling_break` | `True` | Enable ADX-falling BREAK rule |
+| `policy_adx_falling_break` | `False` | Enable ADX-falling BREAK rule |
 | `policy_price_below_ema50_break` | `True` | Enable price-below-EMA50 BREAK rule |
+| `policy_tsi_falling_break` | `False` | Enable TSI-falling BREAK rule (NOT TSI-rising) |
 | `policy_tsi_below_break` | `True` | Enable TSI-below-threshold BREAK rule |
 | `policy_tsi_break_max` | `20.0` | TSI threshold for the BREAK rule |
 | `break_min_true` | `None` | Required true BREAK rules (`None` = all active BREAK rules) |

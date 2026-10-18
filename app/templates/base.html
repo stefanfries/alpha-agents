@@ -133,7 +133,7 @@
             ['Price / EMA50', (states.price_above_ema50 ? 'above' : 'below') + ' · EMA50 ' + indicatorText(values.ema50, 2), changedAny(['price_above_ema50', 'price_below_ema50'])],
             ['TQ60', indicatorText(values.tq60, 4) + ' · pass ' + yesNo(states.tq60_above), changedAny(['tq60_above'])],
             ['TQ20', indicatorText(values.tq20, 4) + ' · pass ' + yesNo(states.tq20_above), changedAny(['tq20_above'])],
-            ['TSI', indicatorText(values.tsi, 2) + ' · NEW ' + yesNo(states.tsi_above) + ' · BREAK ' + yesNo(states.tsi_below), changedAny(['tsi_above', 'tsi_below'])],
+            ['TSI', indicatorText(values.tsi, 2) + ' · rising ' + yesNo(states.tsi_rising) + ' · falling ' + yesNo(states.tsi_falling) + ' · NEW ' + yesNo(states.tsi_above) + ' · BREAK ' + yesNo(states.tsi_below), changedAny(['tsi_rising', 'tsi_falling', 'tsi_above', 'tsi_below'])],
           ];
 
           tooltipDate.textContent = snapshot.time;

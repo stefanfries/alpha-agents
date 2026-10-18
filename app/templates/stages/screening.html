@@ -128,6 +128,7 @@
                 <th class="text-center" title="EMA20 rising">EMA20</th>
                 <th class="text-center" title="ADX &gt; {{ min_adx }}">ADX&gt;</th>
                 <th class="text-center" title="ADX rising">ADX↑</th>
+                <th class="text-center" title="TSI rising (positive slope over the last five bars)">TSI↑</th>
                 <th class="text-center" title="Price above EMA50">EMA50</th>
                 <th class="text-center" title="Latest completed weekly close above a rising weekly EMA20">Week</th>
                 <th class="text-center" title="Recent trend-state signal (NEW persists up to 5 bars; BREAK persists up to 5 bars total)">Signal</th>
@@ -166,6 +167,7 @@
                 <td class="text-center">{{ policy_badge(pol.get("ema20_rising", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("adx_above", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("adx_rising", false)) }}</td>
+                <td class="text-center">{{ policy_badge(pol.get("tsi_rising", false)) }}</td>
                 <td class="text-center">{{ policy_badge(pol.get("price_above_ema50", false)) }}</td>
                 <td class="text-center">{{ policy_badge(r.weekly_confirmed.get(sym, false)) }}</td>
                 {% set sig = r.trend_signals.get(sym) or "" %}
@@ -250,6 +252,11 @@
                     <label class="form-check-label small" for="pol_adx_rising">ADX rising</label>
                   </div>
                   <div class="form-check form-check-inline mb-0">
+                    <input class="form-check-input new-policy-checkbox" type="checkbox" name="policy_tsi_rising" id="pol_tsi_rising"
+                           {% if pol_cfg.get("policy_tsi_rising", false) %}checked{% endif %}>
+                    <label class="form-check-label small" for="pol_tsi_rising">TSI rising</label>
+                  </div>
+                  <div class="form-check form-check-inline mb-0">
                     <input class="form-check-input new-policy-checkbox" type="checkbox" name="policy_price_above_ema50" id="pol_ema50"
                            {% if pol_cfg.get("policy_price_above_ema50", true) %}checked{% endif %}>
                     <label class="form-check-label small" for="pol_ema50">Price &gt; EMA50</label>
@@ -280,7 +287,7 @@
                   </div>
                   <div class="d-inline-flex align-items-center gap-2">
                       <label class="small text-muted mb-0" for="new_min_true">Minimum of selected</label>
-                             <input class="form-control form-control-sm w-auto" type="number" min="1" max="7"
+                            <input class="form-control form-control-sm w-auto" type="number" min="1" max="9"
                            name="new_min_true" id="new_min_true"
                         value="{{ pol_cfg.get('new_min_true', '') }}" placeholder="all">
                   </div>
@@ -310,6 +317,11 @@
                            {% if pol_cfg.get("policy_adx_falling_break", false) %}checked{% endif %}>
                     <label class="form-check-label small" for="pol_adx_falling_brk">ADX falling</label>
                   </div>
+                  <div class="form-check form-check-inline mb-0" style="display:flex;align-items:center;gap:0.5rem">
+                    <input class="form-check-input break-policy-checkbox" type="checkbox" name="policy_tsi_falling_break" id="pol_tsi_falling_brk"
+                          {% if pol_cfg.get("policy_tsi_falling_break", false) %}checked{% endif %}>
+                    <label class="form-check-label small" for="pol_tsi_falling_brk">TSI falling</label>
+                  </div>
                   <div class="form-check form-check-inline mb-0">
                     <input class="form-check-input break-policy-checkbox" type="checkbox" name="policy_price_below_ema50_break" id="pol_ema50_brk"
                            {% if pol_cfg.get("policy_price_below_ema50_break", true) %}checked{% endif %}>
@@ -325,7 +337,7 @@
                   </div>
                   <div class="d-inline-flex align-items-center gap-2">
                       <label class="small text-muted mb-0" for="break_min_true">Minimum of selected</label>
-                             <input class="form-control form-control-sm w-auto" type="number" min="1" max="5"
+                             <input class="form-control form-control-sm w-auto" type="number" min="1" max="7"
                            name="break_min_true" id="break_min_true"
                         value="{{ pol_cfg.get('break_min_true', 1) }}" placeholder="1">
                   </div>

@@ -394,6 +394,7 @@ async def restart_stage(
     policy_tq60_min: Annotated[str | None, Form()] = None,
     policy_tq20_min: Annotated[str | None, Form()] = None,
     policy_tsi_above: Annotated[str | None, Form()] = None,
+    policy_tsi_rising: Annotated[str | None, Form()] = None,
     policy_tsi_new_min: Annotated[str | None, Form()] = None,
     new_min_true: Annotated[str | None, Form()] = None,
     policy_supertrend_break: Annotated[str | None, Form()] = None,
@@ -401,6 +402,7 @@ async def restart_stage(
     policy_adx_below_break: Annotated[str | None, Form()] = None,
     policy_adx_falling_break: Annotated[str | None, Form()] = None,
     policy_price_below_ema50_break: Annotated[str | None, Form()] = None,
+    policy_tsi_falling_break: Annotated[str | None, Form()] = None,
     policy_tsi_below_break: Annotated[str | None, Form()] = None,
     policy_tsi_break_max: Annotated[str | None, Form()] = None,
     break_min_true: Annotated[str | None, Form()] = None,
@@ -491,6 +493,7 @@ async def restart_stage(
                 policy_tq60_above is not None,
                 policy_tq20_above is not None,
                 policy_tsi_above is not None,
+                policy_tsi_rising is not None,
             ]
         )
         break_selected = sum(
@@ -500,6 +503,7 @@ async def restart_stage(
                 policy_adx_below_break is not None,
                 policy_adx_falling_break is not None,
                 policy_price_below_ema50_break is not None,
+                policy_tsi_falling_break is not None,
                 policy_tsi_below_break is not None,
             ]
         )
@@ -522,6 +526,7 @@ async def restart_stage(
             "policy_tq60_min": parsed_tq60_min,
             "policy_tq20_min": parsed_tq20_min,
             "policy_tsi_above": policy_tsi_above is not None,
+            "policy_tsi_rising": policy_tsi_rising is not None,
             "policy_tsi_new_min": parsed_tsi_new_min,
             "new_min_true": safe_new_min,
             "policy_supertrend_break": policy_supertrend_break is not None,
@@ -529,6 +534,7 @@ async def restart_stage(
             "policy_adx_below_break": policy_adx_below_break is not None,
             "policy_adx_falling_break": policy_adx_falling_break is not None,
             "policy_price_below_ema50_break": policy_price_below_ema50_break is not None,
+            "policy_tsi_falling_break": policy_tsi_falling_break is not None,
             "policy_tsi_below_break": policy_tsi_below_break is not None,
             "policy_tsi_break_max": parsed_tsi_break_max,
             "break_min_true": safe_break_min,

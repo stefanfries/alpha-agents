@@ -96,6 +96,7 @@ async def test_screening_selected_uses_configured_rank_order_and_top_n(
         "tq60_above": True,
         "tq20_above": True,
         "tsi_above": True,
+        "tsi_rising": True,
         "tsi_below": False,
     }
     agent._trend_signal = lambda *args, **kwargs: None
@@ -134,6 +135,7 @@ async def test_screening_exposes_atr_normalized_extension_without_changing_selec
         "tq60_above": True,
         "tq20_above": True,
         "tsi_above": True,
+        "tsi_rising": True,
         "tsi_below": False,
     }
     agent._trend_signal = lambda *args, **kwargs: None
@@ -1007,6 +1009,7 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         policy_tq60_min="0.07",
         policy_tq20_min="0.02",
         policy_tsi_above="on",
+        policy_tsi_rising="on",
         policy_tsi_new_min="30",
         new_min_true="99",
         policy_supertrend_break="on",
@@ -1014,6 +1017,7 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         policy_adx_below_break="on",
         policy_adx_falling_break=None,
         policy_price_below_ema50_break=None,
+        policy_tsi_falling_break="on",
         policy_tsi_below_break=None,
         policy_tsi_break_max="15",
         break_min_true="0",
@@ -1040,13 +1044,15 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         "policy_tq60_min": 0.07,
         "policy_tq20_min": 0.02,
         "policy_tsi_above": True,
+        "policy_tsi_rising": True,
         "policy_tsi_new_min": 30.0,
-        "new_min_true": 6,
+        "new_min_true": 7,
         "policy_supertrend_break": True,
         "policy_ema20_falling_break": False,
         "policy_adx_below_break": True,
         "policy_adx_falling_break": False,
         "policy_price_below_ema50_break": False,
+        "policy_tsi_falling_break": True,
         "policy_tsi_below_break": False,
         "policy_tsi_break_max": 15.0,
         "break_min_true": 1,
