@@ -88,8 +88,7 @@
       {# Build screening rank order from the stored screening result #}
       {% set scr = execution.stages.screening.result if execution.stages and execution.stages.screening and execution.stages.screening.result else none %}
       {% set scr_sel_syms = scr.selected | map(attribute='symbol') | list if scr else [] %}
-      {% set scr_scores = scr.scores if scr else {} %}
-      {% set scr_ordered = scr_scores.items() | selectattr('0', 'in', scr_sel_syms) | sort(attribute='1', reverse=True) | map(attribute='0') | list %}
+      {% set scr_ordered = scr_sel_syms %}
 
       <div class="d-flex flex-grow-1 gap-3 overflow-hidden" style="min-height:0">
         {# Left: main warrant table #}
@@ -225,17 +224,16 @@
               </tr>
             </thead>
             <tbody>
-              {% set rank = namespace(n=0) %}
               {% for sym in scr_ordered %}
+              {% set screening_rank = loop.index %}
               {% for w in r.selected if w.underlying.symbol == sym %}
-              {% set rank.n = rank.n + 1 %}
               {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
               {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
               <tr style="cursor:pointer"
                   data-top3='{{ top3_list | tojson }}'
                   data-analyzed="{{ analyzed }}"
                   onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
-                <td class="text-muted small">{{ rank.n }}</td>
+                <td class="text-muted small">{{ screening_rank }}</td>
                 <td><span class="badge bg-secondary">ENTRY</span></td>
                 <td>
                   <code>{{ w.underlying.symbol }}</code>

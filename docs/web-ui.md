@@ -324,7 +324,11 @@ makes visible that every searched alternative scored worse than the incumbent). 
 `ROLL` (incumbent) row is informational only.
 
 **Entries table** (rendered below Rolls): one row per underlying, ordered by screening
-TQ rank.
+rank using the configured metric (TSI, TQ-60, or TQ-20), best first. Rank numbers match
+the Screening table and retain gaps when monitoring excludes an underlying or no
+suitable warrant is found. Rank 1 precedes rank 2 (descending screening metric,
+ascending rank number). Warrant scores do not reorder underlyings; the downstream
+portfolio and execution stages preserve the entry order for BUY priority.
 
 | Column | Description |
 | ------ | ----------- |

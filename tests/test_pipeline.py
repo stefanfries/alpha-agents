@@ -1430,6 +1430,56 @@ async def test_warrant_selection_caps_to_max_selected_with_backfill():
     assert "D" not in result.skipped  # overflow is dropped, not mislabeled as no-warrant
 
 
+@pytest.mark.parametrize("remaining_symbols", [["C", "A"], ["C"]])
+def test_warrant_selection_table_preserves_screening_ranks(remaining_symbols):
+    import re
+
+    from app.config import WarrantSelectionSettings
+    from app.routes.pipeline import templates
+
+    screening = SelectionResult(
+        selected=[Ticker(symbol=symbol) for symbol in ["A", "B", "C"]],
+        scores={"A": 0.1, "B": 0.2, "C": 0.3},
+        rationale={},
+    )
+    warrants = WarrantSelectionResult(
+        selected=[
+            SelectedWarrant(
+                underlying=Ticker(symbol=symbol),
+                warrant_isin=f"W_{symbol}",
+                warrant_wkn=f"W_{symbol}",
+                score=0.5,
+                rationale="test",
+            )
+            for symbol in remaining_symbols
+        ],
+        skipped=["B"],
+    )
+    html = templates.env.get_template("stages/warrant_selection.html").render(
+        execution={
+            "execution_id": "exec1",
+            "stages": {"screening": {"result": screening.model_dump(mode="json")}},
+        },
+        qs_id="qs1",
+        stage_status="awaiting_review",
+        stage_result=warrants.model_dump(mode="json"),
+        warrant_selection_cfg={
+            **WarrantSelectionSettings().model_dump(),
+            "min_months": 9,
+            "max_months": 15,
+        },
+    )
+    rows = re.findall(
+        r'<td class="text-muted small">(\d+)</td>\s*'
+        r'<td><span class="badge bg-secondary">ENTRY</span></td>\s*'
+        r'<td>\s*<code>([^<]+)</code>',
+        html,
+    )
+    expected = [(str(index), ticker.symbol) for index, ticker in enumerate(screening.selected, 1)
+                if ticker.symbol in remaining_symbols]
+    assert rows == expected
+
+
 def _roll_finhub(wkn: str = "NEW123", maturity_days: int = 330):
     mat = (date.today() + timedelta(days=maturity_days)).isoformat()
 

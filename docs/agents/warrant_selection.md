@@ -151,8 +151,10 @@ Note: in warrant selection, the effective maturity target is derived from the se
 
 The warrant selection stage page shows:
 
+Entry rows use `SelectionResult.selected` as the authoritative screening order, regardless of the configured ranking metric. They retain the original screening rank numbers, including gaps caused by monitoring exclusions or missing suitable warrants. Best-ranked means rank 1 first (descending screening metric, ascending rank number); warrant scores choose between warrants for an underlying, not between underlyings.
+
 - **Status summary** (top): count of selected warrants, rolls, and skipped underlyings. Skipped underlyings are listed as `SYMBOL - underlying name - reason` (name and reason shown when available).
-- **Main table** (left, 55%): one row per underlying, ordered by screening TQ rank. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) or `ROLL` (replacement). Optional `ROLL/SELL` is supported when `roll_sell_underlyings` is populated (no replacement cleared the roll score margin — the incumbent is a known-degraded warrant, so it is recommended for SELL rather than being kept).
+- **Main table** (left, 55%): one row per underlying, ordered by the configured screening rank, best first, with original rank numbers retained. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) or `ROLL` (replacement). Optional `ROLL/SELL` is supported when `roll_sell_underlyings` is populated (no replacement cleared the roll score margin — the incumbent is a known-degraded warrant, so it is recommended for SELL rather than being kept).
 - **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
 - **Strike controls** (below table): configurable strike min/max factors plus a read-only target strike factor field showing the midpoint of the selected strike range.
