@@ -222,8 +222,8 @@ async def test_portfolio_account_equal_sizing_uses_available_buy_slots():
     assert result.target_weights == {"A": 0.0749212, "B": 0.0749212}
 
 
-def test_risk_sector_cap_defaults_to_eighty_percent():
-    assert RiskSettings().max_sector_weight == 0.8
+def test_risk_sector_cap_defaults_to_fifty_percent():
+    assert RiskSettings().max_sector_weight == 0.5
 
 
 @pytest.mark.asyncio
