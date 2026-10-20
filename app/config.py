@@ -158,7 +158,7 @@ class PortfolioSettings(BaseModel):
 
 class RiskSettings(BaseModel):
     max_position_multiple: float = 3.0
-    max_sector_weight: float = 0.8
+    max_sector_weight: float = 0.5
 
 
 class ExecutionSettings(BaseModel):
