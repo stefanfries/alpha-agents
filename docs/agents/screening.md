@@ -63,7 +63,7 @@ Where:
 - Slope_60 = regression slope in price units per bar — rewards **upward direction and steepness**
 - ATR_20 = 20-period Average True Range — **normalises** slope for per-ticker volatility
 
-TQ can be negative (bearish trends), zero (flat), or positive. It is the primary sort column for ranking.
+TQ can be negative (bearish trends), zero (flat), or positive. It is stored in `SelectionResult.scores` and drives candidate ranking when `ranking_metric=tq60`; the default ranking metric is TSI.
 
 #### TQ-20 — Trend Quality (short window, 20-bar)
 
@@ -73,7 +73,7 @@ Same formula as TQ but computed over the last 20 bars instead of 60. Detects ear
 
 TSI = 100 * EMA_slow(EMA_fast(dClose)) / EMA_slow(EMA_fast(|dClose|))
 
-With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillator in `[-100, 100]`. Its `SelectionResult.tsi` value and screening-table column show the latest bar only. The TSI-rising NEW rule fits a linear slope to the latest five valid TSI values and passes when that slope is positive; insufficient or invalid history fails the rule. TSI does not affect the ranking score, but its configurable NEW/BREAK rules can affect candidate selection and trend signals.
+With `fast = 13`, `slow = 25` (configurable). TSI is a bounded momentum oscillator in `[-100, 100]`. Its `SelectionResult.tsi` value and screening-table column show the latest bar only. The TSI-rising NEW rule fits a linear slope to the latest five valid TSI values and passes when that slope is positive; insufficient or invalid history fails the rule. TSI drives candidate ranking when `ranking_metric=tsi` (the default), without changing the TQ-60 values in `scores`. Its configurable NEW/BREAK rules can also affect candidate selection and trend signals.
 
 ---
 

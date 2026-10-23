@@ -259,10 +259,35 @@ If NAV is incomplete, an alert lists the affected held-warrant quote or cash val
 3. **Incumbent positions (keep)** table (`positions_to_keep`): HOLD rows with rationale.
 4. **Entry candidates** table: all eligible new-entry candidates in screening rank order (not capped to `free_positions`; the slot cap is applied downstream in warrant selection with backfill).
 
+All four tables include a rank column immediately after `Underlying name`. Its heading
+uses the execution's screening `Rank candidates by` setting: `TSI rank`, `TQ-60 rank`,
+or `TQ-20 rank` (falling back to the configured screening default when no override exists).
+Ranks compare all successfully evaluated screening stocks, including those that fail
+entry policies or fall outside the selected shortlist. Higher metric values rank first;
+equal values share a rank, with subsequent ranks skipped (1, 2, 2, 4).
+Skipped stocks with placeholder scores, missing/non-finite metric values, and holdings
+outside the screened universe show a dash. Hovering anywhere in a rank cell or focusing
+it with the keyboard reveals a Bootstrap tooltip with the metric name and value to
+three decimals. Tooltips render outside the scroll area to avoid clipping.
+Ranks are derived from this execution's stored screening snapshot, not fetched again or
+persisted in monitoring output. They are advisory and do not change SELL/ROLL/KEEP,
+entry eligibility or replacement decisions. SELL, ROLL, and KEEP rows are displayed in
+ascending numeric rank order (1 = strongest), with unranked holdings last and ties
+retaining their original relative order. ENTRY candidates preserve screening's
+strongest-first order. Sorting is presentation-only and does not mutate stored stage
+results. Unlike screening's shortlist numbering, these ranks use one shared
+universe-wide pool.
+
+The four tables share one fixed column layout so rank headers and values align
+strictly across sections, including ENTRY. Rank headers and cells have extra right
+padding to separate them from Warrant WKN. Tables keep a minimum readable width and
+scroll horizontally within the existing review area on narrow screens.
+
 | Column | Description |
 | ------ | ----------- |
 | Symbol | Underlying symbol |
 | Underlying name | Canonical display name (prefer universe-by-ISIN; fallback cache name) |
+| `<metric> rank` | Shared screening-universe rank (1 = strongest); tooltip shows the underlying metric value |
 | Warrant WKN | Held warrant |
 | Qty | Held warrant units from the depot snapshot |
 | Held since | Held-since date from latest depot snapshot position; for virtual depots, fallback to recent BUY transaction when snapshot value is missing |
@@ -283,6 +308,7 @@ Entry-candidate columns:
 | ------ | ----------- |
 | Symbol | Underlying ticker |
 | Underlying name | Name from screening universe |
+| `<metric> rank` | Same universe-wide rank and metric tooltip as the held-position tables |
 
 **User actions at approve:**
 

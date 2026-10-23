@@ -356,6 +356,15 @@ Both use midpoint prices, unlike bid-valued NAV. Each total is unavailable if an
 holding lacks its required quantity, price, or EUR quote currency; the daily calculation
 also requires a previous-close percentage greater than -100. Empty holdings produce zero.
 
+Monitoring table ranks are also presentation-only: the route combines the execution's
+screening `ranking_metric` with `SelectionResult.scores` (TQ-60), `tq_short` (TQ-20),
+or `tsi`. Membership in `policy_results` distinguishes evaluated stocks from skipped
+stocks with placeholder scores. Only finite, present metric values receive ranks;
+ties share a rank. The route sorts copies of the SELL, ROLL, and KEEP lists by
+ascending numeric rank, leaving unranked entries last and ties stable. Stored position
+list order and ENTRY candidate order remain unchanged. No rank fields are added to
+`PositionReview` or `MonitoringResult`.
+
 ### `PortfolioProposal`
 
 Output of `PortfolioConstructionAgent`. Input of `RiskAgent`.

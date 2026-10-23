@@ -85,6 +85,27 @@ they do not introduce new agent output fields or additional market-data requests
 
 See [Web UI Spec](../web-ui.md#44-monitoring--stagesmonitoring) for presentation details.
 
+### Advisory Screening Ranks
+
+The review page adds `TSI rank`, `TQ-60 rank`, or `TQ-20 rank` immediately after the
+underlying name in SELL, ROLL, KEEP, and ENTRY tables, following the execution's
+screening ranking setting. One descending ranking pool covers every successfully
+evaluated screening stock, not just entry-eligible or selected stocks. Equal metric
+values share a rank (1, 2, 2, 4); hovering anywhere in the rank cell or focusing it
+with the keyboard reveals a Bootstrap tooltip with the metric value to three decimals. Skipped stocks,
+missing/non-finite values, and holdings absent from screening show a dash.
+
+The route derives these ranks from the saved screening result; the agent contract and
+decisions are unchanged. SELL, ROLL, and KEEP tables display ascending numeric ranks
+(strongest first), with unranked rows last and stable ordering for ties. ENTRY retains
+screening's strongest-first order. Only the rendering context is sorted; stored results
+remain unchanged. This supports manual incumbent-versus-challenger comparison
+but does not implement automatic momentum replacement or imply a significant score gap.
+
+All four tables share one fixed column layout and rank-cell padding, keeping ENTRY
+ranks aligned with held-position ranks and separated from Warrant WKN. Narrow screens
+use horizontal scrolling rather than compressing the columns.
+
 ## Tools used
 
 None directly.

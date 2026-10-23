@@ -23,6 +23,18 @@ Current runtime behavior remains:
 4. Market regime classification is implemented (green/yellow/red with breadth enrichment).
 5. Warrant-health degradation checks are implemented for roll classification.
 
+### Advisory UI Update (2026-10-23)
+
+Monitoring now shows one comparable universe-wide screening rank in SELL, ROLL,
+KEEP, and ENTRY tables, using the execution's configured TSI, TQ-60, or TQ-20 metric.
+Hovering or focusing a rank cell reveals the metric value. Held tables display
+strongest-first ranks; ENTRY retains screening order. Invalid or unavailable metrics
+remain unranked. This supports manual incumbent-versus-challenger review only:
+rank gaps do not measure economic advantage, and none of the replacement triggers,
+cost guardrails, or churn controls below are enabled by this UI change.
+
+See [Web UI Spec](web-ui.md#44-monitoring--stagesmonitoring) for exact rank semantics.
+
 ### Rule coverage status against this policy
 
 1. Replacement eligibility (holding age, top-5 challenger, NEW/HOLD challenger, 2-bar persistence): Not implemented.

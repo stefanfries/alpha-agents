@@ -111,6 +111,14 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 
 The pipeline exposes a **web UI** built with FastAPI + Jinja2 + HTMX (see [ADR-008](decisions/ADR-008-web-ui.md)). The user reviews each stage's output in a browser, then clicks to approve or restart. Screening and warrant-selection stages load interactive **Lightweight Charts v4** candlestick charts on demand. Their chart payloads include per-candle EMA 20/50, SMA 200, SuperTrend, ADX, +DI/−DI, TSI, TQ-60/TQ-20, and trend-policy states computed server-side. Hovering a candle shows that snapshot and marks policy states that changed since the prior candle. These snapshots are transient chart data; persisted screening results continue to expose latest-bar per-ticker summaries. The screening chart also has a synchronized ADX sub-pane. The market-regime header in Screening is clickable and loads the benchmark index chart; this index view hides NEW/BREAK markers and can show trailing TQ regression overlays (20/60 bars only). The warrant selection stage shows a split-panel layout: a main table ordered by screening rank, a top-3 warrant detail panel (shown on row click), and an underlying stock chart with strike and maturity markers plus NEW/BREAK markers.
 
+Monitoring presents a shared screening-universe rank after the underlying name in
+SELL, ROLL, KEEP, and ENTRY tables, using the execution's selected TSI/TQ-60/TQ-20
+metric. Held tables display strongest first (ascending rank number), with unranked
+positions last; ENTRY retains screening order. Hover/focus tooltips expose the metric
+value. The route derives and sorts this presentation from stored screening results
+without changing agent outputs, persisted position order, or replacement decisions.
+See [Web UI Spec](web-ui.md#44-monitoring--stagesmonitoring).
+
 For a concise list of recent functional/documentation changes, see the **Session updates (2026-08-02)** section in [README.md](../README.md).
 
 ## Deployment

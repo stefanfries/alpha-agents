@@ -25,6 +25,26 @@
   {% set rolls = r.positions_to_roll | default([], true) | list %}
   {% set holdings_value = (r.nav_eur | float) - (r.available_cash_eur | float) if r.nav_eur is not none and r.available_cash_eur is not none else none %}
   {% set has_nav = r.nav_eur is not none and (r.nav_eur | float) > 0 %}
+  {% set rank_label = monitoring_rank_label | default('Screening') %}
+  {% set rank_values = monitoring_ranks | default({}) %}
+  {% macro monitoring_columns() %}
+    <colgroup>
+      {% for width in [9, 13, 6, 7, 5, 8, 5, 6, 6, 7, 6, 5, 5, 5, 5, 6, 9, 9, 8, 4] %}
+      <col style="width:{{ width }}%">
+      {% endfor %}
+    </colgroup>
+  {% endmacro %}
+  {% macro screening_rank(symbol) %}
+    {% set ranked = rank_values.get(symbol) %}
+    {% set tooltip = rank_label ~ ': ' ~ ('%.3f' | format(ranked.value)) if ranked else 'No valid screening metric in this execution' %}
+    <td class="text-end pe-3" data-bs-toggle="tooltip" tabindex="0" title="{{ tooltip }}" style="cursor:help">
+      {% if ranked %}
+        {{ ranked.rank }}
+      {% else %}
+        <span class="text-muted">—</span>
+      {% endif %}
+    </td>
+  {% endmacro %}
   {% set changes = namespace(day=0, buy=0, has_day=true, has_buy=true) %}
   {% for p in r.positions_to_keep + r.positions_to_sell + rolls %}
     {% set day_pct = p.get('pct_change_from_prev_close', p.get('day_change_pct')) %}
@@ -218,36 +238,17 @@
         {% if r.positions_to_sell %}
         <div>
           <h6 class="text-danger mb-2">Exit signals</h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
-            <colgroup>
-              <col style="width:9%">
-              <col style="width:15%">
-              <col style="width:7%">
-              <col style="width:5%">
-              <col style="width:8%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:6%">
-              <col style="width:7%">
-              <col style="width:6%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:9%">
-              <col style="width:9%">
-              <col style="width:8%">
-              <col style="width:4%">
-            </colgroup>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
+            {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_sell %}
               <tr>
                 <td><code>{{ p.underlying_symbol }}</code></td>
                 <td>{{ p.underlying_name or "—" }}</td>
+                {{ screening_rank(p.underlying_symbol) }}
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
@@ -276,36 +277,17 @@
         {% if rolls %}
         <div>
           <h6 class="text-primary mb-2">Roll recommendations</h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
-            <colgroup>
-              <col style="width:9%">
-              <col style="width:15%">
-              <col style="width:7%">
-              <col style="width:5%">
-              <col style="width:8%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:6%">
-              <col style="width:7%">
-              <col style="width:6%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:9%">
-              <col style="width:9%">
-              <col style="width:8%">
-              <col style="width:4%">
-            </colgroup>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
+            {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in rolls %}
               <tr>
                 <td><code>{{ p.underlying_symbol }}</code></td>
                 <td>{{ p.underlying_name or "—" }}</td>
+                {{ screening_rank(p.underlying_symbol) }}
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
@@ -334,36 +316,17 @@
         {% if r.positions_to_keep %}
         <div>
           <h6 class="text-success mb-2">Incumbent positions (keep)</h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
-            <colgroup>
-              <col style="width:9%">
-              <col style="width:15%">
-              <col style="width:7%">
-              <col style="width:5%">
-              <col style="width:8%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:6%">
-              <col style="width:7%">
-              <col style="width:6%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:9%">
-              <col style="width:9%">
-              <col style="width:8%">
-              <col style="width:4%">
-            </colgroup>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
+            {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
               <tr>
                 <td><code>{{ p.underlying_symbol or "?" }}</code></td>
                 <td>{{ p.underlying_name or "—" }}</td>
+                {{ screening_rank(p.underlying_symbol) }}
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
@@ -392,36 +355,18 @@
         {% if r.entry_candidates %}
         <div>
           <h6 class="mb-2">Entry candidates <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ r.entry_candidates | length }} / {{ r.free_positions }} slots</span></h6>
-          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;font-size:0.85rem">
-            <colgroup>
-              <col style="width:9%">
-              <col style="width:15%">
-              <col style="width:7%">
-              <col style="width:5%">
-              <col style="width:8%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:6%">
-              <col style="width:7%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:5%">
-              <col style="width:6%">
-              <col style="width:9%">
-              <col style="width:9%">
-              <col style="width:8%">
-              <col style="width:4%">
-            </colgroup>
+          <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
+            {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th colspan="16"></th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th colspan="17"></th></tr>
             </thead>
             <tbody>
               {% for t in r.entry_candidates %}
               <tr>
                 <td><code>{{ t.symbol }}</code></td>
                 <td>{{ t.name or "—" }}</td>
-                <td colspan="16"></td>
+                {{ screening_rank(t.symbol) }}
+                <td colspan="17"></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -509,4 +454,15 @@
 {% else %}
   <p class="text-muted">Pending.</p>
 {% endif %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(cell => {
+      bootstrap.Tooltip.getOrCreateInstance(cell, {
+        container: 'body',
+        trigger: 'hover focus',
+        animation: false,
+      });
+    });
+  });
+</script>
 {% endblock %}

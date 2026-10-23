@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
+from starlette.requests import Request
+from starlette.templating import Jinja2Templates
 
 from app.agents.monitoring import MonitoringAgent, MonitoringInput, WarrantSnapshot
 from app.config import MonitoringSettings
@@ -25,6 +27,22 @@ from app.models.signals import (
     SelectionResult,
     WarrantSelectionResult,
 )
+
+
+@pytest.fixture
+def monitoring_environment():
+    environment = Environment(
+        loader=ChoiceLoader([
+            DictLoader({
+                "base.html": "{% block content %}{% endblock %}",
+                "partials/action_bar.html": "",
+            }),
+            FileSystemLoader(Path(__file__).parents[1] / "app" / "templates"),
+        ]),
+        autoescape=True,
+    )
+    register_currency_filters(environment)
+    return environment
 
 
 @pytest.mark.parametrize(
@@ -43,18 +61,7 @@ from app.models.signals import (
         ({"quote_currency": "USD"}, None, None),
     ],
 )
-def test_monitoring_held_position_changes(overrides, day_total, buy_total):
-    environment = Environment(
-        loader=ChoiceLoader([
-            DictLoader({
-                "base.html": "{% block content %}{% endblock %}",
-                "partials/action_bar.html": "",
-            }),
-            FileSystemLoader(Path(__file__).parents[1] / "app" / "templates"),
-        ]),
-        autoescape=True,
-    )
-    register_currency_filters(environment)
+def test_monitoring_held_position_changes(monitoring_environment, overrides, day_total, buy_total):
     result = MonitoringResult(
         positions_to_keep=[PositionReview(
             underlying_symbol="KEEP", warrant_isin="KEEP", warrant_wkn="KEEP",
@@ -74,7 +81,7 @@ def test_monitoring_held_position_changes(overrides, day_total, buy_total):
         entry_candidates=[], free_positions=0, excluded_symbols=[],
     )
 
-    html = environment.get_template("stages/monitoring.html").render(
+    html = monitoring_environment.get_template("stages/monitoring.html").render(
         execution={"execution_id": "test"}, stage_status="awaiting_review",
         stage_result=result.model_dump(mode="json"),
     )
@@ -91,6 +98,101 @@ def test_monitoring_held_position_changes(overrides, day_total, buy_total):
             color = "text-success" if total >= 0 else "text-danger"
             sign = "+" if total > 0 else ""
             assert f'<span class="{color}">{sign}{format_eur(total)}</span>' in row
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ranking_metric", [None, "tq60", "tq20", "tsi"])
+@pytest.mark.parametrize("has_screening", [True, False])
+async def test_monitoring_universe_ranks(monkeypatch, monitoring_environment, ranking_metric, has_screening):
+    from app.routes import pipeline as pipeline_module
+
+    monkeypatch.setattr(pipeline_module.settings.screening, "ranking_metric", "tsi")
+    metric_field, metric_label = {
+        "tq60": ("scores", "TQ-60"), "tq20": ("tq_short", "TQ-20"), "tsi": ("tsi", "TSI"),
+    }[ranking_metric or "tsi"]
+    values = {"KEEP": 1.0, "SELL": 2.0, "ROLL": 2.0, "ENTRY": 4.0, "OUTSIDE": 3.0,
+              "ZERO": 0.0, "NEGATIVE": -1.0, "NAN": float("nan"), "INF": float("inf")}
+    screening = {
+        field: {symbol: -value for symbol, value in values.items()}
+        for field in ("scores", "tq_short", "tsi")
+    }
+    screening[metric_field] = {**values, "SKIPPED": 0.0}
+    screening["policy_results"] = {symbol: {} for symbol in [*values, "MISSING"]}
+    screening["selected"] = [{"symbol": "ENTRY"}]
+    result = MonitoringResult(
+        positions_to_keep=[PositionReview(
+            underlying_symbol=symbol, warrant_isin=symbol, warrant_wkn=symbol,
+            underlying_name=f"{symbol} company",
+        ) for symbol in ("KEEP", "SKIPPED", "UNSCREENED", "NAN", "INF", "MISSING", "ZERO", "NEGATIVE")],
+        positions_to_sell=[PositionReview(
+            underlying_symbol=symbol, warrant_isin=symbol, warrant_wkn=symbol,
+            underlying_name=f"{symbol} company",
+        ) for symbol in ("SELL", "SKIPPED", "ROLL", "ZERO", "NEGATIVE")],
+        positions_to_roll=[PositionReview(
+            underlying_symbol=symbol, warrant_isin=symbol, warrant_wkn=symbol,
+            underlying_name=f"{symbol} company",
+        ) for symbol in ("ROLL", "SKIPPED", "SELL", "NEGATIVE", "ZERO")],
+        entry_candidates=[Ticker(symbol=symbol, name=f"{symbol} company") for symbol in ("ENTRY", "OUTSIDE")],
+        free_positions=1, excluded_symbols=[],
+    )
+    execution = {
+        "execution_id": "test", "quant_system_id": "qs",
+        "config_overrides": {"screening": {"ranking_metric": ranking_metric} if ranking_metric else {}},
+        "stages": {
+            "screening": {"result": screening if has_screening else None},
+            "monitoring": {"status": "awaiting_review", "result": result.model_dump(mode="json")},
+        },
+    }
+
+    class FakeExecutions:
+        async def find_one(self, *_args):
+            return execution
+
+    table_fields = ("positions_to_sell", "positions_to_roll", "positions_to_keep", "entry_candidates")
+    original_orders = {
+        field: [position.get("underlying_symbol", position.get("symbol"))
+                for position in execution["stages"]["monitoring"]["result"][field]]
+        for field in table_fields
+    }
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: FakeExecutions())
+    monkeypatch.setattr(pipeline_module, "templates", Jinja2Templates(env=monitoring_environment))
+    response = await pipeline_module.stage_review(
+        Request({"type": "http", "method": "GET", "path": "/", "headers": []}), "qs", "test", "monitoring",
+    )
+
+    expected_ranks = {"ENTRY": 1, "OUTSIDE": 2, "ROLL": 3, "SELL": 3, "KEEP": 5, "ZERO": 6, "NEGATIVE": 7}
+    expected = {symbol: {"rank": rank, "value": values[symbol]} for symbol, rank in expected_ranks.items()}
+    assert response.context["monitoring_rank_label"] == metric_label
+    assert response.context["monitoring_ranks"] == (expected if has_screening else {})
+    html = response.body.decode()
+    assert html.count(f'<th>Underlying name</th><th class="text-end pe-3">{metric_label} rank</th>') == 4
+    column_groups = [section.split("</colgroup>", 1)[0] for section in html.split("<colgroup>")[1:]]
+    assert len(column_groups) == 4
+    assert len(set(column_groups)) == 1
+    assert column_groups[0].count("<col ") == 20
+    assert '<th colspan="17"></th>' in html
+    assert '<td colspan="17"></td>' in html
+    for field, body in zip(table_fields, html.split("<tbody>")[1:], strict=True):
+        original_order = original_orders[field]
+        expected_order = sorted(
+            original_order, key=lambda symbol: expected_ranks.get(symbol, float("inf")),
+        ) if has_screening and field != "entry_candidates" else original_order
+        rendered_symbols = [row.split("<code>", 1)[1].split("</code>", 1)[0]
+                    for row in body.split("</tbody>", 1)[0].split("<tr>")[1:]]
+        assert rendered_symbols == expected_order
+        assert [position.get("underlying_symbol", position.get("symbol"))
+                for position in execution["stages"]["monitoring"]["result"][field]] == original_order
+    for symbol in ("KEEP", "SELL", "ROLL", "ENTRY", "SKIPPED", "UNSCREENED", "NAN", "INF", "MISSING"):
+        cells = html.split(f"<code>{symbol}</code>", 1)[1].split("</tr>", 1)[0].split("</td>")
+        assert f"{symbol} company" in cells[1]
+        assert 'class="text-end pe-3"' in cells[2]
+        assert 'data-bs-toggle="tooltip" tabindex="0"' in cells[2]
+        if has_screening and symbol in expected:
+            assert f'title="{metric_label}: {values[symbol]:.3f}"' in cells[2]
+            assert " ".join(cells[2].split()).endswith(f'> {expected_ranks[symbol]}')
+        else:
+            assert 'title="No valid screening metric in this execution"' in cells[2]
+            assert '<span class="text-muted">\u2014</span>' in cells[2]
 
 
 @pytest.mark.asyncio

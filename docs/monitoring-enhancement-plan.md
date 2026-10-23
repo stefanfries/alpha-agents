@@ -40,6 +40,11 @@ The implementation evolved from the initial draft in this file. Current producti
     using current midpoint prices; NAV and held value remain bid-valued. Missing required
     EUR pricing data displays a dash rather than a partial total. See
     [Web UI Spec](web-ui.md#44-monitoring--stagesmonitoring).
+- SELL, ROLL, KEEP, and ENTRY tables show aligned universe-wide screening ranks and
+    metric-value tooltips, following the execution's TSI/TQ-60/TQ-20 setting. Held
+    tables display ascending numeric ranks (strongest first), with unranked rows last;
+    ENTRY preserves screening order. These are presentation-only diagnostics and do
+    not introduce momentum-driven replacement decisions or mutate stored results.
 - Warrant Selection owns replacement lookup for roll underlyings and applies replacement guardrails.
 - If a warrant is degraded and marked for `ROLL`, but no replacement clears the score
     margin, Warrant Selection recommends `SELL`; it does not retain the degraded

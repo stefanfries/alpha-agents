@@ -49,6 +49,11 @@ Market regime
 - Monitoring displays compact signed EUR changes versus the previous close and since
    purchase inside the `Held positions` card. Changes use midpoint prices across current
    holdings, separate from bid-valued NAV. See [web-ui.md](web-ui.md#44-monitoring--stagesmonitoring).
+- Monitoring also exposes shared universe-wide ranks using the execution's selected
+   screening metric, with hover/focus metric-value tooltips. SELL, ROLL, and KEEP
+   display strongest first; ENTRY retains screening order. This is an advisory
+   incumbent-versus-challenger comparison, not automatic momentum replacement. See
+   [agents/monitoring.md](agents/monitoring.md#advisory-screening-ranks).
 - The baseline warrant score is refactored and covered by parity tests. See
   [warrant-scoring-refactor-plan.md](warrant-scoring-refactor-plan.md).
 

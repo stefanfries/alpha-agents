@@ -314,6 +314,40 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "roll_min_improvement": ws_cfg.roll_min_improvement,
         }
     if stage == "monitoring" and execution:
+        screening = (execution.get("stages", {}).get("screening", {}) or {}).get("result") or {}
+        ranking_metric = execution.get("config_overrides", {}).get("screening", {}).get(
+            "ranking_metric", settings.screening.ranking_metric,
+        )
+        metric_field, metric_label = {
+            "tq60": ("scores", "TQ-60"),
+            "tq20": ("tq_short", "TQ-20"),
+            "tsi": ("tsi", "TSI"),
+        }[ranking_metric]
+        metric_values = screening.get(metric_field, {})
+        ranked_symbols = sorted(
+            (symbol for symbol in screening.get("policy_results", {})
+             if metric_values.get(symbol) is not None and np.isfinite(metric_values[symbol])),
+            key=lambda symbol: (-metric_values[symbol], symbol),
+        )
+        ranks = {}
+        rank = 0
+        previous_value = None
+        for index, symbol in enumerate(ranked_symbols, start=1):
+            value = metric_values[symbol]
+            if value != previous_value:
+                rank = index
+            ranks[symbol] = {"rank": rank, "value": value}
+            previous_value = value
+        ctx["monitoring_rank_label"] = metric_label
+        ctx["monitoring_ranks"] = ranks
+        if ctx.get("stage_result"):
+            monitoring_result = dict(ctx["stage_result"])
+            for field in ("positions_to_sell", "positions_to_roll", "positions_to_keep"):
+                monitoring_result[field] = sorted(
+                    monitoring_result.get(field) or [],
+                    key=lambda position: ranks.get(position.get("underlying_symbol"), {}).get("rank", float("inf")),
+                )
+            ctx["stage_result"] = monitoring_result
         mon_overrides = execution.get("config_overrides", {}).get("monitoring", {})
         wh_overrides = mon_overrides.get("warrant_health", {}) if mon_overrides else {}
         defs = settings.monitoring.warrant_health
