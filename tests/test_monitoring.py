@@ -10,11 +10,14 @@ Tests cover:
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
+from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.agents.monitoring import MonitoringAgent, MonitoringInput, WarrantSnapshot
 from app.config import MonitoringSettings
+from app.formatting import format_eur, register_currency_filters
 from app.models.market import Position, Ticker
 from app.models.signals import (
     MonitoringResult,
@@ -22,6 +25,72 @@ from app.models.signals import (
     SelectionResult,
     WarrantSelectionResult,
 )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "day_total", "buy_total"),
+    [
+        ({}, 7.91, -3),
+        ({"pct_change_from_prev_close": -20}, -33, -3),
+        ({"pct_change_from_prev_close": 0}, -3, -3),
+        ({"pct_change_from_prev_close": None}, None, -3),
+        ({"pct_change_from_prev_close": -100}, None, -3),
+        ({"buy_price": None}, 7.91, None),
+        ({"buy_price": 8}, 7.91, 17),
+        ({"quantity": None}, None, None),
+        ({"current_price": None}, None, None),
+        ({"quote_currency": None}, None, None),
+        ({"quote_currency": "USD"}, None, None),
+    ],
+)
+def test_monitoring_held_position_changes(overrides, day_total, buy_total):
+    environment = Environment(
+        loader=ChoiceLoader([
+            DictLoader({
+                "base.html": "{% block content %}{% endblock %}",
+                "partials/action_bar.html": "",
+            }),
+            FileSystemLoader(Path(__file__).parents[1] / "app" / "templates"),
+        ]),
+        autoescape=True,
+    )
+    register_currency_filters(environment)
+    result = MonitoringResult(
+        positions_to_keep=[PositionReview(
+            underlying_symbol="KEEP", warrant_isin="KEEP", warrant_wkn="KEEP",
+            quantity=10, current_price=12, buy_price=10, quote_currency="EUR",
+            pct_change_from_prev_close=10,
+        ).model_copy(update=overrides)],
+        positions_to_sell=[PositionReview(
+            underlying_symbol="SELL", warrant_isin="SELL", warrant_wkn="SELL",
+            quantity=2, current_price=8, buy_price=20, quote_currency="EUR",
+            pct_change_from_prev_close=-20,
+        )],
+        positions_to_roll=[PositionReview(
+            underlying_symbol="ROLL", warrant_isin="ROLL", warrant_wkn="ROLL",
+            quantity=1, current_price=11, buy_price=10, quote_currency="EUR",
+            pct_change_from_prev_close=10,
+        )],
+        entry_candidates=[], free_positions=0, excluded_symbols=[],
+    )
+
+    html = environment.get_template("stages/monitoring.html").render(
+        execution={"execution_id": "test"}, stage_status="awaiting_review",
+        stage_result=result.model_dump(mode="json"),
+    )
+
+    held_card = html.split('Held positions &middot;', 1)[1].split('<div class="card ', 1)[0]
+    for label, total in [
+        ("Previous day", day_total),
+        ("Since buy", buy_total),
+    ]:
+        row = held_card.split(f'<span class="text-muted">{label}:</span>', 1)[1].split("</div>", 1)[0]
+        if total is None:
+            assert '<span class="text-muted" title="Required EUR position data is unavailable">\u2014</span>' in row
+        else:
+            color = "text-success" if total >= 0 else "text-danger"
+            sign = "+" if total > 0 else ""
+            assert f'<span class="{color}">{sign}{format_eur(total)}</span>' in row
 
 
 @pytest.mark.asyncio

@@ -46,6 +46,9 @@ Market regime
    [portfolio-risk-plan.md](portfolio-risk-plan.md).
 - Currency display is centralized through Babel/Jinja formatters and uses the `CURRENCY_LOCALE`
    setting (default `de_DE`) for EUR, USD, and percentages.
+- Monitoring displays compact signed EUR changes versus the previous close and since
+   purchase inside the `Held positions` card. Changes use midpoint prices across current
+   holdings, separate from bid-valued NAV. See [web-ui.md](web-ui.md#44-monitoring--stagesmonitoring).
 - The baseline warrant score is refactored and covered by parity tests. See
   [warrant-scoring-refactor-plan.md](warrant-scoring-refactor-plan.md).
 

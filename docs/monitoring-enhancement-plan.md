@@ -35,6 +35,11 @@ The implementation evolved from the initial draft in this file. Current producti
 
 - Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`. Its position snapshot includes `pct_change_from_prev_close`, calculated from the warrant's current bid/ask midpoint and `market_data.prev_close` from the same `/v1/warrants/{isin}` response.
 - Monitoring no longer resolves or attaches replacement warrants.
+- The Monitoring UI groups signed EUR `Previous day` and `Since buy` changes as small
+    lines inside the `Held positions` card. Totals include KEEP, SELL, and ROLL holdings
+    using current midpoint prices; NAV and held value remain bid-valued. Missing required
+    EUR pricing data displays a dash rather than a partial total. See
+    [Web UI Spec](web-ui.md#44-monitoring--stagesmonitoring).
 - Warrant Selection owns replacement lookup for roll underlyings and applies replacement guardrails.
 - If a warrant is degraded and marked for `ROLL`, but no replacement clears the score
     margin, Warrant Selection recommends `SELL`; it does not retain the degraded

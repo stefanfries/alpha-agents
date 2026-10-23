@@ -309,6 +309,9 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `held_since` | `date \| None` | Held-since date from latest snapshot position (`held_since_date`); for virtual depots may fall back to most recent BUY transaction; `None` if unavailable |
 | `buy_price` | `float \| None` | Average buy price (`avg_cost`) of the held position |
 | `current_price` | `float \| None` | Current warrant midprice from monitoring snapshot |
+| `bid_price` | `float \| None` | Current warrant bid used for bid-valued position weights and account valuation |
+| `quote_currency` | `str \| None` | Warrant quote currency; EUR is required for the monitoring summary's EUR changes |
+| `quote_timestamp_utc` | `datetime \| None` | Timestamp of the warrant quote snapshot |
 | `pct_change_from_prev_close` | `float \| None` | Warrant price change since previous close: `((current_price - prev_close) / prev_close) * 100`; based on the current bid/ask midpoint and `market_data.prev_close` from `/v1/warrants/{isin}` |
 | `performance_pct` | `float \| None` | Percentage performance: `((current_price - buy_price) / buy_price) * 100` |
 | `sell_reason` | `Literal["exit_signal", "warrant_degraded"] \| None` | Reason for SELL decision; `None` when position is KEEP or ROLL |
@@ -343,6 +346,15 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 | `nav_eur` | `Decimal \| None` | Total NAV from current EUR cash plus fresh held-warrant bid values; absent if incomplete |
 | `available_cash_eur` | `Decimal \| None` | Current free EUR cash |
 | `valuation_errors` | `list[str]` | Missing or invalid cash/quote valuation details shown in Monitoring |
+
+The monitoring UI derives its compact `Previous day` and `Since buy` EUR summaries
+from `PositionReview` entries across all three position lists; these are not persisted
+fields on `MonitoringResult`. Daily change is the sum of
+`quantity * current_price * pct_change_from_prev_close / (100 + pct_change_from_prev_close)`;
+since-buy change is the sum of `quantity * (current_price - buy_price)`.
+Both use midpoint prices, unlike bid-valued NAV. Each total is unavailable if any
+holding lacks its required quantity, price, or EUR quote currency; the daily calculation
+also requires a previous-close percentage greater than -100. Empty holdings produce zero.
 
 ### `PortfolioProposal`
 

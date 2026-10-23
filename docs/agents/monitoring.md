@@ -67,6 +67,24 @@ class MonitoringResult(BaseModel):
 - Health assessment: `monitoring_score` (0-1 health score), `warrant_health_status`, `warrant_health_reason`, `decision_reason`
 - Account summary: `nav_eur`, `available_cash_eur`, and per-holding valuation errors
 
+### UI Performance Summary
+
+The `Held positions` card shows the held value (`nav_eur - available_cash_eur`) prominently,
+with its NAV share and two small signed EUR lines: `Previous day` and `Since buy`.
+These changes are derived by the template across all KEEP, SELL, and ROLL positions;
+they do not introduce new agent output fields or additional market-data requests.
+
+- `Previous day`: sum `quantity * current_price * pct_change_from_prev_close / (100 + pct_change_from_prev_close)`.
+- `Since buy`: sum `quantity * (current_price - buy_price)`.
+- Changes use current midpoint prices, matching row performance; held value and NAV remain bid-valued.
+- Each change requires every holding's quantity, current price, and EUR quote currency, plus
+  its respective previous-close percentage (greater than -100) or purchase price.
+  Missing required data displays a dash rather than a partial total. Empty holdings show zero.
+- Gains are green and losses red. These are price changes on current holdings, not realized
+  account returns or changes in cash, and do not deduct transaction fees.
+
+See [Web UI Spec](../web-ui.md#44-monitoring--stagesmonitoring) for presentation details.
+
 ## Tools used
 
 None directly.
