@@ -391,9 +391,13 @@ Right side — two vertically stacked panels:
 - Shown when a row in the main table is clicked
 - Displays a header: `{N} warrants analyzed — top {M} shown`
 - Table with the top-3 warrants by score: WKN, ISIN, Strike, Maturity, Spread, Lev, Delta, Score
-- Clicking a row in this panel triggers the stock chart
+- Clicking a row in this panel loads both the underlying and selected warrant charts independently
 
-**Underlying stock chart** (bottom-right, remaining height):
+**Charts** (bottom-right, remaining height): the chart area is split equally into
+underlying (left) and selected warrant (right), with independent ranges. On narrow
+screens the table/detail layout and the two charts stack vertically.
+
+**Underlying stock chart**:
 
 - Candlestick chart powered by Lightweight Charts v4
 - EMA 20/50, SMA 200, SuperTrend
@@ -403,6 +407,21 @@ Right side — two vertically stacked panels:
 - **Orange arrow marker** at the maturity date (labelled "Expiry")
 - Time range selector: 3M / 6M / 1Y (default) / 3Y
 - Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings (ADRs), `chart_symbol` plots the override underlying in its native currency so candles and the strike line share one currency (no FX); the strike filter itself is anchored to the override quote's last/current price or, if absent, the bid/ask midprice. Otherwise the underlying symbol is charted.
+
+**Selected warrant chart**:
+
+- Traded-price candlesticks from FinHub, without underlying trend indicators.
+- Independent range selector: **3M** (default, three calendar months, daily),
+  **4W** (28 calendar days, daily), **2W** (14 calendar days, hourly).
+- Requests `GET /v1/history/{identifier}` using the warrant ISIN (WKN fallback),
+  `id_notation=preferred_id_notation_life_trading`, explicit `start`/`end`, and
+  `interval=day` or `hour`. The selected period is retained when switching warrants.
+- Shows the returned WKN, currency, and trading venue. Timezone-free hourly
+  timestamps are interpreted as Europe/Berlin; intraday chart times display in UTC.
+- Shows available history without filling missing candles. Empty/error states retain
+  period controls and do not block the underlying chart. Obsolete requests are canceled.
+- Loaded independently via
+  `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_price/{identifier}?range={3M|4W|2W}`.
 
 Below the split panel — **maturity, strike, and filter controls**:
 
@@ -550,7 +569,8 @@ Config overrides are merged with the current execution config and stored in Mong
 | `POST` | `/quant-systems/{qs_id}/executions/{execution_id}/stages/{stage}/approve` | Approve stage; advance pipeline |
 | `POST` | `/quant-systems/{qs_id}/executions/{execution_id}/stages/{stage}/restart` | Restart from a named stage |
 | `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/screening/{ticker}` | Lightweight Charts candlestick + indicator fragment |
-| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}` | Warrant-selection chart fragment |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}` | Warrant-selection underlying chart fragment |
+| `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_price/{identifier}?range={3M\|4W\|2W}` | Selected warrant traded-price chart fragment (daily or hourly) |
 | `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/portfolio` | Portfolio chart fragment (stub) |
 | `GET` | `/quant-systems/{qs_id}/executions/{execution_id}/charts/risk` | Risk chart fragment (stub) |
 

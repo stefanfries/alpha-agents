@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -100,9 +101,26 @@ class FinHubTool(Tool):
 
     async def get_history(self, identifier: str, id_notation: str) -> list[dict[str, Any]]:
         """Returns list of HistoryRecord dicts (fields: datetime, open, high, low, close, volume)."""
+        result = await self.get_history_data(identifier, id_notation)
+        return result.get("data", [])
+
+    async def get_history_data(
+        self,
+        identifier: str,
+        id_notation: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        interval: str = "day",
+    ) -> dict[str, Any]:
+        params = {"id_notation": id_notation, "interval": interval}
+        if start is not None:
+            params["start"] = start.isoformat()
+        if end is not None:
+            params["end"] = end.isoformat()
         r = await self._http.get(
             f"/v1/history/{identifier}",
-            params={"id_notation": id_notation},
+            params=params,
         )
         r.raise_for_status()
-        return r.json().get("data", [])
+        return r.json()

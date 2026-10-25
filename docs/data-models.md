@@ -204,6 +204,15 @@ class Instrument(BaseModel):
 | Query parameter | Type | Description |
 | --------------- | ---- | ----------- |
 | `id_notation` | `str` | Comdirect notation ID specifying the venue; obtain from `VenueInfo.id_notation` |
+| `start` / `end` | `datetime` | Inclusive date range |
+| `interval` | `str` | `5min`, `15min`, `30min`, `hour`, `day` (default), `week`, or `month` |
+
+`id_notation` also accepts the symbolic selectors
+`preferred_id_notation_exchange_trading`, `preferred_id_notation_life_trading`,
+and `default_id_notation`. The warrant-selection chart uses
+`preferred_id_notation_life_trading`. Intraday history is limited to 14 days.
+The response includes `wkn`, `isin`, `name`, `id_notation`, `trading_venue`,
+`currency`, `start`, `end`, `interval`, and `data` (OHLCV records with `datetime`).
 
 The currency of the returned price series matches the venue's currency (e.g. EUR for Tradegate, USD for Nasdaq). This is the only source of historical price data for warrants — yfinance does not carry warrant price history.
 

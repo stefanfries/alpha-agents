@@ -54,6 +54,11 @@ class WarrantSelectionResult(BaseModel):
   - `GET /v1/warrants/{isin}` — full reference data, live market data, and analytics (Greeks)
   - `GET /v1/instruments/{isin}` — resolves an override underlying's yfinance symbol (for the chart)
 
+The web UI additionally loads `GET /v1/history/{identifier}` on demand for the
+selected warrant's traded-price candles. This is not part of agent scoring or
+persisted stage results. It uses `id_notation=preferred_id_notation_life_trading`
+and the shared transient-error retry helper.
+
 ## ISIN overrides (ADRs)
 
 For an ADR whose warrants are written on a different underlying (e.g. the ASML ADR
@@ -155,11 +160,12 @@ Entry rows use `SelectionResult.selected` as the authoritative screening order, 
 
 - **Status summary** (top): count of selected warrants, rolls, and skipped underlyings. Skipped underlyings are listed as `SYMBOL - underlying name - reason` (name and reason shown when available).
 - **Main table** (left, 55%): one row per underlying, ordered by the configured screening rank, best first, with original rank numbers retained. Columns include: rank, underlying symbol, analyzed count, best warrant WKN/ISIN, strike, maturity, spread, leverage, delta, composite score, **Type** badge showing `ENTRY` (new) or `ROLL` (replacement). Optional `ROLL/SELL` is supported when `roll_sell_underlyings` is populated (no replacement cleared the roll score margin — the incumbent is a known-degraded warrant, so it is recommended for SELL rather than being kept).
-- **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row triggers the stock chart.
+- **Top-3 detail panel** (top-right): shows the top 3 warrants by score for the selected underlying. Clicking a warrant row loads both the underlying and warrant charts independently.
 - **Maturity controls** (below table): configurable min/max maturity in months plus a read-only target maturity field showing the scoring midpoint used for days-to-expiry.
 - **Strike controls** (below table): configurable strike min/max factors plus a read-only target strike factor field showing the midpoint of the selected strike range.
 - **Filter controls** (below table): `Max spread %` (hard spread cap, `ws_spread_max_pct`) and `Min score` (`ws_min_score`), rendered side by side. Values are persisted per execution and re-applied on rerun.
 - **Underlying stock chart** (bottom-right): candlestick chart with EMA20/50, SMA200, SuperTrend, NEW/BREAK signal markers (derived from active screening policy config), a horizontal price line at the strike price, and an arrow marker at the maturity date. Hovering a candle shows its indicator values and policy states; states changed since the previous candle are marked. Loaded via `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_selection/{ticker}?strike={n}&maturity={date}&chart_symbol={sym}`. For ISIN-override underlyings, `chart_symbol` plots the override underlying (native currency) so candles and the strike line share one currency; otherwise the ADR/underlying symbol is charted.
+- **Selected warrant chart**: shares the chart area equally with the underlying chart (underlying left, warrant right), with both stacked on narrow screens. Shows traded-price candles, WKN, currency, and venue from FinHub, without trend indicators. Independent ranges are `3M` (default, three calendar months, daily), `4W` (28 calendar days, daily), and `2W` (14 calendar days, hourly); the warrant period is retained when switching warrants. The underlying retains its existing independent `3M / 6M / 1Y / 3Y` selector. History is requested by ISIN with WKN fallback through `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/warrant_price/{identifier}?range={3M|4W|2W}`. Missing history is not synthesized, and warrant errors do not block the underlying chart. See [Web UI](../web-ui.md) for timestamp and loading behavior.
 
 Monitoring integration note:
 

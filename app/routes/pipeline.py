@@ -1,8 +1,10 @@
 import asyncio
+import calendar
 import json
 import uuid
-from datetime import datetime, timezone
-from typing import Annotated, Any
+from datetime import datetime, timedelta, timezone
+from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import talib
@@ -31,6 +33,7 @@ from app.policies.trend_detection import (
 )
 from app.portfolio_review import build_portfolio_action_tables
 from app.tools.finhub import FinHubTool
+from app.tools.retry import retry_call
 from app.tools.yfinance import YFinanceTool
 
 
@@ -864,6 +867,62 @@ async def chart_warrant(qs_id: str, execution_id: str, ticker: str, strike: floa
         "  <div class='lw-price' style='height:340px'></div>"
         "</div>"
     )
+
+
+@router.get("/{qs_id}/executions/{execution_id}/charts/warrant_price/{identifier}", response_class=HTMLResponse)
+async def chart_warrant_price(
+    qs_id: str,
+    execution_id: str,
+    identifier: str,
+    range_name: Annotated[Literal["3M", "4W", "2W"], Query(alias="range")] = "3M",
+) -> HTMLResponse:
+    market_timezone = ZoneInfo("Europe/Berlin")
+    end = datetime.now(market_timezone).replace(tzinfo=None)
+    if range_name == "3M":
+        month = (end.month - 4) % 12 + 1
+        year = end.year - (end.month <= 3)
+        start = end.replace(year=year, month=month, day=min(end.day, calendar.monthrange(year, month)[1]))
+    else:
+        start = end - timedelta(days=14 if range_name == "2W" else 28)
+    interval = "hour" if range_name == "2W" else "day"
+    chart_data = None
+    history: dict[str, Any] = {}
+    message = ""
+    try:
+        async with FinHubTool() as finhub:
+            history = await retry_call(
+                finhub.get_history_data,
+                identifier,
+                "preferred_id_notation_life_trading",
+                start=start,
+                end=end,
+                interval=interval,
+            )
+        candles = {}
+        for bar in history.get("data", []):
+            timestamp = datetime.fromisoformat(bar["datetime"])
+            if interval == "hour":
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=market_timezone)
+                time = int(timestamp.timestamp())
+            else:
+                time = timestamp.date().isoformat()
+            candles[time] = {"time": time, **{key: float(bar[key]) for key in ("open", "high", "low", "close")}}
+        if candles:
+            chart_data = {
+                "ohlcv": [candles[key] for key in sorted(candles)],
+                "ema20": [], "ema50": [], "sma200": [],
+                "intraday": interval == "hour", "fit_content": True,
+                "price_precision": 4,
+            }
+        else:
+            message = "No traded-price history available for this period."
+    except Exception:
+        message = "Warrant history unavailable. Select a period to retry."
+    return HTMLResponse(templates.get_template("partials/warrant_price_chart.html").render(
+        identifier=identifier, history=history, chart_data=chart_data,
+        range_name=range_name, message=message,
+    ))
 
 
 @router.get("/{qs_id}/executions/{execution_id}/charts/portfolio", response_class=HTMLResponse)

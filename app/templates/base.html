@@ -17,6 +17,14 @@
     .stage-link.active { background: hsl(215, 100%, 6%); color: hsl(216, 87%, 65%); font-weight: 600; }
     .stage-link .badge { font-size: .7rem; }
     #chart-panel { min-height: 200px; }
+    .warrant-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    @media (max-width: 991px) {
+      .content-col:has(.warrant-workspace) { height: auto; min-height: calc(100vh - 56px); }
+      .warrant-chart-grid { grid-template-columns: minmax(0, 1fr); }
+      .warrant-workspace { flex-direction: column; flex-shrink: 0; overflow-y: auto !important; }
+      .warrant-list { flex-basis: auto !important; max-height: 260px; }
+      .warrant-details { flex-shrink: 0; }
+    }
     .content-col { height: calc(100vh - 56px); display: flex; flex-direction: column; }
     .chart-indicator-tooltip { position: absolute; z-index: 10; display: none; width: 290px; max-width: calc(100% - 12px); padding: 7px 9px; border: 1px solid var(--bs-border-color); border-radius: 4px; background: var(--bs-body-bg); color: var(--bs-body-color); box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: .72rem; pointer-events: none; }
     .chart-indicator-row { display: flex; justify-content: space-between; gap: 10px; line-height: 1.45; }
@@ -65,18 +73,22 @@
         grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } },
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
         rightPriceScale: { borderColor: gridColor },
-        timeScale: { borderColor: gridColor, fixLeftEdge: true, fixRightEdge: true },
+        timeScale: { borderColor: gridColor, fixLeftEdge: true, fixRightEdge: true, timeVisible: !!d.intraday, secondsVisible: false },
       };
 
       // Price chart
       var priceEl = container.querySelector('.lw-price');
       var chart = LightweightCharts.createChart(priceEl, baseOpts);
+      container._dataCharts = [chart];
 
       var candles = chart.addCandlestickSeries({
         upColor: '#26a69a', downColor: '#ef5350',
         borderVisible: false,
         wickUpColor: '#26a69a', wickDownColor: '#ef5350',
       });
+      if (d.price_precision) {
+        candles.applyOptions({ priceFormat: { type: 'price', precision: d.price_precision, minMove: Math.pow(10, -d.price_precision) } });
+      }
       candles.setData(d.ohlcv);
 
       if (d.trend_indicators && d.trend_indicators.length) {
@@ -254,6 +266,7 @@
         adxChart = LightweightCharts.createChart(adxEl, Object.assign({}, baseOpts, {
           timeScale: Object.assign({}, baseOpts.timeScale, { visible: false }),
         }));
+        container._dataCharts.push(adxChart);
         // Anchor the ADX chart's bar-index mapping to the full OHLCV range so that
         // setVisibleLogicalRange syncs to identical timestamps in both charts.
         var _adxAnchor = adxChart.addLineSeries({ priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
@@ -277,7 +290,8 @@
 
       // Default range: 1 year
       var now = Math.floor(Date.now() / 1000);
-      chart.timeScale().setVisibleRange({ from: now - 365 * 86400, to: now });
+      if (d.fit_content) chart.timeScale().fitContent();
+      else chart.timeScale().setVisibleRange({ from: now - 365 * 86400, to: now });
 
       // Time range buttons
       container.querySelectorAll('[data-range]').forEach(function(btn) {
@@ -340,8 +354,10 @@
       row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
       row.classList.add('table-active');
       var panel = document.getElementById('warrant-detail-panel');
-      var chartPanel = document.getElementById('warrant-chart-panel');
-      if (chartPanel) chartPanel.innerHTML = '';
+      ['warrant-underlying-chart', 'warrant-price-chart'].forEach(function(id) {
+        var chartPanel = document.getElementById(id);
+        if (chartPanel) clearWarrantChart(chartPanel);
+      });
       if (!panel) return;
       var top3 = JSON.parse(row.getAttribute('data-top3') || '[]');
       var count = parseInt(row.getAttribute('data-analyzed') || '0', 10);
@@ -360,7 +376,7 @@
         var lev = w.leverage != null ? w.leverage.toFixed(1) + '×' : '—';
         var delta = w.delta != null ? w.delta.toFixed(2) : '—';
         var score = w.score != null ? w.score.toFixed(2) : '—';
-        html += '<tr style="cursor:pointer" onclick="loadWarrantChart(\'' + qsId + '\',\'' + executionId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',\'' + (w.chart_symbol || '') + '\',this)">';
+        html += '<tr data-warrant-id="' + (w.warrant_isin || w.warrant_wkn || '') + '" style="cursor:pointer" onclick="loadWarrantChart(\'' + qsId + '\',\'' + executionId + '\',\'' + sym + '\',' + (w.strike || 'null') + ',\'' + (w.maturity_date || '') + '\',\'' + (w.chart_symbol || '') + '\',this)">';
         var actionBadge = w.issuer_action ? ' <span class="badge" style="background:#ffc107;color:#000;font-size:0.65rem">Aktion</span>' : '';
         var freeBadge = w.issuer_no_fee_action ? ' <span class="badge" style="background:#198754;color:#fff;font-size:0.65rem">Free</span>' : '';
         html += '<td><code>' + (w.warrant_wkn || '—') + '</code></td>';
@@ -382,24 +398,65 @@
         row.closest('tbody').querySelectorAll('tr').forEach(function(r) { r.classList.remove('table-active'); });
         row.classList.add('table-active');
       }
-      var chartPanel = document.getElementById('warrant-chart-panel');
+      var chartPanel = document.getElementById('warrant-underlying-chart');
       if (!chartPanel) return;
-      chartPanel.innerHTML = '<p class="text-muted text-center small mt-2">Loading…</p>';
-      var url = '/quant-systems/' + qsId + '/executions/' + executionId + '/charts/warrant_selection/' + ticker;
+      var url = '/quant-systems/' + qsId + '/executions/' + executionId + '/charts/warrant_selection/' + encodeURIComponent(ticker);
       var params = [];
       if (strike != null) params.push('strike=' + strike);
       if (maturity) params.push('maturity=' + maturity);
       if (chartSymbol) params.push('chart_symbol=' + encodeURIComponent(chartSymbol));
       if (params.length) url += '?' + params.join('&');
-      fetch(url)
-        .then(function(r) { return r.text(); })
-        .then(function(html) {
-          chartPanel.innerHTML = html;
-          initDataCharts(chartPanel);
+      fetchWarrantChart(chartPanel, url);
+      var warrantPanel = document.getElementById('warrant-price-chart');
+      if (!warrantPanel) return;
+      var identifier = row ? row.dataset.warrantId : '';
+      if (!identifier) {
+        clearWarrantChart(warrantPanel);
+        warrantPanel.textContent = 'No warrant identifier available.';
+        return;
+      }
+      var historyUrl = '/quant-systems/' + qsId + '/executions/' + executionId + '/charts/warrant_price/' + encodeURIComponent(identifier);
+      loadWarrantPriceChart(warrantPanel, historyUrl, warrantPanel.dataset.range || '3M');
+    }
+
+    function clearWarrantChart(panel) {
+      if (panel._chartRequest) panel._chartRequest.abort();
+      (panel._dataCharts || []).forEach(function(chart) { chart.remove(); });
+      panel._dataCharts = [];
+      panel.replaceChildren();
+    }
+
+    function fetchWarrantChart(panel, url, afterLoad) {
+      clearWarrantChart(panel);
+      var request = new AbortController();
+      panel._chartRequest = request;
+      panel.innerHTML = '<p class="text-muted text-center small mt-2" role="status">Loading...</p>';
+      fetch(url, { signal: request.signal })
+        .then(function(response) {
+          if (!response.ok) throw new Error('Chart request failed');
+          return response.text();
         })
-        .catch(function() {
-          chartPanel.innerHTML = '<p class="text-muted text-center small mt-2">Failed to load chart</p>';
+        .then(function(html) {
+          if (request.signal.aborted || !panel.isConnected) return;
+          panel.innerHTML = html;
+          initDataCharts(panel);
+          if (afterLoad) afterLoad();
+        })
+        .catch(function(error) {
+          if (error.name === 'AbortError' || request.signal.aborted) return;
+          panel.innerHTML = '<p class="text-muted text-center small mt-2">Failed to load chart</p>';
         });
+    }
+
+    function loadWarrantPriceChart(panel, url, range) {
+      panel.dataset.range = range;
+      fetchWarrantChart(panel, url + '?range=' + encodeURIComponent(range), function() {
+        panel.querySelectorAll('[data-warrant-range]').forEach(function(button) {
+          button.addEventListener('click', function() {
+            loadWarrantPriceChart(panel, url, button.dataset.warrantRange);
+          });
+        });
+      });
     }
 
     document.addEventListener('htmx:afterSwap', function(evt) {
