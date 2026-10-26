@@ -47,8 +47,8 @@ Market regime
 - Currency display is centralized through Babel/Jinja formatters and uses the `CURRENCY_LOCALE`
    setting (default `de_DE`) for EUR, USD, and percentages.
 - Monitoring displays compact signed EUR changes versus the previous close and since
-   purchase inside the `Held positions` card. Changes use midpoint prices across current
-   holdings, separate from bid-valued NAV. See [web-ui.md](web-ui.md#44-monitoring--stagesmonitoring).
+   purchase inside the `Held positions` card. Changes use bid prices across current
+   holdings, matching bid-valued NAV. See [web-ui.md](web-ui.md#44-monitoring--stagesmonitoring).
 - Monitoring also exposes shared universe-wide ranks using the execution's selected
    screening metric, with hover/focus metric-value tooltips. SELL, ROLL, and KEEP
    display strongest first; ENTRY retains screening order. This is an advisory

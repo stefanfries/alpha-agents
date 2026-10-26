@@ -60,7 +60,7 @@ class MonitoringResult(BaseModel):
 
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
 - Holding context: `quantity` (held units), `held_since` (date), `sell_reason` (`"exit_signal"` or `"warrant_degraded"`)
-- Pricing context: `buy_price` (average buy price), `current_price` (snapshot midprice), `pct_change_from_prev_close` (`((current_price - prev_close) / prev_close) * 100`, or `None` when `prev_close` is missing/non-positive), `performance_pct`
+- Pricing context: `buy_price` (average buy price), `current_price` (snapshot bid), `pct_change_from_prev_close` (`((current_price - prev_close) / prev_close) * 100`, or `None` when `prev_close` is missing/non-positive), `performance_pct`
 - Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity`, `strike`, `maturity_date` (all optional)
 - Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
 - Trend status: `trend_status` (UI-ready status label)
@@ -76,12 +76,17 @@ they do not introduce new agent output fields or additional market-data requests
 
 - `Previous day`: sum `quantity * current_price * pct_change_from_prev_close / (100 + pct_change_from_prev_close)`.
 - `Since buy`: sum `quantity * (current_price - buy_price)`.
-- Changes use current midpoint prices, matching row performance; held value and NAV remain bid-valued.
+- Changes and row performance use current bid prices, matching held value and NAV. An ask is not required; a missing bid leaves performance unavailable without a midpoint fallback.
+- The daily comparison uses the provider's `market_data.prev_close`, not a separately fetched previous bid.
 - Each change requires every holding's quantity, current price, and EUR quote currency, plus
   its respective previous-close percentage (greater than -100) or purchase price.
   Missing required data displays a dash rather than a partial total. Empty holdings show zero.
 - Gains are green and losses red. These are price changes on current holdings, not realized
   account returns or changes in cash, and do not deduct transaction fees.
+
+Monitoring results are saved snapshots, not live quotes. Existing results are not
+recalculated when this pricing rule changes; rerun Monitoring to refresh them with
+bid-based prices and performance.
 
 See [Web UI Spec](../web-ui.md#44-monitoring--stagesmonitoring) for presentation details.
 

@@ -394,7 +394,12 @@ class TestPositionReviewFieldPopulation:
         assert review.decision_reason == "warrant healthy, trend intact"
 
     @pytest.mark.asyncio
-    async def test_monitoring_populates_buy_current_and_performance_fields(self):
+    @pytest.mark.parametrize("mapped", [True, False])
+    @pytest.mark.parametrize(
+        ("bid", "ask", "midprice"),
+        [(8.1, 8.3, 8.2), (8.1, None, None), (None, 8.3, 8.2)],
+    )
+    async def test_monitoring_populates_buy_current_and_performance_fields(self, mapped, bid, ask, midprice):
         settings = MonitoringSettings()
         agent = MonitoringAgent(settings=settings, max_positions=5)
 
@@ -412,12 +417,14 @@ class TestPositionReviewFieldPopulation:
                         avg_cost=Decimal("6.89"),
                     )
                 ],
-                warrant_underlying_map={"DE000UG7LBL4": "PALO"},
+                warrant_underlying_map={"DE000UG7LBL4": "PALO"} if mapped else {},
                 held_since_map={"UG7LBL": date.today() - timedelta(days=20)},
                 warrant_snapshots={
                     "DE000UG7LBL4": WarrantSnapshot(
                         warrant_isin="DE000UG7LBL4",
-                        bid_ask_midprice=8.2,
+                        bid=bid,
+                        ask=ask,
+                        bid_ask_midprice=midprice,
                         prev_close=7.5,
                         spread_pct=1.2,
                     )
@@ -429,9 +436,14 @@ class TestPositionReviewFieldPopulation:
         assert len(result.positions_to_keep) == 1
         review = result.positions_to_keep[0]
         assert review.buy_price == pytest.approx(6.89)
-        assert review.current_price == pytest.approx(8.2)
-        assert review.pct_change_from_prev_close == pytest.approx((8.2 - 7.5) / 7.5 * 100.0)
-        assert review.performance_pct == pytest.approx((8.2 - 6.89) / 6.89 * 100.0)
+        if bid is None:
+            assert review.current_price is None
+            assert review.pct_change_from_prev_close is None
+            assert review.performance_pct is None
+        else:
+            assert review.current_price == pytest.approx(bid)
+            assert review.pct_change_from_prev_close == pytest.approx((bid - 7.5) / 7.5 * 100.0)
+            assert review.performance_pct == pytest.approx((bid - 6.89) / 6.89 * 100.0)
 
 
 class TestDecisionReason:

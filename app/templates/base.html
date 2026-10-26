@@ -91,9 +91,9 @@
       }
       candles.setData(d.ohlcv);
 
-      if (d.trend_indicators && d.trend_indicators.length) {
+      if ((d.trend_indicators && d.trend_indicators.length) || el.hasAttribute('data-ohlc-tooltip')) {
         var indicatorByTime = Object.create(null);
-        d.trend_indicators.forEach(function(snapshot) {
+        (d.trend_indicators || []).forEach(function(snapshot) {
           indicatorByTime[snapshot.time] = snapshot;
         });
 
@@ -120,35 +120,50 @@
         }
 
         function onCrosshairMove(param) {
-          if (!param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
+          if (param.time == null || !param.point || param.point.x < 0 || param.point.y < 0 || param.point.x > priceEl.clientWidth || param.point.y > priceEl.clientHeight) {
             tooltip.style.display = 'none';
             return;
           }
           var snapshot = indicatorByTime[chartTimeKey(param.time)];
-          if (!snapshot) {
+          var candle = param.seriesData.get(candles);
+          if (!snapshot && (!el.hasAttribute('data-ohlc-tooltip') || !candle)) {
             tooltip.style.display = 'none';
             return;
           }
 
-          var values = snapshot.values;
-          var states = snapshot.states;
-          var changed = Object.create(null);
-          snapshot.changed.forEach(function(key) { changed[key] = true; });
-          function changedAny(keys) { return keys.some(function(key) { return changed[key]; }); }
-          function yesNo(value) { return value ? 'yes' : 'no'; }
-          var rows = [
-            ['SuperTrend', (states.supertrend ? 'Bullish' : 'Bearish') + ' · ' + indicatorText(values.supertrend, 2), changedAny(['supertrend', 'supertrend_bearish'])],
-            ['EMA20', indicatorText(values.ema20, 2) + ' · rising ' + yesNo(states.ema20_rising) + ' · falling ' + yesNo(states.ema20_falling), changedAny(['ema20_rising', 'ema20_falling'])],
-            ['SMA200', indicatorText(values.sma200, 2), false],
-            ['ADX', indicatorText(values.adx, 2) + ' · above ' + yesNo(states.adx_above) + ' · rising ' + yesNo(states.adx_rising), changedAny(['adx_above', 'adx_below', 'adx_rising', 'adx_falling'])],
-            ['+DI / -DI', indicatorText(values.plus_di, 2) + ' / ' + indicatorText(values.minus_di, 2), false],
-            ['Price / EMA50', (states.price_above_ema50 ? 'above' : 'below') + ' · EMA50 ' + indicatorText(values.ema50, 2), changedAny(['price_above_ema50', 'price_below_ema50'])],
-            ['TQ60', indicatorText(values.tq60, 4) + ' · pass ' + yesNo(states.tq60_above), changedAny(['tq60_above'])],
-            ['TQ20', indicatorText(values.tq20, 4) + ' · pass ' + yesNo(states.tq20_above), changedAny(['tq20_above'])],
-            ['TSI', indicatorText(values.tsi, 2) + ' · rising ' + yesNo(states.tsi_rising) + ' · falling ' + yesNo(states.tsi_falling) + ' · NEW ' + yesNo(states.tsi_above) + ' · BREAK ' + yesNo(states.tsi_below), changedAny(['tsi_rising', 'tsi_falling', 'tsi_above', 'tsi_below'])],
-          ];
+          var rows;
+          if (snapshot) {
+            var values = snapshot.values;
+            var states = snapshot.states;
+            var changed = Object.create(null);
+            snapshot.changed.forEach(function(key) { changed[key] = true; });
+            function changedAny(keys) { return keys.some(function(key) { return changed[key]; }); }
+            function yesNo(value) { return value ? 'yes' : 'no'; }
+            rows = [
+              ['SuperTrend', (states.supertrend ? 'Bullish' : 'Bearish') + ' · ' + indicatorText(values.supertrend, 2), changedAny(['supertrend', 'supertrend_bearish'])],
+              ['EMA20', indicatorText(values.ema20, 2) + ' · rising ' + yesNo(states.ema20_rising) + ' · falling ' + yesNo(states.ema20_falling), changedAny(['ema20_rising', 'ema20_falling'])],
+              ['SMA200', indicatorText(values.sma200, 2), false],
+              ['ADX', indicatorText(values.adx, 2) + ' · above ' + yesNo(states.adx_above) + ' · rising ' + yesNo(states.adx_rising), changedAny(['adx_above', 'adx_below', 'adx_rising', 'adx_falling'])],
+              ['+DI / -DI', indicatorText(values.plus_di, 2) + ' / ' + indicatorText(values.minus_di, 2), false],
+              ['Price / EMA50', (states.price_above_ema50 ? 'above' : 'below') + ' · EMA50 ' + indicatorText(values.ema50, 2), changedAny(['price_above_ema50', 'price_below_ema50'])],
+              ['TQ60', indicatorText(values.tq60, 4) + ' · pass ' + yesNo(states.tq60_above), changedAny(['tq60_above'])],
+              ['TQ20', indicatorText(values.tq20, 4) + ' · pass ' + yesNo(states.tq20_above), changedAny(['tq20_above'])],
+              ['TSI', indicatorText(values.tsi, 2) + ' · rising ' + yesNo(states.tsi_rising) + ' · falling ' + yesNo(states.tsi_falling) + ' · NEW ' + yesNo(states.tsi_above) + ' · BREAK ' + yesNo(states.tsi_below), changedAny(['tsi_rising', 'tsi_falling', 'tsi_above', 'tsi_below'])],
+            ];
 
-          tooltipDate.textContent = snapshot.time;
+            tooltipDate.textContent = snapshot.time;
+          } else {
+            var precision = d.price_precision || 2;
+            rows = [
+              ['Open', indicatorText(candle.open, precision), false],
+              ['High', indicatorText(candle.high, precision), false],
+              ['Low', indicatorText(candle.low, precision), false],
+              ['Close', indicatorText(candle.close, precision), false],
+            ];
+            tooltipDate.textContent = typeof param.time === 'number'
+              ? new Date(param.time * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
+              : chartTimeKey(param.time);
+          }
           tooltipRows.replaceChildren();
           rows.forEach(function(item) {
             var row = document.createElement('div');

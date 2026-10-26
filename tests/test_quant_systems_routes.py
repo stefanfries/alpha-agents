@@ -44,6 +44,9 @@ async def test_warrant_price_chart_ranges(monkeypatch, period, interval, days):
     text = response.body.decode()
     assert "Issuer &lt;venue&gt;" in text
     assert "EUR" in text
+    assert "data-ohlc-tooltip" in text
+    assert 'class="small text-truncate"' in text
+    assert 'class="small text-muted text-break"' not in text
 
     class ChartParser(HTMLParser):
         chart_data = None

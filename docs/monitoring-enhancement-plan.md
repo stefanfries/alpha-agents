@@ -33,11 +33,11 @@ Trend-following is vulnerable to warrant quality degradation — a warrant can b
 
 The implementation evolved from the initial draft in this file. Current production behavior is:
 
-- Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`. Its position snapshot includes `pct_change_from_prev_close`, calculated from the warrant's current bid/ask midpoint and `market_data.prev_close` from the same `/v1/warrants/{isin}` response.
+- Monitoring stage classifies positions only (`SELL`, `ROLL`, `HOLD`) and provides snapshot metrics + human-readable `decision_reason`. Its position snapshot includes `pct_change_from_prev_close`, calculated from the warrant's current bid and `market_data.prev_close` from the same `/v1/warrants/{isin}` response.
 - Monitoring no longer resolves or attaches replacement warrants.
 - The Monitoring UI groups signed EUR `Previous day` and `Since buy` changes as small
     lines inside the `Held positions` card. Totals include KEEP, SELL, and ROLL holdings
-    using current midpoint prices; NAV and held value remain bid-valued. Missing required
+    using current bid prices, matching NAV and held value. Missing required
     EUR pricing data displays a dash rather than a partial total. See
     [Web UI Spec](web-ui.md#44-monitoring--stagesmonitoring).
 - SELL, ROLL, KEEP, and ENTRY tables show aligned universe-wide screening ranks and

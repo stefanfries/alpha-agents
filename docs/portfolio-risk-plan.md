@@ -28,8 +28,8 @@ scoring changes are out of scope here.
 - The Quant System's configured `capital_eur` remains stored for reference; account-backed
   sizing and Risk use NAV/cash from the current depot snapshot.
 - Monitoring fetches a FinHub warrant snapshot and retains bid, ask, `market_data.prev_close`,
-  currency, and timezone-aware quote timestamp; the midpoint metric remains unchanged.
-  `pct_change_from_prev_close` is calculated from the midpoint and `prev_close` from the same
+  currency, and timezone-aware quote timestamp; current price and performance use the bid.
+  `pct_change_from_prev_close` is calculated from the bid and `prev_close` from the same
   `/v1/warrants/{identifier}` response, so no additional `/v1/quotes/{identifier}` request is
   needed. The snapshot fields and percentage are copied into persisted `PositionReview` results.
 - `_fetch_portfolio_account_snapshot()` now reads real-depot cash by summing the latest EUR

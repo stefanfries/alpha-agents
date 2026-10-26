@@ -227,7 +227,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 **Summary cards** include `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, and `Entry candidates` on the left, with `Total NAV`, `Held positions`, and `Free cash` aligned right. The three monetary cards show each amount's share of Total NAV. Held positions value is Total NAV minus available cash. Held warrant quantities are shown as whole units with dot thousands separators.
 
-The `Held positions` card includes two small lines, `Previous day` and `Since buy`, showing signed EUR changes versus the previous trading day's close and since purchase, summed across keep, sell, and roll holdings. Both use quantity-weighted current midpoint prices, matching the position performance columns rather than bid-valued NAV. The daily change recovers the previous close from the saved percentage change; the since-buy change subtracts the average purchase price. Gains are green and losses red. A change shows an unavailable value if any holding lacks its required price, quantity, or EUR quote currency; an empty depot shows zero.
+The `Held positions` card includes two small lines, `Previous day` and `Since buy`, showing signed EUR changes versus the previous trading day's close and since purchase, summed across keep, sell, and roll holdings. Both use quantity-weighted current bid prices, matching the position performance columns and bid-valued NAV; no ask is required. The daily change recovers the provider's previous close from the saved percentage change, not a separate previous bid; the since-buy change subtracts the average purchase price. Gains are green and losses red. A change shows an unavailable value if any holding lacks its required price, quantity, or EUR quote currency; an empty depot shows zero.
 
 The held value remains the card's primary amount; its label and NAV share occupy one
 muted line, followed by the two small change lines. There are no separate performance cards.
@@ -293,8 +293,8 @@ scroll horizontally within the existing review area on narrow screens.
 | Held since | Held-since date from latest depot snapshot position; for virtual depots, fallback to recent BUY transaction when snapshot value is missing |
 | Weight | Current bid-valued position amount (`quantity × bid`) as a percentage of Total NAV; unavailable when bid, EUR quote, or NAV is missing |
 | Buy (EUR) | Average buy price of the current position |
-| Current (EUR) | Current warrant price (bid/ask midprice snapshot) |
-| Change vs. Previous Close (%) | Warrant's percentage change since previous close, calculated from the current midpoint and `market_data.prev_close` in the `/v1/warrants/{isin}` snapshot; green if positive, red if negative |
+| Current (EUR) | Current warrant bid price from the snapshot |
+| Change vs. Previous Close (%) | Warrant's percentage change since previous close, calculated from the current bid and `market_data.prev_close` in the `/v1/warrants/{isin}` snapshot; green if positive, red if negative |
 | Perf % | Position performance percentage (`(current - buy) / buy * 100`), green if positive else red |
 | Action | `SELL` (red), `ROLL` (blue), or `HOLD` (green) |
 | Details | Snapshot metrics: spread, leverage, delta, days to maturity, monitoring score |
@@ -418,6 +418,11 @@ screens the table/detail layout and the two charts stack vertically.
   `interval=day` or `hour`. The selected period is retained when switching warrants.
 - Shows the returned WKN, currency, and trading venue. Timezone-free hourly
   timestamps are interpreted as Europe/Berlin; intraday chart times display in UTC.
+- WKN, currency, traded-price source, venue, and candle interval share a single header
+  line; long titles truncate with the full text available on hover.
+- Candle hover shows the date (and UTC time for hourly candles) plus open, high, low,
+  and close prices. The tooltip flips at chart edges and stays inside the chart,
+  matching the underlying chart's indicator tooltip positioning.
 - Shows available history without filling missing candles. Empty/error states retain
   period controls and do not block the underlying chart. Obsolete requests are canceled.
 - Loaded independently via

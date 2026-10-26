@@ -1,13 +1,13 @@
-<div class="d-flex flex-column gap-1" {% if chart_data %}data-chart='{{ chart_data | tojson }}'{% endif %}>
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1">
-    <span class="small fw-semibold text-break">{{ history.wkn or identifier }}{% if history.currency %} · {{ history.currency }}{% endif %}</span>
-    <div class="btn-group btn-group-sm" aria-label="Warrant history period">
+<div class="d-flex flex-column gap-1" {% if chart_data %}data-chart='{{ chart_data | tojson }}' data-ohlc-tooltip{% endif %}>
+  <div class="d-flex justify-content-between align-items-center gap-1 mb-1">
+    {% set chart_title %}{{ history.wkn or identifier }}{% if history.currency %} · {{ history.currency }}{% endif %} · Traded prices{% if history.trading_venue %} · {{ history.trading_venue }}{% endif %} · {{ '1h · UTC' if range_name == '2W' else 'Daily' }}{% endset %}
+    <span class="small text-truncate" style="min-width:0" title="{{ chart_title }}"><span class="fw-semibold">{{ history.wkn or identifier }}{% if history.currency %} · {{ history.currency }}{% endif %}</span><span class="text-muted"> · Traded prices{% if history.trading_venue %} · {{ history.trading_venue }}{% endif %} · {{ '1h · UTC' if range_name == '2W' else 'Daily' }}</span></span>
+    <div class="btn-group btn-group-sm flex-shrink-0" aria-label="Warrant history period">
       {% for period in ['3M', '4W', '2W'] %}
       <button type="button" class="btn btn-outline-secondary{% if period == range_name %} active{% endif %}" data-warrant-range="{{ period }}" aria-pressed="{{ 'true' if period == range_name else 'false' }}">{{ period }}</button>
       {% endfor %}
     </div>
   </div>
-  <div class="small text-muted text-break">Traded prices{% if history.trading_venue %} · {{ history.trading_venue }}{% endif %} · {{ '1h · UTC' if range_name == '2W' else 'Daily' }}</div>
   {% if chart_data %}
   <div class="lw-price" style="height:340px"></div>
   {% else %}

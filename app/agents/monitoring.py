@@ -70,7 +70,7 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
     @staticmethod
     def _price_metrics(pos: Position, warrant_snapshot: WarrantSnapshot | None) -> tuple[float | None, float | None, float | None]:
         buy_price = float(pos.avg_cost) if pos.avg_cost and pos.avg_cost > 0 else None
-        current_price = warrant_snapshot.bid_ask_midprice if warrant_snapshot else None
+        current_price = warrant_snapshot.bid if warrant_snapshot else None
         if buy_price is None or current_price is None or buy_price <= 0:
             return buy_price, current_price, None
         performance_pct = ((current_price - buy_price) / buy_price) * 100.0
