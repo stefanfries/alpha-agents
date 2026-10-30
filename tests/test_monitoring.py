@@ -107,6 +107,28 @@ def test_monitoring_held_position_changes(
     assert "Previous day:" not in held_card
 
 
+def test_monitoring_tables_show_invested_and_total_portfolio_weight(monitoring_environment):
+    result = MonitoringResult(
+        positions_to_keep=[PositionReview(
+            underlying_symbol="KEEP", warrant_isin="KEEP", warrant_wkn="KEEP",
+            quantity=10, current_price=12, bid_price=12, buy_price=10,
+            quote_currency="EUR", pct_change_from_prev_close=0,
+        )],
+        positions_to_sell=[], entry_candidates=[], free_positions=0, excluded_symbols=[],
+        nav_eur=1000, available_cash_eur=400,
+    )
+
+    html = monitoring_environment.get_template("stages/monitoring.html").render(
+        execution={"execution_id": "test"}, stage_status="awaiting_review",
+        stage_result=result.model_dump(mode="json"),
+    )
+
+    assert html.count(">Invested<br>Weight</th>") == 1
+    assert html.count(">Portfolio<br>Weight</th>") == 1
+    assert format_percentage(0.2) in html
+    assert format_percentage(0.12) in html
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("ranking_metric", [None, "tq60", "tq20", "tsi"])
 @pytest.mark.parametrize("has_screening", [True, False])
@@ -176,9 +198,9 @@ async def test_monitoring_universe_ranks(monkeypatch, monitoring_environment, ra
     column_groups = [section.split("</colgroup>", 1)[0] for section in html.split("<colgroup>")[1:]]
     assert len(column_groups) == 4
     assert len(set(column_groups)) == 1
-    assert column_groups[0].count("<col ") == 20
-    assert '<th colspan="17"></th>' in html
-    assert '<td colspan="17"></td>' in html
+    assert column_groups[0].count("<col ") == 21
+    assert '<th colspan="18"></th>' in html
+    assert '<td colspan="18"></td>' in html
     for field, body in zip(table_fields, html.split("<tbody>")[1:], strict=True):
         original_order = original_orders[field]
         expected_order = sorted(

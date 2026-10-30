@@ -282,6 +282,8 @@ The four tables share one fixed column layout so rank headers and values align
 strictly across sections, including ENTRY. Rank headers and cells have extra right
 padding to separate them from Warrant WKN. Tables keep a minimum readable width and
 scroll horizontally within the existing review area on narrow screens.
+The `Invested Weight` and `Portfolio Weight` headers wrap over two lines to preserve
+the existing weight-column widths.
 
 | Column | Description |
 | ------ | ----------- |
@@ -291,7 +293,8 @@ scroll horizontally within the existing review area on narrow screens.
 | Warrant WKN | Held warrant |
 | Qty | Held warrant units from the depot snapshot |
 | Held since | Held-since date from latest depot snapshot position; for virtual depots, fallback to recent BUY transaction when snapshot value is missing |
-| Weight | Current bid-valued position amount (`quantity × bid`) as a percentage of Total NAV; unavailable when bid, EUR quote, or NAV is missing |
+| Invested Weight | Current bid-valued position amount (`quantity × bid`) as a percentage of held investments, excluding cash; unavailable when bid, EUR quote, or invested value is missing |
+| Portfolio Weight | Current bid-valued position amount (`quantity × bid`) as a percentage of Total NAV, including cash; unavailable when bid, EUR quote, or NAV is missing |
 | Buy (EUR) | Average buy price of the current position |
 | Current (EUR) | Current warrant bid price from the snapshot |
 | Change vs. Previous Close (%) | Warrant's percentage change since previous close, calculated from the current bid and `market_data.prev_close` in the `/v1/warrants/{isin}` snapshot; green if positive, red if negative |

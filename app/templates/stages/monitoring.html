@@ -29,7 +29,7 @@
   {% set rank_values = monitoring_ranks | default({}) %}
   {% macro monitoring_columns() %}
     <colgroup>
-      {% for width in [9, 13, 6, 7, 5, 8, 5, 6, 6, 7, 6, 5, 5, 5, 5, 6, 9, 9, 8, 4] %}
+      {% for width in [9, 13, 6, 7, 5, 8, 5, 5, 6, 6, 7, 6, 5, 5, 5, 5, 6, 9, 9, 8, 4] %}
       <col style="width:{{ width }}%">
       {% endfor %}
     </colgroup>
@@ -114,9 +114,9 @@
       <span class="text-danger">{{ "%+.2f%%" | format(pct_change_from_prev_close) }}</span>
     {% endif %}
   {% endmacro %}
-  {% macro nav_weight(p) %}
-    {% if has_nav and p.quantity is not none and p.bid_price is not none and p.quote_currency and p.quote_currency.upper() == "EUR" %}
-      {{ ((p.quantity | float) * (p.bid_price | float) / (r.nav_eur | float)) | pct }}
+  {% macro position_weight(p, denominator) %}
+    {% if denominator is not none and (denominator | float) > 0 and p.quantity is not none and p.bid_price is not none and p.quote_currency and p.quote_currency.upper() == "EUR" %}
+      {{ ((p.quantity | float) * (p.bid_price | float) / (denominator | float)) | pct }}
     {% else %}
       <span class="text-muted">—</span>
     {% endif %}
@@ -245,7 +245,7 @@
           <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
             {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end" title="Position value as a share of invested holdings, excluding cash">Invested<br>Weight</th><th class="text-end" title="Position value as a share of total NAV, including cash">Portfolio<br>Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_sell %}
@@ -256,7 +256,8 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
+                <td class="text-end text-muted small">{{ position_weight(p, holdings_value) }}</td>
+                <td class="text-end text-muted small">{{ position_weight(p, r.nav_eur) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ pct_change_from_prev_close_value(p) }}</td>
@@ -284,7 +285,7 @@
           <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
             {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end" title="Position value as a share of invested holdings, excluding cash">Invested<br>Weight</th><th class="text-end" title="Position value as a share of total NAV, including cash">Portfolio<br>Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in rolls %}
@@ -295,7 +296,8 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
+                <td class="text-end text-muted small">{{ position_weight(p, holdings_value) }}</td>
+                <td class="text-end text-muted small">{{ position_weight(p, r.nav_eur) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ pct_change_from_prev_close_value(p) }}</td>
@@ -323,7 +325,7 @@
           <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
             {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end">Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th>Warrant WKN</th><th class="text-end pe-3">Qty</th><th>Held since</th><th class="text-end" title="Position value as a share of invested holdings, excluding cash">Invested<br>Weight</th><th class="text-end" title="Position value as a share of total NAV, including cash">Portfolio<br>Weight</th><th class="text-end">Buy (EUR)</th><th class="text-end">Current (EUR)</th><th class="text-end">Change vs. Previous Close (%)</th><th class="text-end">Perf %</th><th class="text-end">Spread%</th><th class="text-end">Lev</th><th class="text-end">Delta</th><th class="text-end">Days</th><th class="text-end">Score</th><th>Decision rationale</th><th>Trend status</th><th>Warrant health</th><th>Action</th></tr>
             </thead>
             <tbody>
               {% for p in r.positions_to_keep %}
@@ -334,7 +336,8 @@
                 <td><code>{{ p.warrant_wkn }}</code></td>
                 <td class="text-end text-muted small pe-3">{{ "{:,.0f}".format(p.quantity | float).replace(",", ".") if p.quantity is not none else "—" }}</td>
                 <td class="text-muted small">{{ p.held_since or "—" }}</td>
-                <td class="text-end text-muted small">{{ nav_weight(p) }}</td>
+                <td class="text-end text-muted small">{{ position_weight(p, holdings_value) }}</td>
+                <td class="text-end text-muted small">{{ position_weight(p, r.nav_eur) }}</td>
                 <td class="text-end text-muted small">{{ p.buy_price | eur if p.buy_price is not none else "—" }}</td>
                 <td class="text-end text-muted small">{{ p.current_price | eur if p.current_price is not none else "—" }}</td>
                 <td class="text-end small">{{ pct_change_from_prev_close_value(p) }}</td>
@@ -362,7 +365,7 @@
           <table class="table table-sm table-hover bg-white rounded shadow-sm" style="table-layout:fixed;width:100%;min-width:1200px;font-size:0.85rem">
             {{ monitoring_columns() }}
             <thead class="table-light">
-              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th colspan="17"></th></tr>
+              <tr><th>Symbol</th><th>Underlying name</th><th class="text-end pe-3">{{ rank_label }} rank</th><th colspan="18"></th></tr>
             </thead>
             <tbody>
               {% for t in r.entry_candidates %}
@@ -370,7 +373,7 @@
                 <td><code>{{ t.symbol }}</code></td>
                 <td>{{ t.name or "—" }}</td>
                 {{ screening_rank(t.symbol) }}
-                <td colspan="17"></td>
+                <td colspan="18"></td>
               </tr>
               {% endfor %}
             </tbody>
