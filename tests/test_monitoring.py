@@ -19,7 +19,7 @@ from starlette.templating import Jinja2Templates
 
 from app.agents.monitoring import MonitoringAgent, MonitoringInput, WarrantSnapshot
 from app.config import MonitoringSettings
-from app.formatting import format_eur, register_currency_filters
+from app.formatting import format_eur, format_percentage, register_currency_filters
 from app.models.market import Position, Ticker
 from app.models.signals import (
     MonitoringResult,
@@ -46,22 +46,24 @@ def monitoring_environment():
 
 
 @pytest.mark.parametrize(
-    ("overrides", "day_total", "buy_total"),
+    ("overrides", "day_total", "day_pct", "buy_total", "buy_pct"),
     [
-        ({}, 7.91, -3),
-        ({"pct_change_from_prev_close": -20}, -33, -3),
-        ({"pct_change_from_prev_close": 0}, -3, -3),
-        ({"pct_change_from_prev_close": None}, None, -3),
-        ({"pct_change_from_prev_close": -100}, None, -3),
-        ({"buy_price": None}, 7.91, None),
-        ({"buy_price": 8}, 7.91, 17),
-        ({"quantity": None}, None, None),
-        ({"current_price": None}, None, None),
-        ({"quote_currency": None}, None, None),
-        ({"quote_currency": "USD"}, None, None),
+        ({}, 7.91, 5.7, -3, -2.0),
+        ({"pct_change_from_prev_close": -20}, -33, -18.3, -3, -2.0),
+        ({"pct_change_from_prev_close": 0}, -3, -2.0, -3, -2.0),
+        ({"pct_change_from_prev_close": None}, None, None, -3, -2.0),
+        ({"pct_change_from_prev_close": -100}, None, None, -3, -2.0),
+        ({"buy_price": None}, 7.91, 5.7, None, None),
+        ({"buy_price": 8}, 7.91, 5.7, 17, 13.1),
+        ({"quantity": None}, None, None, None, None),
+        ({"current_price": None}, None, None, None, None),
+        ({"quote_currency": None}, None, None, None, None),
+        ({"quote_currency": "USD"}, None, None, None, None),
     ],
 )
-def test_monitoring_held_position_changes(monitoring_environment, overrides, day_total, buy_total):
+def test_monitoring_held_position_changes(
+    monitoring_environment, overrides, day_total, day_pct, buy_total, buy_pct,
+):
     result = MonitoringResult(
         positions_to_keep=[PositionReview(
             underlying_symbol="KEEP", warrant_isin="KEEP", warrant_wkn="KEEP",
@@ -87,17 +89,22 @@ def test_monitoring_held_position_changes(monitoring_environment, overrides, day
     )
 
     held_card = html.split('Held positions &middot;', 1)[1].split('<div class="card ', 1)[0]
-    for label, total in [
-        ("Previous day", day_total),
-        ("Since buy", buy_total),
+    for label, total, relative in [
+        ("Previous close", day_total, day_pct),
+        ("Since buy", buy_total, buy_pct),
     ]:
         row = held_card.split(f'<span class="text-muted">{label}:</span>', 1)[1].split("</div>", 1)[0]
         if total is None:
             assert '<span class="text-muted" title="Required EUR position data is unavailable">\u2014</span>' in row
         else:
-            color = "text-success" if total >= 0 else "text-danger"
             sign = "+" if total > 0 else ""
-            assert f'<span class="{color}">{sign}{format_eur(total)}</span>' in row
+            amount = format_eur(abs(total))
+            percentage = format_percentage(relative / 100)
+            icon_color = "bg-success" if total >= 0 else "bg-danger"
+            arrow = "↗" if total >= 0 else "↘"
+            assert f'{sign}{amount} <span class="d-inline-flex align-items-center justify-content-center rounded-circle mx-1 {icon_color} text-white"' in row
+            assert f'aria-hidden="true">{arrow}</span> {percentage}' in row
+    assert "Previous day:" not in held_card
 
 
 @pytest.mark.asyncio

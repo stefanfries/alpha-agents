@@ -227,15 +227,15 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 **Summary cards** include `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, and `Entry candidates` on the left, with `Total NAV`, `Held positions`, and `Free cash` aligned right. The three monetary cards show each amount's share of Total NAV. Held positions value is Total NAV minus available cash. Held warrant quantities are shown as whole units with dot thousands separators.
 
-The `Held positions` card includes two small lines, `Previous day` and `Since buy`, showing signed EUR changes versus the previous trading day's close and since purchase, summed across keep, sell, and roll holdings. Both use quantity-weighted current bid prices, matching the position performance columns and bid-valued NAV; no ask is required. The daily change recovers the provider's previous close from the saved percentage change, not a separate previous bid; the since-buy change subtracts the average purchase price. Gains are green and losses red. A change shows an unavailable value if any holding lacks its required price, quantity, or EUR quote currency; an empty depot shows zero.
+The `Held positions` card includes two small lines, `Previous close` and `Since buy`, showing each aggregate absolute change with its EUR symbol alongside its relative percentage, summed across keep, sell, and roll holdings. A filled circular diagonal arrow, spaced slightly from both values, sits between the amount and percentage: up-right green for gains and down-right red for losses. Both values use quantity-weighted current bid prices, matching the position performance columns and bid-valued NAV; no ask is required. The daily change recovers the provider's previous close from the saved percentage change, not a separate previous bid; its percentage is measured against aggregate previous-close value. The since-buy change subtracts the average purchase price; its percentage is measured against aggregate purchase cost. A change shows an unavailable value if any holding lacks its required price, quantity, or EUR quote currency; an empty depot shows zero.
 
 The held value remains the card's primary amount; its label and NAV share occupy one
 muted line, followed by the two small change lines. There are no separate performance cards.
 The template derives the changes from the stored position snapshots without additional
 API requests or persisted summary fields:
 
-- `Previous day`: sum `quantity * current_price * pct_change_from_prev_close / (100 + pct_change_from_prev_close)`; requires a previous-close percentage greater than -100 for every holding.
-- `Since buy`: sum `quantity * (current_price - buy_price)`; requires a purchase price for every holding.
+- `Previous close`: absolute change is the sum of `quantity * current_price * pct_change_from_prev_close / (100 + pct_change_from_prev_close)`; percentage is that sum divided by aggregate previous-close value. Requires a previous-close percentage greater than -100 for every holding.
+- `Since buy`: absolute change is the sum of `quantity * (current_price - buy_price)`; percentage is that sum divided by aggregate purchase cost. Requires a purchase price for every holding.
 
 These amounts represent price changes on currently held units, not realized account
 returns; they exclude cash movements and transaction fees.
