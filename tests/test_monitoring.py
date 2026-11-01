@@ -100,10 +100,10 @@ def test_monitoring_held_position_changes(
             sign = "+" if total > 0 else ""
             amount = format_eur(abs(total))
             percentage = format_percentage(relative / 100)
-            icon_color = "bg-success" if total >= 0 else "bg-danger"
-            arrow = "↗" if total >= 0 else "↘"
-            assert f'{sign}{amount} <span class="d-inline-flex align-items-center justify-content-center rounded-circle mx-1 {icon_color} text-white"' in row
-            assert f'aria-hidden="true">{arrow}</span> {percentage}' in row
+            direction_color = "text-success" if total >= 0 else "text-danger"
+            arrow = "⬈" if total >= 0 else "⬊"
+            assert f'<span class="{direction_color}">' in row
+            assert f'{sign}{amount} <span class="fw-bold" style="font-size: 1.15em; line-height: 1" aria-hidden="true">{arrow}</span> {percentage}' in row
     assert "Previous day:" not in held_card
 
 
