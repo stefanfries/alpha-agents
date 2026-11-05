@@ -56,6 +56,11 @@ class MonitoringResult(BaseModel):
     reentry_blocked_symbols: set[str]        # recent virtual-depot SELL underlyings
 ```
 
+For real depots, `available_cash_eur` uses the newest EUR `balance` for Girokonto and
+Tagesgeld PLUS-Konto, and the newest EUR `available_cash_amount` for Verrechnungskonto.
+The latter reflects same-day BUY/SELL proceeds and costs. NAV adds this same cash amount to
+held-position value. Virtual depots use the latest `current_cash` snapshot.
+
 `PositionReview` fields:
 
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`

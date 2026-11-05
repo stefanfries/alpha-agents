@@ -473,8 +473,9 @@ Output of `TradeExecutionAgent`. Final pipeline output.
 - Numeric amount values are stored as strings in nested amount objects (for example `{"value": "123.45", "unit": "EUR"}`) and are explicitly converted to `Decimal` before calculations.
 - `held_since_date` and `purchase_price_at_entry` can be `null`; consumers must handle missing values without crashing.
 - Current holdings are always read from the latest snapshot per depot (`max(recorded_at)`).
-- Real-depot free cash is the sum of the newest EUR `account_balances` record for each of
-  `Girokonto`, `Tagesgeld PLUS-Konto`, and `Verrechnungskonto`, selected by `account_type`.
+- Real-depot free cash uses the newest EUR `balance` for `Girokonto` and
+  `Tagesgeld PLUS-Konto`, and the newest EUR `available_cash_amount` for `Verrechnungskonto`,
+  selected by `account_type`.
   Unchanged balances may have older `recorded_at` values and remain valid until superseded.
 
 ### `Execution` document (`executions` collection)

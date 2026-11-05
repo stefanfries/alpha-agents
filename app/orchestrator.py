@@ -899,9 +899,18 @@ class Pipeline:
                 if account_name:
                     balance_records = await finance_db()["account_balances"].find(
                         {"account_name": account_name},
-                        {"account_type": 1, "balance": 1, "recorded_at": 1, "_id": 0},
+                        {
+                            "account_type": 1,
+                            "balance": 1,
+                            "available_cash_amount": 1,
+                            "recorded_at": 1,
+                            "_id": 0,
+                        },
                     ).sort("recorded_at", -1).to_list(length=None)
-                    cash_eur, cash_errors = sum_latest_cash_balances_eur(balance_records)
+                    cash_eur, cash_errors = sum_latest_cash_balances_eur(
+                        balance_records,
+                        use_available_cash_for_verrechnungskonto=True,
+                    )
                     errors.extend(cash_errors)
             else:
                 errors.append("No real-depot snapshot is available")

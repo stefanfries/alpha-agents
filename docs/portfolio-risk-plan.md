@@ -24,7 +24,8 @@ scoring changes are out of scope here.
   `average_purchase_price`. Price values can include a unit and `price_datetime`.
 - Virtual depot snapshots include `current_cash`. Real-depot capital is already calculated
   by `/quant-systems/depot-capital/{depot_id}` as marked position values plus the newest
-  balance for each of Girokonto, Tagesgeld PLUS-Konto, and Verrechnungskonto.
+  balance for each of Girokonto, Tagesgeld PLUS-Konto, and Verrechnungskonto. This capital
+  estimate remains separate from the spendable cash used for account-backed sizing.
 - The Quant System's configured `capital_eur` remains stored for reference; account-backed
   sizing and Risk use NAV/cash from the current depot snapshot.
 - Monitoring fetches a FinHub warrant snapshot and retains bid, ask, `market_data.prev_close`,
@@ -32,9 +33,10 @@ scoring changes are out of scope here.
   `pct_change_from_prev_close` is calculated from the bid and `prev_close` from the same
   `/v1/warrants/{identifier}` response, so no additional `/v1/quotes/{identifier}` request is
   needed. The snapshot fields and percentage are copied into persisted `PositionReview` results.
-- `_fetch_portfolio_account_snapshot()` now reads real-depot cash by summing the latest EUR
-  balance per supported cash account type, or virtual cash from the latest snapshot (falling back to starting capital before
-  the first snapshot), fetches FinHub held-warrant bids, applies the 72-hour/EUR checks,
+- `_fetch_portfolio_account_snapshot()` now reads real-depot cash using the latest EUR
+  `balance` for Girokonto and Tagesgeld PLUS-Konto and `available_cash_amount` for
+  Verrechnungskonto, or virtual cash from the latest snapshot (falling back to starting capital
+  before the first snapshot). It fetches FinHub held-warrant bids, applies the 72-hour/EUR checks,
   and computes NAV only when all required values are valid. It attaches the typed snapshot to
   `PortfolioProposal`, which Portfolio sizing and Risk now consume.
 - `PortfolioHoldingValue` now carries both `underlying_isin` and optional
@@ -83,9 +85,10 @@ scoring changes are out of scope here.
   no more than `portfolio.quote_max_age_hours` (72 hours by default), and its currency is EUR. Non-EUR conversion is out of scope for
   v1; block new exposure when a required quote is non-EUR.
 - Available cash is distinct from NAV and is the source for ordinary new-buy sizing. For real
-  depots it is the sum of the newest `Girokonto`, `Tagesgeld PLUS-Konto`, and
-  `Verrechnungskonto` records; unchanged balances remain valid even when their `recorded_at`
-  timestamps are older than the other account records.
+  depots it uses the newest EUR `balance` for Girokonto and Tagesgeld PLUS-Konto and the newest
+  EUR `available_cash_amount` for Verrechnungskonto, so same-day SELL/BUY proceeds and costs
+  affect spendable funds. Select records per account type; unchanged values remain valid even
+  when their `recorded_at` timestamps are older than other account records.
 - Use one shared `max_positions` setting as the intended portfolio breadth and slot limit.
 - Preserve current holdings not selected for sale; confirmed SELLs free position slots.
 - A ROLL is a full SELL of the incumbent and a BUY of a replacement on the same underlying.

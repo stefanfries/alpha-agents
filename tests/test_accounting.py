@@ -18,6 +18,31 @@ def test_sum_latest_eur_cash_balance_per_account_type():
     assert errors == []
 
 
+def test_sum_latest_eur_available_cash_for_verrechnungskonto():
+    balances = [
+        {
+            "account_type": "Verrechnungskonto",
+            "balance": {"value": "101865.98", "unit": "EUR"},
+            "available_cash_amount": {"value": "101000.00", "unit": "EUR"},
+        },
+        {"account_type": "Tagesgeld PLUS-Konto", "balance": {"value": "0.03", "unit": "EUR"}},
+        {"account_type": "Girokonto", "balance": {"value": "106.03", "unit": "EUR"}},
+        {
+            "account_type": "Verrechnungskonto",
+            "balance": {"value": "99636.35", "unit": "EUR"},
+            "available_cash_amount": {"value": "99000.00", "unit": "EUR"},
+        },
+    ]
+
+    total, errors = sum_latest_cash_balances_eur(
+        balances,
+        use_available_cash_for_verrechnungskonto=True,
+    )
+
+    assert total == Decimal("101106.06")
+    assert errors == []
+
+
 def test_sum_latest_eur_cash_requires_each_account_type():
     total, errors = sum_latest_cash_balances_eur([
         {"account_type": "Verrechnungskonto", "balance": {"value": "101865.98", "unit": "EUR"}},

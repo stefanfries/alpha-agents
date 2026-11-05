@@ -11,9 +11,9 @@ remain represented separately as `Position.quantity`.
 
 - Selected warrants, converted to a `SelectionResult` for the agent contract.
 - Current held warrant positions from the linked real or virtual depot.
-- Real-depot free cash is the sum of the newest EUR balances for Girokonto, Tagesgeld
-  PLUS-Konto, and Verrechnungskonto; account balances are selected per account type because an
-  unchanged balance may not receive a new timestamp.
+- Real-depot free cash uses the newest EUR balance for Girokonto and Tagesgeld PLUS-Konto,
+  and the newest EUR available cash amount for Verrechnungskonto. Account records are selected
+  per type because unchanged values may not receive a new timestamp.
 - `PortfolioAccountSnapshot` with current EUR cash, held positions' EUR bid values, quote
   timestamps, underlying ISINs/symbols, sectors, and valuation issues.
 - Confirmed roll replacements and incumbent ISINs from Warrant Selection.

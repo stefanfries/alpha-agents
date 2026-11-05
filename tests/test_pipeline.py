@@ -2073,7 +2073,11 @@ async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(monkeypatch)
 
         async def to_list(self, length=None):
             return [
-                {"account_type": "Verrechnungskonto", "balance": {"value": "101865.98", "unit": "EUR"}},
+                {
+                    "account_type": "Verrechnungskonto",
+                    "balance": {"value": "101865.98", "unit": "EUR"},
+                    "available_cash_amount": {"value": "101000.00", "unit": "EUR"},
+                },
                 {"account_type": "Tagesgeld PLUS-Konto", "balance": {"value": "0.03", "unit": "EUR"}},
                 {"account_type": "Girokonto", "balance": {"value": "106.03", "unit": "EUR"}},
             ]
@@ -2102,8 +2106,8 @@ async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(monkeypatch)
     )
 
     assert snapshot.source == "real"
-    assert snapshot.available_cash_eur == Decimal("101972.04")
-    assert snapshot.nav_eur == Decimal("101972.04")
+    assert snapshot.available_cash_eur == Decimal("101106.06")
+    assert snapshot.nav_eur == Decimal("101106.06")
     assert snapshot.valuation_errors == []
 
 

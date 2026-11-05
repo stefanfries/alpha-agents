@@ -83,7 +83,9 @@ Two depot types are supported:
 **Real depots** — read-only cross-database queries against the `finance` database (maintained by the `comdirect_api` sibling project, same Atlas cluster):
 
 - `finance.depot_snapshots` → latest positions (`find_one` sorted by `recorded_at DESC`)
-- `finance.account_balances` → latest cash balance
+- `finance.account_balances` → latest cash records; account-backed spendable cash uses
+    `balance` for Girokonto and Tagesgeld PLUS-Konto and `available_cash_amount` for
+    Verrechnungskonto. The depot-capital estimate separately uses `balance` for all three.
 
 **Virtual (paper-trading) depots** — stored in the `alpha_agents` database using an insert-only pattern identical to real depots:
 
