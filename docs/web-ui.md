@@ -478,15 +478,24 @@ positions or sector exposures that exceed their limits.
 
 | Column | Description |
 | ------ | ----------- |
-| Symbol | Planned warrant symbol |
+| Underlying | Underlying symbol |
+| Name | Underlying display name |
+| Warrant WKN | WKN of the planned warrant |
+| Action | `BUY` or `ROLL BUY` |
 | Status | Approved or rejected |
+| Notional | Planned EUR BUY amount |
 | Note | `risk_notes` value from `RiskAssessment` |
 
-The Risk review lists approved and rejected planned positions with reasons, and shows
-warnings for existing holdings or sector exposures above the configured limits. It does not
-offer an override for rejected orders.
+The right side shows a projected sector-allocation donut and position-weight bars with the
+per-position limit marked. Both include cash and reflect approved trades, planned closes,
+and roll outcomes; rejected BUYs are excluded. Existing holdings or sector exposures above
+configured limits remain visible as warnings.
 
-**User actions at approve:** none (risk rules are hard constraints; the user cannot override rejections here — they must restart from an earlier stage with adjusted parameters or config).
+The Risk form edits the position-cap multiple and sector cap (% NAV). **Apply & Re-run**
+persists values in `config_overrides.risk` for this execution and reruns Risk. Rejected orders
+cannot be manually overridden.
+
+**User actions at approve:** approve the risk assessment or restart Risk after changing limits.
 
 ---
 
@@ -557,7 +566,7 @@ Each restart form shows only the parameters relevant to the stage being re-run. 
 | Screening | `stock_selection_top_n`, `stock_selection_min_adx`, `stock_selection_allow_starting_trends` |
 | Warrant selection | Min/Max maturity (months), Min/Max strike factor, `Min score`, `Max spread %` |
 | Portfolio | `portfolio.max_positions` and `portfolio.slippage_bps` are set on the Quant System; quote max age is an application setting (72-hour default) |
-| Risk | No per-stage restart controls; uses the shared Portfolio position count and global `risk.max_position_multiple` / `risk.max_sector_weight` settings |
+| Risk | Position-cap multiple and sector cap (% NAV), persisted in `config_overrides.risk`; position count remains shared with Portfolio |
 | Execution | `execution_dry_run`, `execution_min_trade_eur`, `execution_order_type` |
 
 The Research stage has no editable parameters — restarting from Research simply re-fetches OHLCV data with the same universe.

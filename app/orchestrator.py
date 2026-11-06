@@ -1070,9 +1070,11 @@ class Pipeline:
 
     async def _run_risk(self, run: dict) -> RiskAssessment:
         proposal = PortfolioProposal.model_validate(run["stages"]["portfolio"]["result"])
+        risk_overrides = run.get("config_overrides", {}).get("risk", {})
+        risk_config = settings.risk.model_dump() | risk_overrides
         return await RiskAgent(
-            max_position_multiple=settings.risk.max_position_multiple,
-            max_sector_weight=settings.risk.max_sector_weight,
+            max_position_multiple=risk_config["max_position_multiple"],
+            max_sector_weight=risk_config["max_sector_weight"],
             max_positions=self._portfolio_max_positions(run),
             quote_max_age_hours=settings.portfolio.quote_max_age_hours,
         ).run(proposal)

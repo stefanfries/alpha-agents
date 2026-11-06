@@ -18,7 +18,7 @@ positions or sectors.
 ## Rules
 
 - **Position notional cap:** `3 × NAV / max_positions` per warrant position.
-- **Sector cap:** total marked EUR exposure per sector must not exceed 80% of NAV.
+- **Sector cap:** total marked EUR exposure per sector must not exceed 30% of NAV by default.
 - **Position count:** use the same `portfolio.max_positions` value as Portfolio and Monitoring.
   A roll replaces an incumbent and does not consume a new-entry slot.
 - Evaluate post-trade exposure: remove planned close positions; for a roll, replace the
@@ -38,9 +38,20 @@ positions or sectors.
 | Setting | Default | Description |
 | ------- | ------- | ----------- |
 | `risk.max_position_multiple` | `3.0` | Multiple of the equal target slot size (`NAV / max_positions`) |
-| `risk.max_sector_weight` | `0.8` | Maximum sector share of NAV (80%) |
+| `risk.max_sector_weight` | `0.3` | Maximum sector share of NAV (30%) |
 
 `max_positions` is sourced from `portfolio.max_positions`; there is no separate Risk count.
+Risk limit defaults come from `RiskSettings` / `.env` and can be overridden per execution
+in the Risk stage UI. Overrides are persisted in the execution's `config_overrides.risk`.
+
+## Risk review UI
+
+The review table shows underlying symbol/name, warrant WKN, action, approval status, BUY
+notional, and the risk note. The page also shows projected post-trade sector allocation as a
+donut and projected position weights as bars against the per-position limit. Projections
+include approved BUYs and rolls, remove planned closes, keep incumbents for rejected rolls,
+exclude rejected BUYs, and show residual NAV as cash. Charts are withheld when NAV or account
+valuation data is incomplete.
 
 ## Atomic rolls and execution
 

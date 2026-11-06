@@ -21,6 +21,7 @@ from app.models.market import Ticker
 from app.models.signals import (
     MonitoringResult,
     PortfolioProposal,
+    RiskAssessment,
     WarrantSelectionResult,
 )
 from app.orchestrator import get_pipeline
@@ -32,6 +33,7 @@ from app.policies.trend_detection import (
     trend_quality_at_index,
 )
 from app.portfolio_review import build_portfolio_action_tables
+from app.risk_visualization import build_risk_view
 from app.tools.finhub import FinHubTool
 from app.tools.retry import retry_call
 from app.tools.yfinance import YFinanceTool
@@ -316,6 +318,21 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
             "spread_max_pct": ws_cfg.spread_max_pct,
             "roll_min_improvement": ws_cfg.roll_min_improvement,
         }
+    if stage == "risk" and execution:
+        risk_overrides = execution.get("config_overrides", {}).get("risk", {})
+        ctx["risk_cfg"] = settings.risk.model_dump() | risk_overrides
+        portfolio_result = (execution.get("stages", {}).get("portfolio") or {}).get("result")
+        warrant_result = (execution.get("stages", {}).get("warrant_selection") or {}).get("result")
+        if ctx.get("stage_result") and portfolio_result and warrant_result:
+            ctx["risk_view"] = build_risk_view(
+                PortfolioProposal.model_validate(portfolio_result),
+                RiskAssessment.model_validate(ctx["stage_result"]),
+                WarrantSelectionResult.model_validate(warrant_result),
+                max_positions=get_pipeline()._portfolio_max_positions(execution),
+                max_position_multiple=risk_overrides.get(
+                    "max_position_multiple", settings.risk.max_position_multiple
+                ),
+            )
     if stage == "monitoring" and execution:
         screening = (execution.get("stages", {}).get("screening", {}) or {}).get("result") or {}
         ranking_metric = execution.get("config_overrides", {}).get("screening", {}).get(
@@ -457,6 +474,9 @@ async def restart_stage(
     wh_delta_min: Annotated[str | None, Form()] = None,
     wh_delta_max: Annotated[str | None, Form()] = None,
     wh_min_days_to_maturity: Annotated[str | None, Form()] = None,
+    risk_limits_submitted: Annotated[str | None, Form()] = None,
+    risk_max_position_multiple: Annotated[str | None, Form()] = None,
+    risk_max_sector_pct: Annotated[str | None, Form()] = None,
 ) -> RedirectResponse:
     idx = STAGES.index(from_stage)
     updates: dict = {}
@@ -677,6 +697,27 @@ async def restart_stage(
                 "delta_max":            safe_delta_max,
                 "min_days_to_maturity": safe_days,
             }
+        }
+
+    if risk_limits_submitted is not None:
+        def _risk_float(value: str | None, default: float) -> float:
+            try:
+                parsed = float(value) if value not in (None, "") else default
+            except ValueError:
+                parsed = default
+            return parsed if np.isfinite(parsed) else default
+
+        max_position_multiple = max(
+            0.0,
+            min(_risk_float(risk_max_position_multiple, settings.risk.max_position_multiple), 20.0),
+        )
+        max_sector_pct = max(
+            0.0,
+            min(_risk_float(risk_max_sector_pct, settings.risk.max_sector_weight * 100), 100.0),
+        )
+        updates["config_overrides.risk"] = {
+            "max_position_multiple": max_position_multiple,
+            "max_sector_weight": max_sector_pct / 100,
         }
 
     await executions_collection().update_one({"execution_id": execution_id}, {"$set": updates})

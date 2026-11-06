@@ -4,6 +4,17 @@
 {% block content %}
 <h5 class="mb-1">Risk</h5>
 <p class="text-muted small mb-4">Validate proposed positions against risk limits.</p>
+<style>
+  .risk-review-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:1rem; flex:1; min-height:0; }
+  .risk-review-list, .risk-visuals { min-width:0; min-height:0; overflow:auto; }
+  .risk-donut { width:156px; aspect-ratio:1; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; }
+  .risk-donut-hole { width:62%; aspect-ratio:1; border-radius:50%; background:var(--bs-body-bg); display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .risk-legend-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; }
+  .risk-bar-track { position:relative; height:10px; background:var(--bs-tertiary-bg); border-radius:2px; }
+  .risk-bar-fill { height:100%; border-radius:2px; }
+  .risk-limit-marker { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--bs-danger); }
+  @media (max-width: 900px) { .risk-review-grid { grid-template-columns:minmax(0, 1fr); overflow:auto; } .risk-review-list { max-height:360px; } }
+</style>
 
 {% if stage_status == "running" %}
   <div class="d-flex align-items-center gap-2 text-primary mb-4">
@@ -22,6 +33,7 @@
   <div class="d-flex flex-column flex-grow-1 overflow-hidden" style="min-height:0">
     {% if stage_result %}
       {% set r = stage_result %}
+      {% set risk_view_data = risk_view if risk_view is defined else none %}
       {% if r.portfolio_warnings %}
         <div class="alert alert-warning flex-shrink-0 mb-2">
           <strong>Existing portfolio warnings</strong>
@@ -34,44 +46,122 @@
         <div class="row g-3">
           <div class="col-auto">
             <div class="card text-center px-4 py-3 shadow-sm border-success">
-              <div class="fs-3 fw-bold text-success">{{ r.approved_positions | length }}</div>
+              <div class="fs-3 fw-bold text-success">{{ r.approved_positions | length + r.approved_roll_trades | length }}</div>
               <div class="text-muted small">Approved</div>
             </div>
           </div>
           <div class="col-auto">
             <div class="card text-center px-4 py-3 shadow-sm border-danger">
-              <div class="fs-3 fw-bold text-danger">{{ r.rejected_positions | length }}</div>
+              <div class="fs-3 fw-bold text-danger">{{ r.rejected_positions | length + r.rejected_roll_trades | length }}</div>
               <div class="text-muted small">Rejected</div>
             </div>
           </div>
         </div>
       </div>
-      <div class="flex-grow-1 overflow-auto" style="min-height:0">
-        <table class="table table-sm table-hover bg-white rounded shadow-sm">
-          <thead class="table-light">
-            <tr><th>Symbol</th><th>Status</th><th>Note</th></tr>
-          </thead>
-          <tbody>
-            {% for pos in r.approved_positions %}
-            <tr>
-              <td><code>{{ pos.ticker.symbol }}</code></td>
-              <td><span class="badge bg-success">approved</span></td>
-              <td class="text-muted small">{{ r.risk_notes.get(pos.ticker.symbol, "") }}</td>
-            </tr>
-            {% endfor %}
-            {% for pos in r.rejected_positions %}
-            <tr>
-              <td><code>{{ pos.ticker.symbol }}</code></td>
-              <td><span class="badge bg-danger">rejected</span></td>
-              <td class="text-muted small">{{ r.risk_notes.get(pos.ticker.symbol, "") }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="risk-review-grid">
+        <div class="risk-review-list">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover bg-white rounded shadow-sm">
+              <thead class="table-light sticky-top">
+                <tr><th>Underlying</th><th>Name</th><th>Warrant WKN</th><th>Action</th><th>Status</th><th>Notional</th><th>Note</th></tr>
+              </thead>
+              <tbody>
+                {% for row in risk_view_data.review_rows if risk_view_data %}
+                <tr>
+                  <td><code>{{ row.underlying_symbol }}</code></td>
+                  <td class="small">{{ row.underlying_name }}</td>
+                  <td><code>{{ row.warrant_wkn }}</code></td>
+                  <td class="small">{{ row.action }}</td>
+                  <td><span class="badge {{ 'bg-success' if row.status == 'approved' else 'bg-danger' }}">{{ row.status }}</span></td>
+                  <td class="text-end text-nowrap">{{ row.notional_eur | eur }}</td>
+                  <td class="text-muted small">{{ row.note }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <aside class="risk-visuals d-flex flex-column gap-3">
+          {% if risk_view_data and risk_view_data.available %}
+            {% if risk_view_data.cash_shortfall_eur > 0 %}
+            <div class="alert alert-warning small mb-0">Projected positions exceed NAV by {{ risk_view_data.cash_shortfall_eur | eur }}; cash is shown as zero.</div>
+            {% endif %}
+            <section class="border rounded p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <h6 class="mb-0">Projected sector allocation</h6>
+                  <span class="small text-muted">Limit: {{ '%.0f' | format(risk_cfg.max_sector_weight * 100) }}% of NAV</span>
+                </div>
+                <span class="small text-muted">{{ risk_view_data.nav_eur | eur }} NAV</span>
+              </div>
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="risk-donut" role="img" aria-label="Projected sector allocation including cash" style="background:conic-gradient({{ risk_view_data.sector_gradient }})">
+                  <div class="risk-donut-hole"><strong class="small">Sector</strong><span class="text-muted" style="font-size:.7rem">allocation</span></div>
+                </div>
+                <div class="d-flex flex-column gap-1 flex-grow-1">
+                  {% for item in risk_view_data.sector_rows %}
+                  <div class="d-flex justify-content-between gap-2 small" title="{{ item.sector }}: {{ item.value_eur | eur }}">
+                    <span class="text-truncate"><span class="risk-legend-swatch" style="background:{{ item.color }}"></span>{{ item.sector }}</span>
+                    <span class="text-nowrap">{{ '%.1f' | format(item.weight_pct) }}%</span>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </section>
+            <section class="border rounded p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <h6 class="mb-0">Projected position weights</h6>
+                  <span class="small text-muted">Limit marker: {{ '%.1f' | format(risk_view_data.position_limit_pct) }}% of NAV</span>
+                </div>
+              </div>
+              <div class="d-flex flex-column gap-2">
+                {% for item in risk_view_data.position_rows %}
+                <div>
+                  <div class="d-flex justify-content-between gap-2 small mb-1">
+                    <span class="text-truncate" title="{{ item.underlying_name }} · {{ item.warrant_wkn }}">
+                      <span class="risk-legend-swatch" style="background:{{ item.color }}"></span>{{ item.underlying_symbol }}{% if not item.is_cash %} <span class="text-muted">{{ item.warrant_wkn }}</span>{% endif %}
+                    </span>
+                    <span class="text-nowrap">{{ '%.1f' | format(item.weight_pct) }}%</span>
+                  </div>
+                  <div class="risk-bar-track">
+                    <div class="risk-bar-fill" style="width:{{ item.bar_width_pct }}%;background:{{ item.color }}"></div>
+                    {% if not item.is_cash %}<div class="risk-limit-marker" style="left:{{ risk_view_data.position_limit_marker_pct }}%" title="Per-position limit"></div>{% endif %}
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </section>
+          {% elif risk_view_data %}
+            <div class="alert alert-secondary small">{{ risk_view_data.message }}</div>
+          {% else %}
+            <div class="alert alert-secondary small">Projected allocation data is unavailable.</div>
+          {% endif %}
+        </aside>
       </div>
     {% else %}
       <div class="alert alert-warning flex-shrink-0">Result data unavailable — use Restart to re-run this stage.</div>
     {% endif %}
+    <form method="post" action="/quant-systems/{{ qs_id }}/executions/{{ execution.execution_id }}/stages/risk/restart"
+          class="flex-shrink-0 mt-3 pt-3 border-top">
+      <input type="hidden" name="from_stage" value="risk">
+      <input type="hidden" name="risk_limits_submitted" value="1">
+      <div class="d-flex align-items-end gap-3 flex-wrap">
+        <div>
+          <label class="form-label small mb-1" for="risk_max_position_multiple">Position cap multiple</label>
+          <input class="form-control form-control-sm" type="number" min="0" max="20" step="0.1"
+                 id="risk_max_position_multiple" name="risk_max_position_multiple"
+                 value="{{ risk_cfg.max_position_multiple }}" style="width:150px">
+        </div>
+        <div>
+          <label class="form-label small mb-1" for="risk_max_sector_pct">Sector cap (% NAV)</label>
+          <input class="form-control form-control-sm" type="number" min="0" max="100" step="1"
+                 id="risk_max_sector_pct" name="risk_max_sector_pct"
+                 value="{{ '%.0f' | format(risk_cfg.max_sector_weight * 100) }}" style="width:150px">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Apply &amp; Re-run</button>
+      </div>
+    </form>
     <div class="flex-shrink-0">
       {% include "partials/action_bar.html" %}
     </div>

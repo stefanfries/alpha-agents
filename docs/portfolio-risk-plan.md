@@ -53,7 +53,7 @@ scoring changes are out of scope here.
   holds proposed BUY allocations, and `Order.notional_eur` represents an Execution BUY; SELL
   orders use `Order.quantity` in instrument units.
 - `portfolio.max_positions` is now the shared target/slot count for Monitoring, Portfolio, and
-  Risk. The 10% caps were removed; Risk uses the 3× position multiple and an 80% sector cap.
+  Risk. The 10% caps were removed; Risk uses the 3× position multiple and a 30% default sector cap.
 - Portfolio equal sizing divides available funds across BUY-slot capacity after planned closes,
   including roll replacements, rather than across configured `max_positions` when fewer BUY
   slots are open.

@@ -222,8 +222,94 @@ async def test_portfolio_account_equal_sizing_uses_available_buy_slots():
     assert result.target_weights == {"A": 0.0749212, "B": 0.0749212}
 
 
-def test_risk_sector_cap_defaults_to_fifty_percent():
-    assert RiskSettings().max_sector_weight == 0.5
+def test_risk_sector_cap_defaults_to_thirty_percent():
+    assert RiskSettings().max_sector_weight == 0.3
+
+
+@pytest.mark.asyncio
+async def test_run_risk_uses_persisted_risk_and_position_count_overrides(monkeypatch):
+    from app import orchestrator as orchestrator_module
+
+    captured: dict = {}
+
+    class FakeRiskAgent:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self, proposal):
+            captured["proposal"] = proposal
+            return proposal
+
+    monkeypatch.setattr(orchestrator_module, "RiskAgent", FakeRiskAgent)
+    proposal = PortfolioProposal(positions=[], target_weights={})
+    run = {
+        "config_overrides": {
+            "risk": {"max_position_multiple": 2.5, "max_sector_weight": 0.3},
+            "portfolio": {"max_positions": 7},
+        },
+        "stages": {"portfolio": {"result": proposal.model_dump(mode="json")}},
+    }
+
+    result = await orchestrator_module.Pipeline()._run_risk(run)
+
+    assert result == proposal
+    assert captured["max_position_multiple"] == 2.5
+    assert captured["max_sector_weight"] == 0.3
+    assert captured["max_positions"] == 7
+
+
+def test_risk_template_renders_underlying_details_and_projected_charts():
+    from app.routes.pipeline import templates
+
+    html = templates.env.get_template("stages/risk.html").render(
+        execution={"execution_id": "exec1", "stages": {}},
+        qs_id="qs1",
+        stage_status="awaiting_review",
+        stage_result={
+            "approved_positions": [],
+            "rejected_positions": [],
+            "approved_roll_trades": [],
+            "rejected_roll_trades": [],
+            "risk_notes": {},
+            "portfolio_warnings": [],
+        },
+        risk_cfg={"max_position_multiple": 3.0, "max_sector_weight": 0.3},
+        risk_view={
+            "review_rows": [{
+                "underlying_symbol": "ACME",
+                "underlying_name": "Acme Corp",
+                "warrant_wkn": "WKN123",
+                "action": "BUY",
+                "status": "approved",
+                "notional_eur": 1000.0,
+                "note": "",
+            }],
+            "available": True,
+            "nav_eur": 10000.0,
+            "cash_shortfall_eur": 0.0,
+            "sector_rows": [{
+                "sector": "Cash", "value_eur": 9000.0, "weight_pct": 90.0, "color": "#89939e",
+            }],
+            "sector_gradient": "#89939e 0% 100%",
+            "position_rows": [{
+                "underlying_symbol": "Cash", "underlying_name": "Cash", "warrant_wkn": "—",
+                "weight_pct": 90.0, "bar_width_pct": 90.0, "color": "#89939e", "is_cash": True,
+            }],
+            "position_limit_pct": 20.0,
+            "position_limit_marker_pct": 20.0,
+        },
+        current_stage="risk",
+        stages=["risk"],
+        stage_labels={"risk": "Risk"},
+    )
+
+    assert "<th>Underlying</th><th>Name</th>" in html
+    assert "Warrant WKN" in html
+    assert "Acme Corp" in html
+    assert "WKN123" in html
+    assert "Projected sector allocation" in html
+    assert "Projected position weights" in html
+    assert "conic-gradient(#89939e 0% 100%)" in html
 
 
 @pytest.mark.asyncio
@@ -1208,6 +1294,43 @@ async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
         "strike_max_factor": 1.0,
         "min_score": 0.62,
         "spread_max_pct": 2.25,
+    }
+
+
+@pytest.mark.asyncio
+async def test_restart_stage_persists_risk_limits(monkeypatch):
+    from app.routes import pipeline as pipeline_module
+
+    class FakeCollection:
+        def __init__(self) -> None:
+            self.calls: list[tuple[dict, dict]] = []
+
+        async def update_one(self, selector: dict, update: dict) -> None:
+            self.calls.append((selector, update))
+
+    class FakePipeline:
+        async def run_stage(self, execution_id: str, from_stage: str) -> None:
+            return None
+
+    fake_collection = FakeCollection()
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: fake_collection)
+    monkeypatch.setattr(pipeline_module, "get_pipeline", lambda: FakePipeline())
+    monkeypatch.setattr(pipeline_module, "_fire", lambda coro: coro.close())
+
+    await pipeline_module.restart_stage(
+        qs_id="qs1",
+        execution_id="exec4",
+        stage="risk",
+        from_stage="risk",
+        risk_limits_submitted="1",
+        risk_max_position_multiple="2.5",
+        risk_max_sector_pct="30",
+    )
+
+    _, update = fake_collection.calls[0]
+    assert update["$set"]["config_overrides.risk"] == {
+        "max_position_multiple": 2.5,
+        "max_sector_weight": 0.3,
     }
 
 
