@@ -259,6 +259,8 @@ async def test_run_risk_uses_persisted_risk_and_position_count_overrides(monkeyp
 
 
 def test_risk_template_renders_underlying_details_and_projected_charts():
+    import re
+
     from app.routes.pipeline import templates
 
     html = templates.env.get_template("stages/risk.html").render(
@@ -289,11 +291,19 @@ def test_risk_template_renders_underlying_details_and_projected_charts():
             "cash_shortfall_eur": 0.0,
             "sector_rows": [{
                 "sector": "Cash", "value_eur": 9000.0, "weight_pct": 90.0, "color": "#89939e",
+                "tooltip": "Cash", "dash_array": "237.504 26.390", "dash_offset": "0.000",
+            }, {
+                "sector": "Technology", "value_eur": 1000.0, "weight_pct": 10.0,
+                "color": "#e76f51", "tooltip": "Technology\nAcme Corp (ACME) · WKN123",
+                "dash_array": "26.390 237.504", "dash_offset": "-237.504",
             }],
             "sector_gradient": "#89939e 0% 100%",
             "position_rows": [{
                 "underlying_symbol": "Cash", "underlying_name": "Cash", "warrant_wkn": "—",
                 "weight_pct": 90.0, "bar_width_pct": 90.0, "color": "#89939e", "is_cash": True,
+            }, {
+                "underlying_symbol": "ACME", "underlying_name": "Acme Corp", "warrant_wkn": "WKN123",
+                "weight_pct": 10.0, "bar_width_pct": 10.0, "color": "#e76f51", "is_cash": False,
             }],
             "position_limit_pct": 20.0,
             "position_limit_marker_pct": 20.0,
@@ -309,7 +319,20 @@ def test_risk_template_renders_underlying_details_and_projected_charts():
     assert "WKN123" in html
     assert "Projected sector allocation" in html
     assert "Projected position weights" in html
-    assert "conic-gradient(#89939e 0% 100%)" in html
+    assert html.count('class="risk-donut-segment"') == 2
+    assert "stroke-dasharray=\"237.504 26.390\"" in html
+    assert "data-risk-sector-tooltip" in html
+    assert "data-bs-title=" in html
+    assert "Acme Corp (ACME) · WKN123" in html
+    assert ".risk-donut-segment { fill:none; stroke-width:24;" in html
+    assert "width:62%; aspect-ratio:1; border-radius:50%; background:var(--bs-body-bg)" in html
+    segment_markup = re.findall(r"<circle\b[^>]*>", html)
+    assert len(segment_markup) == 2
+    assert all(
+        "data-bs-title=" in segment
+        and re.search(r"(?<![\w-])title=", segment) is None
+        for segment in segment_markup
+    )
 
 
 @pytest.mark.asyncio

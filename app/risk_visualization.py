@@ -1,4 +1,5 @@
 from decimal import Decimal
+from math import tau
 from typing import Any
 
 from app.models.signals import (
@@ -19,6 +20,8 @@ _SECTOR_COLORS = [
     "#6d8299",
 ]
 _CASH_COLOR = "#89939e"
+_DONUT_RADIUS = 42.0
+_DONUT_CIRCUMFERENCE = tau * _DONUT_RADIUS
 
 
 def build_risk_view(
@@ -155,11 +158,34 @@ def build_risk_view(
         start = cursor
         cursor += float(value / total_projected * 100) if total_projected else 0.0
         gradient_stops.append(f"{colors[sector]} {start:.3f}% {cursor:.3f}%")
+        underlyings = sorted({
+            (
+                item["underlying_symbol"],
+                item["underlying_name"],
+                item["warrant_wkn"],
+            )
+            for item in projected_positions
+            if item["sector"] == sector and sector != "Cash"
+        })
+        tooltip = sector
+        if underlyings:
+            tooltip += "\n" + "\n".join(
+                f"{name} ({symbol}) · {wkn}"
+                for symbol, name, wkn in underlyings
+            )
+        segment_length = (
+            float(value / total_projected) * _DONUT_CIRCUMFERENCE
+            if total_projected
+            else 0.0
+        )
         sector_rows.append({
             "sector": sector,
             "value_eur": float(value),
             "weight_pct": float(value / nav * 100),
             "color": colors[sector],
+            "tooltip": tooltip,
+            "dash_array": f"{segment_length:.3f} {_DONUT_CIRCUMFERENCE - segment_length:.3f}",
+            "dash_offset": f"{-start / 100 * _DONUT_CIRCUMFERENCE:.3f}",
         })
 
     position_limit_pct = max_position_multiple / max_positions * 100 if max_positions > 0 else 0.0

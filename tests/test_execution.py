@@ -104,11 +104,20 @@ def test_risk_view_projects_approved_trades_and_cash_only():
     assert view["available"] is True
     assert view["cash_shortfall_eur"] == 0
     assert view["position_limit_pct"] == 30
-    assert view["sector_rows"] == [
-        {"sector": "Cash", "value_eur": 5100.0, "weight_pct": 51.0, "color": "#89939e"},
-        {"sector": "Technology", "value_eur": 3200.0, "weight_pct": 32.0, "color": "#e76f51"},
-        {"sector": "Industrials", "value_eur": 1000.0, "weight_pct": 10.0, "color": "#457b9d"},
-        {"sector": "Financials", "value_eur": 700.0, "weight_pct": 7.0, "color": "#e9c46a"},
+    assert [
+        (row["sector"], row["value_eur"], row["weight_pct"])
+        for row in view["sector_rows"]
+    ] == [
+        ("Cash", 5100.0, 51.0),
+        ("Technology", 3200.0, 32.0),
+        ("Industrials", 1000.0, 10.0),
+        ("Financials", 700.0, 7.0),
+    ]
+    technology = next(row for row in view["sector_rows"] if row["sector"] == "Technology")
+    assert technology["tooltip"].splitlines() == [
+        "Technology",
+        "Keep Co (KEEP) · KEEPW",
+        "Roll Co (ROLL) · WROLL",
     ]
     assert "Energy" not in {row["sector"] for row in view["sector_rows"]}
     assert "OLDROLL-I" not in {row["warrant_wkn"] for row in view["position_rows"]}

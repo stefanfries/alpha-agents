@@ -51,7 +51,10 @@ notional, and the risk note. The page also shows projected post-trade sector all
 donut and projected position weights as bars against the per-position limit. Projections
 include approved BUYs and rolls, remove planned closes, keep incumbents for rejected rolls,
 exclude rejected BUYs, and show residual NAV as cash. Charts are withheld when NAV or account
-valuation data is incomplete.
+valuation data is incomplete. The donut uses independently interactive SVG sector segments.
+Hovering or keyboard-focusing a sector legend row or segment opens one tooltip listing the
+underlying names, symbols, and warrant WKNs contributing to that sector. Position bars label
+each holding with its underlying symbol, underlying name, and warrant WKN.
 
 ## Atomic rolls and execution
 

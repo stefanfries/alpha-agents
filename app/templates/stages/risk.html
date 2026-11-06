@@ -8,8 +8,12 @@
   .risk-review-grid { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:1rem; flex:1; min-height:0; }
   .risk-review-list, .risk-visuals { min-width:0; min-height:0; overflow:auto; }
   .risk-donut { width:156px; aspect-ratio:1; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; }
-  .risk-donut-hole { width:62%; aspect-ratio:1; border-radius:50%; background:var(--bs-body-bg); display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .risk-donut-svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+  .risk-donut-segment { fill:none; stroke-width:24; cursor:help; pointer-events:stroke; }
+  .risk-donut-segment:focus { stroke-width:27; outline:none; }
+  .risk-donut-hole { position:relative; z-index:1; width:62%; aspect-ratio:1; border-radius:50%; background:var(--bs-body-bg); display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
   .risk-legend-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; }
+  .risk-sector-tooltip .tooltip-inner { max-width:280px; white-space:pre-line; text-align:left; }
   .risk-bar-track { position:relative; height:10px; background:var(--bs-tertiary-bg); border-radius:2px; }
   .risk-bar-fill { height:100%; border-radius:2px; }
   .risk-limit-marker { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--bs-danger); }
@@ -95,12 +99,28 @@
                 <span class="small text-muted">{{ risk_view_data.nav_eur | eur }} NAV</span>
               </div>
               <div class="d-flex align-items-center gap-3 flex-wrap">
-                <div class="risk-donut" role="img" aria-label="Projected sector allocation including cash" style="background:conic-gradient({{ risk_view_data.sector_gradient }})">
+                <div class="risk-donut position-relative" aria-label="Projected sector allocation including cash">
+                  <svg class="risk-donut-svg" viewBox="0 0 100 100" role="list" aria-label="Sector allocation segments">
+                    {% for item in risk_view_data.sector_rows %}
+                    <circle class="risk-donut-segment" cx="50" cy="50" r="42"
+                            stroke="{{ item.color }}"
+                            stroke-dasharray="{{ item.dash_array }}"
+                            stroke-dashoffset="{{ item.dash_offset }}"
+                            transform="rotate(-90 50 50)"
+                            data-risk-sector-tooltip data-bs-toggle="tooltip" data-bs-placement="left"
+                            data-bs-custom-class="risk-sector-tooltip" data-bs-title="{{ item.tooltip }}"
+                            tabindex="0" role="listitem"
+                            aria-label="{{ item.tooltip | replace('\n', '; ') }}">
+                    </circle>
+                    {% endfor %}
+                  </svg>
                   <div class="risk-donut-hole"><strong class="small">Sector</strong><span class="text-muted" style="font-size:.7rem">allocation</span></div>
                 </div>
                 <div class="d-flex flex-column gap-1 flex-grow-1">
                   {% for item in risk_view_data.sector_rows %}
-                  <div class="d-flex justify-content-between gap-2 small" title="{{ item.sector }}: {{ item.value_eur | eur }}">
+                     <div class="d-flex justify-content-between gap-2 small"
+                       {% if item.sector != "Cash" %}data-risk-sector-tooltip data-bs-toggle="tooltip" data-bs-placement="left" data-bs-custom-class="risk-sector-tooltip" data-bs-title="{{ item.tooltip }}" tabindex="0" aria-label="{{ item.tooltip }}"{% endif %}
+                       title="{{ item.sector }}: {{ item.value_eur | eur }}">
                     <span class="text-truncate"><span class="risk-legend-swatch" style="background:{{ item.color }}"></span>{{ item.sector }}</span>
                     <span class="text-nowrap">{{ '%.1f' | format(item.weight_pct) }}%</span>
                   </div>
@@ -120,7 +140,7 @@
                 <div>
                   <div class="d-flex justify-content-between gap-2 small mb-1">
                     <span class="text-truncate" title="{{ item.underlying_name }} · {{ item.warrant_wkn }}">
-                      <span class="risk-legend-swatch" style="background:{{ item.color }}"></span>{{ item.underlying_symbol }}{% if not item.is_cash %} <span class="text-muted">{{ item.warrant_wkn }}</span>{% endif %}
+                      <span class="risk-legend-swatch" style="background:{{ item.color }}"></span>{{ item.underlying_symbol }}{% if not item.is_cash %} <span class="text-muted">{{ item.underlying_name }} · {{ item.warrant_wkn }}</span>{% endif %}
                     </span>
                     <span class="text-nowrap">{{ '%.1f' | format(item.weight_pct) }}%</span>
                   </div>
@@ -169,5 +189,18 @@
 
 {% else %}
   <div class="alert alert-secondary">Pending — waiting for Portfolio stage.</div>
+{% endif %}
+{% if stage_status == "awaiting_review" %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-risk-sector-tooltip]').forEach(item => {
+      bootstrap.Tooltip.getOrCreateInstance(item, {
+        container: 'body',
+        trigger: 'hover focus',
+        animation: false,
+      });
+    });
+  });
+</script>
 {% endif %}
 {% endblock %}

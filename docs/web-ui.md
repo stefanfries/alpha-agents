@@ -489,7 +489,10 @@ positions or sector exposures that exceed their limits.
 The right side shows a projected sector-allocation donut and position-weight bars with the
 per-position limit marked. Both include cash and reflect approved trades, planned closes,
 and roll outcomes; rejected BUYs are excluded. Existing holdings or sector exposures above
-configured limits remain visible as warnings.
+configured limits remain visible as warnings. The donut uses independently interactive SVG
+sector segments. Hovering or keyboard-focusing a sector legend row or segment opens one
+tooltip listing the underlying names, symbols, and warrant WKNs in that sector. Position
+bars show the underlying symbol and name plus the warrant WKN.
 
 The Risk form edits the position-cap multiple and sector cap (% NAV). **Apply & Re-run**
 persists values in `config_overrides.risk` for this execution and reruns Risk. Rejected orders
