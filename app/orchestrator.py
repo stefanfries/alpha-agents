@@ -976,7 +976,7 @@ class Pipeline:
 
         all_quotes_valid = all(item.market_value_eur is not None for item in valued_holdings)
         nav_eur = cash_eur + total_position_value if cash_eur is not None and all_quotes_valid else None
-        if holdings and nav_eur is None:
+        if not all_quotes_valid:
             errors.append("NAV is incomplete because one or more held-position quotes are invalid")
 
         return PortfolioAccountSnapshot(

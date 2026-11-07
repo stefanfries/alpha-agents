@@ -107,7 +107,13 @@ def test_monitoring_held_position_changes(
     assert "Previous day:" not in held_card
 
 
-def test_monitoring_tables_show_invested_and_total_portfolio_weight(monitoring_environment):
+@pytest.mark.parametrize(
+    "nav_eur, cash_eur, invested_weight, portfolio_weight",
+    [(1000, 400, 0.2, 0.12), (Decimal("64.38"), Decimal("-55.62"), 1.0, 120 / 64.38)],
+)
+def test_monitoring_tables_show_invested_and_total_portfolio_weight(
+    monitoring_environment, nav_eur, cash_eur, invested_weight, portfolio_weight,
+):
     result = MonitoringResult(
         positions_to_keep=[PositionReview(
             underlying_symbol="KEEP", warrant_isin="KEEP", warrant_wkn="KEEP",
@@ -115,7 +121,7 @@ def test_monitoring_tables_show_invested_and_total_portfolio_weight(monitoring_e
             quote_currency="EUR", pct_change_from_prev_close=0,
         )],
         positions_to_sell=[], entry_candidates=[], free_positions=0, excluded_symbols=[],
-        nav_eur=1000, available_cash_eur=400,
+        nav_eur=nav_eur, available_cash_eur=cash_eur,
     )
 
     html = monitoring_environment.get_template("stages/monitoring.html").render(
@@ -125,8 +131,39 @@ def test_monitoring_tables_show_invested_and_total_portfolio_weight(monitoring_e
 
     assert html.count(">Invested<br>Weight</th>") == 1
     assert html.count(">Portfolio<br>Weight</th>") == 1
-    assert format_percentage(0.2) in html
-    assert format_percentage(0.12) in html
+    assert format_percentage(invested_weight) in html
+    assert format_percentage(portfolio_weight) in html
+    assert format_eur(cash_eur) in html
+    assert format_percentage(float(cash_eur) / float(nav_eur)) in html
+
+
+@pytest.mark.parametrize(
+    "cash_eur, expected_color",
+    [(Decimal("-55.62"), "text-danger"), (Decimal("-0.01"), "text-danger"),
+     (Decimal("0"), "text-info"),
+     (Decimal("55.62"), "text-info"), (None, "text-info")],
+)
+def test_monitoring_free_cash_color(monitoring_environment, cash_eur, expected_color):
+    result = MonitoringResult(
+        positions_to_keep=[], positions_to_sell=[], entry_candidates=[],
+        free_positions=0, excluded_symbols=[], nav_eur=1000, available_cash_eur=cash_eur,
+    )
+
+    html = monitoring_environment.get_template("stages/monitoring.html").render(
+        execution={"execution_id": "test"}, stage_status="awaiting_review",
+        stage_result=result.model_dump(mode="json"),
+    )
+
+    cash_card = html.split("Free cash (EUR)", 1)[0].rsplit('<div class="card ', 1)[1]
+    assert f'class="fs-3 fw-bold {expected_color}"' in cash_card
+    assert "border-info" in cash_card
+    if cash_eur is not None:
+        assert format_eur(cash_eur) in cash_card
+
+    percentage_row = html.split('Free cash (EUR)</div>', 1)[1].split("</div>", 1)[0]
+    percentage_color = "text-danger" if cash_eur is not None and cash_eur < 0 else "text-muted"
+    percentage = format_percentage(float(cash_eur) / 1000) if cash_eur is not None else "\u2014"
+    assert f'<div class="text-muted small"><span class="{percentage_color}">{percentage}</span> of NAV' in percentage_row
 
 
 @pytest.mark.asyncio

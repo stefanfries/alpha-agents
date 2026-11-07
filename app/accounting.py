@@ -49,7 +49,7 @@ def sum_latest_cash_balances_eur(
         except (InvalidOperation, TypeError, ValueError):
             errors.append(f"Cash amount for {display_name} is invalid")
             continue
-        if not value.is_finite() or value < 0:
+        if not value.is_finite():
             errors.append(f"Cash amount for {display_name} is invalid")
             continue
         total += value

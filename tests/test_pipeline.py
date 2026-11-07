@@ -2201,7 +2201,31 @@ async def test_portfolio_account_snapshot_values_virtual_holding_at_fresh_bid(mo
 
 
 @pytest.mark.asyncio
-async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(monkeypatch):
+@pytest.mark.parametrize(
+    "cash_value, other_cash, bid, expected_cash, expected_nav, expected_errors",
+    [
+        ("101000.00", "106.06", 10.0, "101106.06", "101206.06", []),
+        ("-55.62", "0.00", 10.0, "-55.62", "44.38", []),
+        ("-55.62", "100.00", 10.0, "44.38", "144.38", []),
+        (
+            "invalid", "0.00", 10.0, None, None,
+            [
+                "Cash amount for Verrechnungskonto is invalid",
+                "Current EUR cash balance is unavailable",
+            ],
+        ),
+        (
+            "-55.62", "0.00", None, "-55.62", None,
+            [
+                "ISIN1: missing or invalid bid quote",
+                "NAV is incomplete because one or more held-position quotes are invalid",
+            ],
+        ),
+    ],
+)
+async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(
+    monkeypatch, cash_value, other_cash, bid, expected_cash, expected_nav, expected_errors,
+):
     import app.orchestrator as orchestrator_module
     from app.orchestrator import Pipeline
 
@@ -2222,10 +2246,10 @@ async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(monkeypatch)
                 {
                     "account_type": "Verrechnungskonto",
                     "balance": {"value": "101865.98", "unit": "EUR"},
-                    "available_cash_amount": {"value": "101000.00", "unit": "EUR"},
+                    "available_cash_amount": {"value": cash_value, "unit": "EUR"},
                 },
-                {"account_type": "Tagesgeld PLUS-Konto", "balance": {"value": "0.03", "unit": "EUR"}},
-                {"account_type": "Girokonto", "balance": {"value": "106.03", "unit": "EUR"}},
+                {"account_type": "Tagesgeld PLUS-Konto", "balance": {"value": "0.00", "unit": "EUR"}},
+                {"account_type": "Girokonto", "balance": {"value": other_cash, "unit": "EUR"}},
             ]
 
     class FakeAccountBalances:
@@ -2246,15 +2270,23 @@ async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(monkeypatch)
 
     snapshot = await pipeline._fetch_portfolio_account_snapshot(
         {"quant_system_id": "qs1"},
-        [],
+        [Position(
+            ticker=Ticker(symbol="WKN1", isin="ISIN1"), quantity=Decimal("10"), avg_cost=Decimal("2.5"),
+        )],
         {},
         {},
+        underlying_map={},
+        warrant_quotes={
+            "ISIN1": WarrantSnapshot(
+                warrant_isin="ISIN1", bid=bid, currency="EUR", timestamp_utc=datetime.now(timezone.utc),
+            ),
+        },
     )
 
     assert snapshot.source == "real"
-    assert snapshot.available_cash_eur == Decimal("101106.06")
-    assert snapshot.nav_eur == Decimal("101106.06")
-    assert snapshot.valuation_errors == []
+    assert snapshot.available_cash_eur == (Decimal(expected_cash) if expected_cash is not None else None)
+    assert snapshot.nav_eur == (Decimal(expected_nav) if expected_nav is not None else None)
+    assert snapshot.valuation_errors == expected_errors
 
 
 def test_portfolio_quote_validation_rejects_stale_and_non_eur_quotes():

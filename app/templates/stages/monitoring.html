@@ -227,9 +227,9 @@
             {% endfor %}
           </div>
           <div class="card text-center px-4 py-3 shadow-sm border-info">
-            <div class="fs-3 fw-bold text-info">{{ r.available_cash_eur | eur if r.available_cash_eur is not none else "—" }}</div>
+            <div class="fs-3 fw-bold {{ 'text-danger' if r.available_cash_eur is not none and (r.available_cash_eur | float) < 0 else 'text-info' }}">{{ r.available_cash_eur | eur if r.available_cash_eur is not none else "—" }}</div>
             <div class="text-muted small">Free cash (EUR)</div>
-            <div class="text-muted small">{{ ((r.available_cash_eur | float) / (r.nav_eur | float)) | pct if r.available_cash_eur is not none and has_nav else "—" }} of NAV</div>
+            <div class="text-muted small"><span class="{{ 'text-danger' if r.available_cash_eur is not none and (r.available_cash_eur | float) < 0 and has_nav else 'text-muted' }}">{{ ((r.available_cash_eur | float) / (r.nav_eur | float)) | pct if r.available_cash_eur is not none and has_nav else "—" }}</span> of NAV</div>
           </div>
         </div>
       </div>

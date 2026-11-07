@@ -59,3 +59,13 @@ def test_equal_buy_sizing_requires_slippage_assumption():
         [(False, False)],
         None,
     ) == (None, None)
+
+
+@pytest.mark.parametrize("available_funds", [Decimal("-55.62"), Decimal("0")])
+def test_equal_buy_sizing_blocks_non_positive_funds(available_funds):
+    assert calculate_equal_buy_amount_eur(
+        available_funds,
+        6,
+        [(False, False)],
+        10,
+    ) == (None, None)

@@ -89,6 +89,11 @@ scoring changes are out of scope here.
   EUR `available_cash_amount` for Verrechnungskonto, so same-day SELL/BUY proceeds and costs
   affect spendable funds. Select records per account type; unchanged values remain valid even
   when their `recorded_at` timestamps are older than other account records.
+- Finite negative EUR balances and available-cash amounts are valid debit balances. They
+  reduce aggregate cash and NAV rather than making valuation incomplete. Missing or invalid
+  cash still prevents complete NAV, but does not imply held-position quotes are invalid.
+  Negative opening cash reduces the BUY budget; BUY sizing requires positive funds after
+  including expected net sale proceeds and reserving costs.
 - Use one shared `max_positions` setting as the intended portfolio breadth and slot limit.
 - Preserve current holdings not selected for sale; confirmed SELLs free position slots.
 - A ROLL is a full SELL of the incumbent and a BUY of a replacement on the same underlying.

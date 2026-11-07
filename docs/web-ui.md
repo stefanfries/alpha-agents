@@ -227,6 +227,14 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 
 **Summary cards** include `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, and `Entry candidates` on the left, with `Total NAV`, `Held positions`, and `Free cash` aligned right. The three monetary cards show each amount's share of Total NAV. Held positions value is Total NAV minus available cash. Held warrant quantities are shown as whole units with dot thousands separators.
 
+Negative `Free cash` is a valid debit balance and reduces Total NAV. Its amount and
+displayed NAV percentage are red, retaining their minus signs; the card border and
+`of NAV` label keep their existing styling. Percentage color follows the unrounded
+cash balance, so a small negative share remains red even when displayed as `-0,0%`.
+Zero and positive amounts keep their normal color, and unavailable values remain
+unchanged. NAV shares and position weights require positive NAV; with negative cash,
+held positions can together exceed 100% of NAV.
+
 The `Held positions` card includes two small lines, `Previous close` and `Since buy`, showing each aggregate absolute change with its EUR symbol alongside its relative percentage, summed across keep, sell, and roll holdings. A filled circular diagonal arrow, spaced slightly from both values, sits between the amount and percentage: up-right green for gains and down-right red for losses. Both values use quantity-weighted current bid prices, matching the position performance columns and bid-valued NAV; no ask is required. The daily change recovers the provider's previous close from the saved percentage change, not a separate previous bid; its percentage is measured against aggregate previous-close value. The since-buy change subtracts the average purchase price; its percentage is measured against aggregate purchase cost. A change shows an unavailable value if any holding lacks its required price, quantity, or EUR quote currency; an empty depot shows zero.
 
 The held value remains the card's primary amount; its label and NAV share occupy one

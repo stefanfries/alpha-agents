@@ -61,6 +61,12 @@ Tagesgeld PLUS-Konto, and the newest EUR `available_cash_amount` for Verrechnung
 The latter reflects same-day BUY/SELL proceeds and costs. NAV adds this same cash amount to
 held-position value. Virtual depots use the latest `current_cash` snapshot.
 
+Finite negative EUR cash amounts are valid debit balances and reduce NAV; they do not
+invalidate held-position quotes. With positive NAV, negative cash has a negative NAV
+weight, and held positions can together exceed 100% of NAV. Position weights are not
+displayed for zero or negative NAV. BUY sizing still requires sufficient available cash
+plus expected net sale proceeds after costs.
+
 `PositionReview` fields:
 
 - Identifiers: `underlying_symbol`, `underlying_name`, `warrant_isin`, `warrant_wkn`
