@@ -484,6 +484,7 @@ async def restart_stage(
         updates[f"stages.{s}.status"] = "pending"
         updates[f"stages.{s}.result"] = None
         updates[f"stages.{s}.error"] = None
+        updates[f"stages.{s}.progress"] = None
     updates["current_stage"] = from_stage
     updates[f"stages.{from_stage}.status"] = "running"
     updates["status"] = "running"

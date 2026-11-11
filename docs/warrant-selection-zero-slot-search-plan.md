@@ -1,6 +1,6 @@
 # Warrant Selection — Zero Free-Slot Search Plan
 
-**Status:** Proposed; not implemented  
+**Status:** Implemented
 **Scope:** Warrant Selection entry-search behavior when Monitoring reports no free positions
 
 ## Goal
@@ -89,6 +89,13 @@ that progress counts actual entry lookups, while roll searches are independent.
 - Unsearched candidates are not mislabeled as candidates with no suitable warrant.
 - Progress/status text distinguishes eligible candidates from candidates actually searched.
 - Focused tests and the full test suite pass; Ruff is clean.
+
+## Implementation Status
+
+Implemented in `WarrantSelectionAgent.run()`, the Warrant Selection running page, and
+the restart progress reset. Regression coverage verifies zero and negative entry caps,
+no entry warrant-list/detail calls, independent roll search, unchanged positive-cap
+backfill, accurate unsearched-candidate messaging, and clearing stale progress.
 
 ## Out of Scope
 

@@ -135,7 +135,8 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
         underlying_sem = asyncio.Semaphore(5)   # max 5 underlyings in parallel
         detail_sem = asyncio.Semaphore(5)        # max 5 concurrent detail fetches total (reduced from 10 to avoid Comdirect rate limiting)
-        total = len(input.selected)
+        entry_tickers = input.selected if self._max_selected is None or self._max_selected > 0 else []
+        total = len(entry_tickers)
         done_count = [0]
         active: set[str] = set()
 
@@ -154,7 +155,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             return result
 
         results = await asyncio.gather(
-            *[select_one(t) for t in input.selected],
+            *[select_one(t) for t in entry_tickers],
             return_exceptions=True,
         )
 
@@ -164,7 +165,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         skipped_names: dict[str, str] = {}
         top3: dict[str, list[SelectedWarrant]] = {}
         analyzed_count: dict[str, int] = {}
-        for ticker, result in zip(input.selected, results):
+        for ticker, result in zip(entry_tickers, results):
             if isinstance(result, BaseException):
                 logger.warning("Warrant lookup failed for %s: %s", ticker.symbol, result)
                 skipped.append(ticker.symbol)
@@ -187,7 +188,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                     top3[ticker.symbol] = candidates_top3
                     analyzed_count[ticker.symbol] = count
 
-        for ticker in input.selected:
+        for ticker in entry_tickers:
             if ticker.symbol in skipped and ticker.name:
                 skipped_names[ticker.symbol] = ticker.name
 

@@ -163,6 +163,11 @@ Monitoring is classification-only:
 
 ### Entry candidate selection
 
+Monitoring preserves the full eligible candidate pool for Warrant Selection to support
+backfill. If `free_positions` is zero, Warrant Selection skips ordinary entry searches
+without marking those candidates as warrant failures; roll replacement searches remain
+independent.
+
 - **Max positions resolution**: `max_positions` is first resolved from execution `config_overrides.portfolio.max_positions` (if set); otherwise defaults to global `settings.portfolio.max_positions`. This allows per-execution tuning.
 - `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))`
   - When `current_holdings` is empty, `free_positions = max_positions` (full capacity available)

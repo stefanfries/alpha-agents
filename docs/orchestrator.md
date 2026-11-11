@@ -225,6 +225,11 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 13. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`). Positions whose underlying cannot be mapped are always kept (safe default).
 14. `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found.
 
+When `free_positions` is zero, warrant selection skips these ordinary entry searches and
+does not mark the candidates as warrant failures. Roll replacement searches remain
+independent. The running page reports the number of eligible candidates not searched
+instead of showing ordinary-entry lookup progress.
+
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 
 - **`_run_warrant_selection`**: reads `monitoring.entry_candidates`.

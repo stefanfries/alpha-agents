@@ -6,6 +6,14 @@
 <p class="text-muted small mb-4">Best-scoring Call Warrant per selected underlying.</p>
 
 {% if stage_status == "running" %}
+  {% set monitoring = execution.stages.monitoring.result if execution.stages and execution.stages.monitoring and execution.stages.monitoring.result else none %}
+  {% set no_entry_slots = monitoring and (monitoring.free_positions | int) <= 0 %}
+  {% if no_entry_slots %}
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
+      <span>No free entry slots: {{ monitoring.entry_candidates | length }} eligible candidates were not searched.</span>
+      {% if monitoring.positions_to_roll %}<span>Roll replacement searches continue independently.</span>{% endif %}
+    </div>
+  {% endif %}
   {% if stage_progress and stage_progress.waking_up_since %}
     <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
       <div class="spinner-border spinner-border-sm flex-shrink-0" role="status"></div>
@@ -21,7 +29,7 @@
       _wakeTick();
       setInterval(_wakeTick, 1000);
     </script>
-  {% elif stage_progress and stage_progress.total %}
+  {% elif not no_entry_slots and stage_progress and stage_progress.total %}
     {% set pct = ((stage_progress.done / stage_progress.total) * 100) | round | int %}
     <div class="mb-1 text-muted small">
       Looking up call warrants via FinHub…
@@ -50,10 +58,10 @@
     <div class="mb-4"></div>
     {% endif %}
   {% else %}
-    <div class="d-flex align-items-center gap-2 text-primary mb-4">
+    {% if not no_entry_slots %}<div class="d-flex align-items-center gap-2 text-primary mb-4">
       <div class="spinner-border spinner-border-sm" role="status"></div>
       <span>Looking up call warrants via FinHub…</span>
-    </div>
+    </div>{% endif %}
   {% endif %}
   <script>setTimeout(() => location.reload(), 3000)</script>
 

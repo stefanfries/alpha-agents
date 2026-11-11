@@ -1576,6 +1576,65 @@ async def test_warrant_selection_caps_to_max_selected_with_backfill():
     assert "D" not in result.skipped  # overflow is dropped, not mislabeled as no-warrant
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("max_selected", [0, -1])
+async def test_warrant_selection_skips_entries_when_no_slots_but_searches_rolls(max_selected):
+    class FakeFinHub:
+        def __init__(self):
+            self.warrant_lookups = []
+            self.detail_lookups = []
+
+        async def get_warrants(self, **kwargs):
+            self.warrant_lookups.append(kwargs["underlying"])
+            return [{"isin": f"W_{kwargs['underlying']}"}]
+
+        async def get_warrant_detail(self, isin: str):
+            self.detail_lookups.append(isin)
+            return {
+                "isin": isin,
+                "wkn": "NEW123",
+                "market_data": {"spread_percent": 0.5, "bid": 1.0, "ask": 1.1},
+                "analytics": {"leverage": 5.0, "delta": 0.5},
+                "reference_data": {
+                    "maturity_date": (date.today() + timedelta(days=330)).isoformat(),
+                    "is_capped": False,
+                },
+            }
+
+    finhub = FakeFinHub()
+    progress_updates = []
+
+    async def on_progress(done, total, active):
+        progress_updates.append((done, total, active))
+
+    agent = WarrantSelectionAgent(
+        finhub=finhub,
+        prices={"A": 100.0, "B": 100.0, "R": 100.0},
+        max_selected=max_selected,
+        on_progress=on_progress,
+        roll_candidates=[RollCandidate(
+            underlying=Ticker(symbol="R", isin="ISIN_R"),
+            warrant_isin="OLD_R", warrant_wkn="OLDR",
+            spread_pct=2.4, leverage=2.0, delta=0.2, days_to_maturity=70,
+        )],
+    )
+
+    result = await agent.run(SelectionResult(
+        selected=[Ticker(symbol="A", isin="ISIN_A"), Ticker(symbol="B", isin="ISIN_B")],
+        scores={}, rationale={},
+    ))
+
+    assert finhub.warrant_lookups
+    assert set(finhub.warrant_lookups) == {"ISIN_R"}
+    assert finhub.detail_lookups == ["W_ISIN_R"]
+    assert result.selected == []
+    assert result.skipped == []
+    assert result.skipped_reasons == {}
+    assert result.roll_underlyings == ["R"]
+    assert [w.warrant_wkn for w in result.roll_selected] == ["NEW123"]
+    assert progress_updates == []
+
+
 @pytest.mark.parametrize("remaining_symbols", [["C", "A"], ["C"]])
 def test_warrant_selection_table_preserves_screening_ranks(remaining_symbols):
     import re
@@ -1624,6 +1683,60 @@ def test_warrant_selection_table_preserves_screening_ranks(remaining_symbols):
     expected = [(str(index), ticker.symbol) for index, ticker in enumerate(screening.selected, 1)
                 if ticker.symbol in remaining_symbols]
     assert rows == expected
+
+
+def test_warrant_selection_zero_slot_progress_message_counts_unsearched_candidates():
+    from app.routes.pipeline import templates
+
+    html = templates.env.get_template("stages/warrant_selection.html").render(
+        execution={
+            "execution_id": "exec1",
+            "stages": {
+                "monitoring": {"result": {
+                    "free_positions": 0,
+                    "entry_candidates": [{"symbol": "A"}, {"symbol": "B"}, {"symbol": "C"}],
+                    "positions_to_roll": [{"underlying_symbol": "R"}],
+                }},
+            },
+        },
+        qs_id="qs1",
+        stage_status="running",
+        stage_progress={"done": 2, "total": 3, "active": ["STALE"]},
+    )
+
+    assert "No free entry slots: 3 eligible candidates were not searched." in html
+    assert "Roll replacement searches continue independently." in html
+    assert "2 / 3 underlyings" not in html
+    assert "STALE" not in html
+    assert "Analyzing:" not in html
+
+
+@pytest.mark.asyncio
+async def test_restart_clears_progress_for_rerun_stages(monkeypatch):
+    import app.routes.pipeline as pipeline_module
+
+    class FakeExecutionsCollection:
+        update = None
+
+        async def update_one(self, _query, update):
+            self.update = update
+
+    class FakePipeline:
+        async def run_stage(self, _execution_id, _stage):
+            return None
+
+    collection = FakeExecutionsCollection()
+    scheduled = []
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: collection)
+    monkeypatch.setattr(pipeline_module, "get_pipeline", FakePipeline)
+    monkeypatch.setattr(pipeline_module, "_fire", scheduled.append)
+
+    await pipeline_module.restart_stage("qs1", "exec1", "warrant_selection", "warrant_selection")
+    await scheduled[0]
+
+    updates = collection.update["$set"]
+    assert updates["stages.warrant_selection.progress"] is None
+    assert updates["stages.portfolio.progress"] is None
 
 
 def _roll_finhub(wkn: str = "NEW123", maturity_days: int = 330):

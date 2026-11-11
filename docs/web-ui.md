@@ -342,6 +342,12 @@ Entry-candidate columns:
 
 **Summary**: `{N} new entries · {Y} rolls · {Z} kept (replacement worse) · {K} skipped. Click a row to see top-3 alternatives.` Skipped underlyings are listed as `SYMBOL - underlying name - reason` (e.g. `ROP - Roper Technologies - all candidates above configured spread cap`).
 
+While the stage is running, ordinary-entry progress counts only candidates actually
+searched. With zero free slots, the page reports the number of eligible candidates not
+searched and suppresses stale ordinary-entry progress. If roll candidates exist, the
+message states that their replacement searches continue independently. Restarting from
+Warrant Selection clears previous progress.
+
 **Split-panel layout:**
 
 Left side (55% width), **two stacked tables** sharing an identical column set and

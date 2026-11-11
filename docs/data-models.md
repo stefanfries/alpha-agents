@@ -304,6 +304,10 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | `roll_selected` | `list[SelectedWarrant]` | Chosen replacement warrants for confirmed rolls (kept separate from `selected`; paired with the incumbent in Portfolio/Risk/Execution) |
 | `roll_incumbents` | `dict[str, RollReplacement]` | Underlying symbol → incumbent snapshot (re-scored) for the before→after UI comparison |
 
+When `max_selected` is zero or negative, ordinary entry candidates are not searched or
+added to `skipped`; roll replacements are still searched independently. Monitoring retains
+the uncapped candidate pool so positive-cap backfill remains possible.
+
 ### `PositionReview`
 
 Represents a single depot position under review by the Monitoring Agent. Used in `positions_to_sell`, `positions_to_keep`, and `positions_to_roll` lists inside `MonitoringResult`.

@@ -144,6 +144,9 @@ Originally, Monitoring capped `entry_candidates` to `free_positions` (top-N by r
 
 Current behavior: Monitoring passes **all** eligible candidates (rank order, uncapped). Warrant Selection receives `max_selected = free_positions` and fills up to that many warrants in rank order, so a lower-ranked underlying can backfill a slot a higher-ranked one could not fill. `free_positions` remains the real capacity limit — it is simply enforced one stage later, after warrant availability is known.
 
+When `free_positions` is zero, ordinary entry candidates are not searched or reported as
+warrant failures. Roll replacement searches remain independent of the entry-slot cap.
+
 ---
 
 ## Data model (implemented)
