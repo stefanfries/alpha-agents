@@ -53,8 +53,10 @@ include approved BUYs and rolls, remove planned closes, keep incumbents for reje
 exclude rejected BUYs, and show residual NAV as cash. Charts are withheld when NAV or account
 valuation data is incomplete. The donut uses independently interactive SVG sector segments.
 Hovering or keyboard-focusing a sector legend row or segment opens one tooltip listing the
-underlying names, symbols, and warrant WKNs contributing to that sector. Position bars label
-each holding with its underlying symbol, underlying name, and warrant WKN.
+underlying names, symbols, and warrant WKNs contributing to that sector. Segment tooltips
+follow the mouse pointer, flip near viewport edges, and use the chart edge for keyboard
+focus. They dismiss on Escape, scrolling, or resizing. Legend tooltips remain row-anchored.
+Position bars label each holding with its underlying symbol, underlying name, and warrant WKN.
 
 ## Atomic rolls and execution
 

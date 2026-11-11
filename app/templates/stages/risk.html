@@ -14,6 +14,7 @@
   .risk-donut-hole { position:relative; z-index:1; width:62%; aspect-ratio:1; border-radius:50%; background:var(--bs-body-bg); display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
   .risk-legend-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; }
   .risk-sector-tooltip .tooltip-inner { max-width:280px; white-space:pre-line; text-align:left; }
+  .risk-sector-pointer-tooltip { position:fixed; top:0; left:0; max-width:calc(100vw - 16px); pointer-events:none; }
   .risk-bar-track { position:relative; height:10px; background:var(--bs-tertiary-bg); border-radius:2px; }
   .risk-bar-fill { height:100%; border-radius:2px; }
   .risk-limit-marker { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--bs-danger); }
@@ -107,7 +108,7 @@
                             stroke-dasharray="{{ item.dash_array }}"
                             stroke-dashoffset="{{ item.dash_offset }}"
                             transform="rotate(-90 50 50)"
-                            data-risk-sector-tooltip data-bs-toggle="tooltip" data-bs-placement="left"
+                            data-risk-sector-tooltip
                             data-bs-custom-class="risk-sector-tooltip" data-bs-title="{{ item.tooltip }}"
                             tabindex="0" role="listitem"
                             aria-label="{{ item.tooltip | replace('\n', '; ') }}">
@@ -193,12 +194,80 @@
 {% if stage_status == "awaiting_review" %}
 <script>
   document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-risk-sector-tooltip]').forEach(item => {
+    document.querySelectorAll('[data-risk-sector-tooltip][data-bs-toggle="tooltip"]').forEach(item => {
       bootstrap.Tooltip.getOrCreateInstance(item, {
         container: 'body',
         trigger: 'hover focus',
         animation: false,
       });
+    });
+    document.querySelectorAll('.risk-donut-segment').forEach((item, index) => {
+      const tooltip = document.createElement('div');
+      tooltip.className = 'tooltip show risk-sector-tooltip risk-sector-pointer-tooltip';
+      tooltip.id = 'risk-sector-tooltip-' + index;
+      tooltip.setAttribute('role', 'tooltip');
+      const inner = document.createElement('div');
+      inner.className = 'tooltip-inner';
+      inner.textContent = item.getAttribute('data-bs-title');
+      tooltip.appendChild(inner);
+      let pointer = null;
+      let focused = false;
+
+      function positionTooltip() {
+        const bounds = item.getBoundingClientRect();
+        const x = pointer ? pointer.clientX : bounds.right;
+        const y = pointer ? pointer.clientY : bounds.top + bounds.height / 2;
+        const gap = 12;
+        const margin = 8;
+        let left = x + gap;
+        let top = y + gap;
+        if (left + tooltip.offsetWidth > window.innerWidth - margin) {
+          left = x - tooltip.offsetWidth - gap;
+        }
+        if (top + tooltip.offsetHeight > window.innerHeight - margin) {
+          top = y - tooltip.offsetHeight - gap;
+        }
+        tooltip.style.left = Math.max(margin, left) + 'px';
+        tooltip.style.top = Math.max(margin, top) + 'px';
+      }
+
+      function showTooltip() {
+        document.body.appendChild(tooltip);
+        item.setAttribute('aria-describedby', tooltip.id);
+        positionTooltip();
+      }
+
+      function hideTooltip() {
+        tooltip.remove();
+        item.removeAttribute('aria-describedby');
+      }
+
+      item.addEventListener('mouseenter', event => {
+        pointer = event;
+        showTooltip();
+      });
+      item.addEventListener('mousemove', event => {
+        pointer = event;
+        if (tooltip.isConnected) positionTooltip();
+      });
+      item.addEventListener('mouseleave', () => {
+        pointer = null;
+        if (focused) showTooltip();
+        else hideTooltip();
+      });
+      item.addEventListener('focus', () => {
+        focused = true;
+        showTooltip();
+      });
+      item.addEventListener('blur', () => {
+        focused = false;
+        if (!pointer) hideTooltip();
+      });
+      item.addEventListener('keydown', event => {
+        if (event.key === 'Escape') hideTooltip();
+      });
+      window.addEventListener('scroll', hideTooltip, true);
+      window.addEventListener('resize', hideTooltip);
     });
   });
 </script>

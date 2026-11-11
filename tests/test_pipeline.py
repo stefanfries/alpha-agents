@@ -330,6 +330,7 @@ def test_risk_template_renders_underlying_details_and_projected_charts():
     assert len(segment_markup) == 2
     assert all(
         "data-bs-title=" in segment
+        and 'data-bs-toggle="tooltip"' not in segment
         and re.search(r"(?<![\w-])title=", segment) is None
         for segment in segment_markup
     )
