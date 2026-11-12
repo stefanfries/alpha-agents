@@ -58,10 +58,24 @@
     })();
   </script>
   <script>
-    function initDataCharts(container) {
+    function initDataCharts(container, preferences) {
       var el = container.querySelector('[data-chart]');
       if (!el) return;
       var d = JSON.parse(el.getAttribute('data-chart'));
+      function indicatorVisible(ind, defaultVisible) {
+        return preferences && Object.prototype.hasOwnProperty.call(preferences.indicators, ind)
+          ? preferences.indicators[ind] : defaultVisible;
+      }
+      container.querySelectorAll('[data-range]').forEach(function(btn) {
+        if (preferences) btn.classList.toggle('active', btn.dataset.range === preferences.range);
+      });
+      container.querySelectorAll('[data-indicator]').forEach(function(btn) {
+        btn.classList.toggle('active', indicatorVisible(btn.dataset.indicator, btn.classList.contains('active')));
+      });
+      var adxEl = container.querySelector('.lw-adx');
+      if (adxEl) {
+        adxEl.style.display = indicatorVisible('adx', adxEl.style.display !== 'none') ? 'block' : 'none';
+      }
       var isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
       var bg        = isDark ? '#111111' : '#ffffff';
       var textColor = isDark ? '#9B9B9B' : '#555555';
@@ -204,13 +218,13 @@
       }
 
       var overlays = {
-        ema20:  chart.addLineSeries({ color: '#2196F3', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }),
-        ema50:  chart.addLineSeries({ color: '#FF9800', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }),
-        sma200: chart.addLineSeries({ color: '#9C27B0', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }),
+        ema20:  chart.addLineSeries({ color: '#2196F3', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: indicatorVisible('ema20', true) }),
+        ema50:  chart.addLineSeries({ color: '#FF9800', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: indicatorVisible('ema50', false) }),
+        sma200: chart.addLineSeries({ color: '#9C27B0', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, visible: indicatorVisible('sma200', false) }),
       };
       overlays.ema20.setData(d.ema20);
-      overlays.ema50.setData(d.ema50);   overlays.ema50.applyOptions({ visible: false });
-      overlays.sma200.setData(d.sma200); overlays.sma200.applyOptions({ visible: false });
+      overlays.ema50.setData(d.ema50);
+      overlays.sma200.setData(d.sma200);
 
       if (d.tq_reg20 && d.tq_reg20.length) {
         overlays.tq_reg20 = chart.addLineSeries({
@@ -219,6 +233,7 @@
           lineStyle: LightweightCharts.LineStyle.Dashed,
           priceLineVisible: false,
           lastValueVisible: false,
+          visible: indicatorVisible('tq_reg20', true),
         });
         overlays.tq_reg20.setData(d.tq_reg20);
       }
@@ -229,6 +244,7 @@
           lineStyle: LightweightCharts.LineStyle.Dotted,
           priceLineVisible: false,
           lastValueVisible: false,
+          visible: indicatorVisible('tq_reg60', true),
         });
         overlays.tq_reg60.setData(d.tq_reg60);
       }
@@ -267,15 +283,14 @@
           var s = chart.addLineSeries({
             color: seg.bull ? '#26a69a' : '#ef5350',
             lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
+            visible: indicatorVisible('supertrend', false),
           });
           s.setData(seg.data);
-          s.applyOptions({ visible: false });
           stGroup.push(s);
         });
       })();
 
-      // ADX chart (synchronized, hidden by default) — only when .lw-adx element exists
-      var adxEl = container.querySelector('.lw-adx');
+      // ADX chart (synchronized) — only when .lw-adx element exists
       var adxChart = null;
       if (adxEl) {
         adxChart = LightweightCharts.createChart(adxEl, Object.assign({}, baseOpts, {
@@ -303,27 +318,28 @@
         });
       }
 
-      // Default range: 1 year
       var now = Math.floor(Date.now() / 1000);
+      function applyRange(range) {
+        var days = { '3M': 90, '6M': 180, '1Y': 365, '3Y': 1095 }[range] || 365;
+        chart.timeScale().setVisibleRange({ from: now - days * 86400, to: now });
+      }
       if (d.fit_content) chart.timeScale().fitContent();
-      else chart.timeScale().setVisibleRange({ from: now - 365 * 86400, to: now });
+      else applyRange(preferences ? preferences.range : '1Y');
 
       // Time range buttons
       container.querySelectorAll('[data-range]').forEach(function(btn) {
         btn.addEventListener('click', function() {
           container.querySelectorAll('[data-range]').forEach(function(b) { b.classList.remove('active'); });
           btn.classList.add('active');
-          var days = { '3M': 90, '6M': 180, '1Y': 365, '3Y': 1095 }[btn.dataset.range] || 365;
-          chart.timeScale().setVisibleRange({ from: now - days * 86400, to: now });
+          if (preferences) preferences.range = btn.dataset.range;
+          applyRange(btn.dataset.range);
         });
       });
 
       // Indicator toggle buttons
       container.querySelectorAll('[data-indicator]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          btn.classList.toggle('active');
-          var active = btn.classList.contains('active');
-          var ind = btn.dataset.indicator;
+        var ind = btn.dataset.indicator;
+        function applyIndicator(active) {
           if (ind === 'adx') {
             if (adxEl) {
               adxEl.style.display = active ? 'block' : 'none';
@@ -336,6 +352,12 @@
           } else if (overlays[ind]) {
             overlays[ind].applyOptions({ visible: active });
           }
+        }
+        btn.addEventListener('click', function() {
+          btn.classList.toggle('active');
+          var active = btn.classList.contains('active');
+          if (preferences) preferences.indicators[ind] = active;
+          applyIndicator(active);
         });
       });
     }
@@ -348,6 +370,7 @@
         row.classList.add('table-active');
       }
       var panel = document.getElementById('chart-panel');
+      if (!panel._chartPreferences) panel._chartPreferences = { range: '1Y', indicators: {} };
       panel.innerHTML = '<p class="text-muted text-center small mt-4">Loading…</p>';
       var url = '/quant-systems/' + qsId + '/executions/' + executionId + '/charts/screening/' + encodeURIComponent(ticker);
       var params = [];
@@ -358,7 +381,7 @@
         .then(function(r) { return r.text(); })
         .then(function(html) {
           panel.innerHTML = html;
-          initDataCharts(panel);
+          initDataCharts(panel, panel._chartPreferences);
         })
         .catch(function() {
           panel.innerHTML = '<p class="text-muted text-center small mt-4">Failed to load chart</p>';

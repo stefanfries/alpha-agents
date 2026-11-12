@@ -197,7 +197,11 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 - Candlestick chart with up to 4 years of OHLCV data
 - **Time range selector**: 3M / 6M / 1Y (default) / 3Y
 - **Overlay indicators** (toggle buttons): EMA 20 (blue, default on), EMA 50 (orange), SMA 200 (purple), SuperTrend (green/red segments)
-- **ADX sub-pane** (toggle, synchronized scroll/zoom): ADX line (gold), +DI (green), −DI (red), threshold line at `min_adx` (default 20, dashed, lineWidth=2)
+- **ADX sub-pane** (toggle, default on, synchronized scroll/zoom): ADX line (gold), +DI (green), −DI (red), threshold line at `min_adx` (default 20, dashed, lineWidth=2)
+- **Chart preferences**:
+  - Time range, overlay indicators, and ADX selections update immediately and stay selected when switching between stocks or the market-regime index on the current page.
+  - Controls and pane layout use the saved settings before chart creation; indicator series start with their saved visibility, avoiding a flash of default settings.
+  - Preferences are kept in page memory only, not in the execution's policy configuration or browser storage. Reloading or leaving the page restores the initial defaults: 1Y, EMA20 on, other stock overlays off, and ADX on. Warrant charts are unaffected.
 - **Policy signal markers** on the price chart: green ▲ NEW when the NEW group first passes after failing; red ▼ BREAK when the active BREAK group passes while the ticker is in trend. BREAK does not require a new false-to-true edge and can therefore occur on the bar immediately after NEW. Markers are computed server-side over the full 1460-bar history, respecting the current `config_overrides.screening` policy configuration.
 - **Indicator hover readout**: hovering a candle shows EMA20/EMA50/SMA200, SuperTrend, ADX, +DI/−DI, TSI rising/falling and threshold states, TQ-60/TQ-20 values, and trend-policy states. States that differ from the previous candle are marked `changed`.
 - **Market regime line is clickable**: clicking it loads the corresponding index candle chart in the same right-side panel.
