@@ -198,6 +198,54 @@ async def test_confirmed_roll_emits_paired_sell_and_buy_orders():
 
 
 @pytest.mark.asyncio
+async def test_risk_rejected_roll_emits_neither_sell_nor_buy():
+    now = datetime.now(timezone.utc)
+    incumbent = Position(
+        ticker=Ticker(symbol="OLD", isin="OLD-ISIN"),
+        quantity=Decimal("3"),
+        avg_cost=Decimal("100"),
+    )
+    replacement = PlannedPosition(
+        ticker=Ticker(symbol="NEW", isin="NEW-ISIN"),
+        notional_eur=Decimal("50000.01"),
+        target_weight=0.5,
+        sector="Technology",
+    )
+    roll = RollTrade(
+        incumbent=incumbent,
+        replacement=replacement,
+        target_weight=0.5,
+    )
+
+    assessment = await RiskAgent(max_positions=6).run(
+        PortfolioProposal(
+            positions=[],
+            target_weights={},
+            roll_trades=[roll],
+            account_snapshot=PortfolioAccountSnapshot(
+                source="virtual",
+                available_cash_eur=Decimal("90000"),
+                nav_eur=Decimal("100000"),
+                holdings=[PortfolioHoldingValue(
+                    position=incumbent,
+                    underlying_isin="OLD-UNDERLYING",
+                    sector="Technology",
+                    bid_price_eur=Decimal("10"),
+                    market_value_eur=Decimal("10000"),
+                    quote_timestamp_utc=now,
+                )],
+            ),
+        )
+    )
+    plan = await TradeExecutionAgent(dry_run=True).run(assessment)
+
+    assert assessment.approved_roll_trades == []
+    assert assessment.rejected_roll_trades == [roll]
+    assert "position cap" in assessment.risk_notes["NEW"]
+    assert plan.orders == []
+
+
+@pytest.mark.asyncio
 async def test_execution_groups_all_roll_and_close_sells_before_any_buys():
     close_position = Position(
         ticker=Ticker(symbol="CLOSE", isin="CLOSE-ISIN"),

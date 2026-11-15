@@ -241,8 +241,9 @@ standard BUY; planned SELL proceeds, issuer fee exceptions, and roll sizing are 
 4. Do not redistribute rejected allocations in this phase.
 
 **Verify:** oversized positions, sector overflow, stale quotes, and existing-breach warnings
-are covered. Add remaining boundary/unknown-sector and end-to-end roll-rejection coverage as
-appropriate during final verification.
+are covered. Boundary tests verify exact-cap approval and just-over-cap rejection for both
+position and sector limits. Unknown held-sector data blocks new exposure, and an end-to-end
+rejected roll emits neither the incumbent SELL nor replacement BUY.
 
 ### P4 — Sync user-facing contracts and documentation — implemented
 

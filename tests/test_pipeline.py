@@ -691,6 +691,38 @@ async def test_risk_rejects_oversized_position():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("notional", "expected_approved"),
+    [(Decimal("50000"), True), (Decimal("50000.01"), False)],
+)
+async def test_risk_position_cap_boundary(notional, expected_approved):
+    planned = PlannedPosition(
+        ticker=Ticker(symbol="BOUNDARY"),
+        notional_eur=notional,
+        target_weight=0.5,
+        sector="Technology",
+    )
+    result = await RiskAgent(
+        max_position_multiple=3.0,
+        max_positions=6,
+        max_sector_weight=0.6,
+    ).run(PortfolioProposal(
+        positions=[planned],
+        target_weights={"BOUNDARY": 0.5},
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("100000"),
+            nav_eur=Decimal("100000"),
+        ),
+    ))
+
+    assert (planned in result.approved_positions) is expected_approved
+    assert (planned in result.rejected_positions) is not expected_approved
+    if not expected_approved:
+        assert "position cap" in result.risk_notes["BOUNDARY"]
+
+
+@pytest.mark.asyncio
 async def test_risk_rejects_sector_overflow_but_approves_other_sector():
     held = Position(
         ticker=Ticker(symbol="HELD", isin="HELD-ISIN"),
@@ -732,6 +764,87 @@ async def test_risk_rejects_sector_overflow_but_approves_other_sector():
     assert result.approved_positions == [health]
     assert result.rejected_positions == [tech]
     assert "sector cap" in result.risk_notes["TECH"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("notional", "expected_approved"),
+    [(Decimal("10000"), True), (Decimal("10000.01"), False)],
+)
+async def test_risk_sector_cap_boundary(notional, expected_approved):
+    held = Position(
+        ticker=Ticker(symbol="HELD", isin="HELD-ISIN"),
+        quantity=Decimal("100"),
+        avg_cost=Decimal("200"),
+    )
+    planned = PlannedPosition(
+        ticker=Ticker(symbol="BOUNDARY"),
+        notional_eur=notional,
+        target_weight=float(notional / Decimal("100000")),
+        sector="Technology",
+    )
+    result = await RiskAgent(
+        max_position_multiple=3.0,
+        max_positions=2,
+        max_sector_weight=0.3,
+    ).run(PortfolioProposal(
+        positions=[planned],
+        target_weights={"BOUNDARY": planned.target_weight},
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("80000"),
+            nav_eur=Decimal("100000"),
+            holdings=[PortfolioHoldingValue(
+                position=held,
+                underlying_isin="HELD-UNDERLYING",
+                sector="Technology",
+                bid_price_eur=Decimal("200"),
+                market_value_eur=Decimal("20000"),
+                quote_timestamp_utc=datetime.now(timezone.utc),
+            )],
+        ),
+    ))
+
+    assert (planned in result.approved_positions) is expected_approved
+    assert (planned in result.rejected_positions) is not expected_approved
+    if not expected_approved:
+        assert "sector cap" in result.risk_notes["BOUNDARY"]
+
+
+@pytest.mark.asyncio
+async def test_risk_blocks_new_position_when_held_sector_is_unknown():
+    held = Position(
+        ticker=Ticker(symbol="UNKNOWN", isin="UNKNOWN-ISIN"),
+        quantity=Decimal("100"),
+        avg_cost=Decimal("200"),
+    )
+    planned = PlannedPosition(
+        ticker=Ticker(symbol="BUY"),
+        notional_eur=Decimal("1000"),
+        target_weight=0.01,
+        sector="Technology",
+    )
+    result = await RiskAgent(max_positions=6).run(PortfolioProposal(
+        positions=[planned],
+        target_weights={"BUY": 0.01},
+        account_snapshot=PortfolioAccountSnapshot(
+            source="virtual",
+            available_cash_eur=Decimal("80000"),
+            nav_eur=Decimal("100000"),
+            holdings=[PortfolioHoldingValue(
+                position=held,
+                underlying_isin="UNKNOWN-UNDERLYING",
+                sector=None,
+                bid_price_eur=Decimal("200"),
+                market_value_eur=Decimal("20000"),
+                quote_timestamp_utc=datetime.now(timezone.utc),
+            )],
+        ),
+    ))
+
+    assert result.approved_positions == []
+    assert result.rejected_positions == [planned]
+    assert "unknown sector" in result.risk_notes["BUY"]
 
 
 @pytest.mark.asyncio
