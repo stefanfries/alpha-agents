@@ -1,6 +1,6 @@
 # Market Regime Filter — Implementation Plan
 
-## Implementation Status (as of 2026-09-20)
+## Implementation Status (as of 2026-11-15)
 
 Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
 
@@ -26,7 +26,9 @@ Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
 6. Focused regression coverage and explicit advisory actions are implemented:
 
     - regime advisory wording for Green, Yellow, and Red
+    - ResearchAgent classification at Green/Red threshold boundaries
     - breadth downgrade behavior
+    - rendered regime values/status in the Research and Screening stage templates
     - no automatic entry blocking
 
 7. Orchestrator wiring of `universe_source` into `ResearchInput` is implemented.
@@ -51,7 +53,7 @@ Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
 ### Notes
 
 1. Current behavior is advisory-only for approval decisions; no runtime entry blocking based on regime status is enforced.
-2. There are no dedicated tests that assert market-regime classification and UI payload behavior end-to-end, so regression risk remains if thresholds or wiring change.
+2. Regression tests cover ResearchAgent threshold classification and render both stage templates to verify regime status, values, and Screening breadth details. These are agent/template-level tests, not full HTTP end-to-end tests.
 
 ## Goal
 

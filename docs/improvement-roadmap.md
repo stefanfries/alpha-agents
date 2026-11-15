@@ -142,10 +142,10 @@ test/backtest. The phase is complete; the detailed results below are the final o
 
 ### 4. Use market regime downstream, advisory first
 
-1. Add focused automated coverage for current regime classification, breadth downgrade,
-   and UI payloads.
-2. Define advisory handling: stricter timing review in Yellow and no automatic Early
-   entries in Red.
+1. ✅ Add focused automated coverage for ResearchAgent threshold classification,
+   breadth downgrade, and rendered Research/Screening regime details.
+2. ✅ Define advisory handling for Green, Yellow, and Red; regime remains advisory and
+   does not automatically block entries.
 3. Validate the regime effect before it changes Monitoring, Warrant Selection, or
    Portfolio behavior. Any automatic entry block requires a separate approved plan.
 4. Treat VIX and persisted regime history as later, independent additions.
