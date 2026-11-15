@@ -1,6 +1,6 @@
 # Strategy Improvement Roadmap
 
-**Status:** Canonical planning index as of 2026-10-04. This document consolidates
+**Status:** Canonical planning index as of 2026-11-15. This document consolidates
 open improvement ideas and their ordering. Detailed documents remain the design and
 implementation records for their individual initiatives.
 
@@ -39,13 +39,15 @@ Market regime
    replacements. Confirmed rolls now flow through Portfolio, Risk, and Execution as
    paired incumbent SELL/replacement BUY orders. See
   [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
-- **Open:** Warrant Selection still searches all eligible entry candidates when there are
-   no free entry slots. The proposed short-circuit preserves backfill and independent roll
-   searches; see [warrant-selection-zero-slot-search-plan.md](warrant-selection-zero-slot-search-plan.md).
+- Warrant Selection skips ordinary entry searches when there are no free entry slots,
+   without marking unsearched candidates as failures. Independent roll searches and
+   positive-slot backfill are preserved. See
+   [warrant-selection-zero-slot-search-plan.md](warrant-selection-zero-slot-search-plan.md).
 - Portfolio and Risk now use a current bid-valued account snapshot, explicit EUR BUY notionals,
-   slot-based BUY sizing, a 3× target-slot position cap, and a 30% default sector cap. BUY sizing
-   remains blocked until slippage bps are configured. The Portfolio review presents ordered
-   SELL, BUY, and KEEP action tables with current bid/ask estimates and upstream reasons. See
+   slot-based BUY sizing, a 3× target-slot position cap, and a 30% default sector cap. Slippage
+   defaults to 25 bps and can be overridden per Quant System; risk-increasing sizing is blocked
+   if the effective slippage assumption is unset. The Portfolio review presents ordered SELL,
+   BUY, and KEEP action tables with current bid/ask estimates and upstream reasons. See
    [portfolio-risk-plan.md](portfolio-risk-plan.md).
 - Currency display is centralized through Babel/Jinja formatters and uses the `CURRENCY_LOCALE`
    setting (default `de_DE`) for EUR, USD, and percentages.

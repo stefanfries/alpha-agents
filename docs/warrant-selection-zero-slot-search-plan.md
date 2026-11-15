@@ -9,7 +9,7 @@ Avoid FinHub warrant searches for ordinary entry candidates when there are no fr
 slots, without changing candidate backfill when slots are available or the independent roll
 replacement search.
 
-## Problem
+## Original Problem (resolved)
 
 Monitoring intentionally returns all eligible screening candidates in
 `MonitoringResult.entry_candidates`; it reports available capacity separately as
@@ -26,7 +26,7 @@ counter reports the input candidate count, not the number of possible selections
 Roll replacements are separate: `_select_rolls()` runs after entry processing and does not
 consume entry slots. That behavior must remain intact.
 
-## Proposed Behavior
+## Implemented Behavior
 
 - If `max_selected` is zero or negative, do not call `_pick_best()` for any ordinary entry
   candidate.
@@ -40,7 +40,7 @@ consume entry slots. That behavior must remain intact.
   still running, say that they continue independently. Do not display a stale or misleading
   `done / total` entry-search count.
 
-## Implementation Steps
+## Implementation Record
 
 ### 1. Guard entry work in the agent
 
