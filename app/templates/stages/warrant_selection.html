@@ -10,7 +10,7 @@
   {% set no_entry_slots = monitoring and (monitoring.free_positions | int) <= 0 %}
   {% if no_entry_slots %}
     <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
-      <span>No free entry slots: {{ monitoring.entry_candidates | length }} eligible candidates were not searched.</span>
+      <span>No free entry slots: ordinary entries are disabled. Eligible momentum challengers are still searched for advisory comparison.</span>
       {% if monitoring.positions_to_roll %}<span>Roll replacement searches continue independently.</span>{% endif %}
     </div>
   {% endif %}
@@ -29,7 +29,7 @@
       _wakeTick();
       setInterval(_wakeTick, 1000);
     </script>
-  {% elif not no_entry_slots and stage_progress and stage_progress.total %}
+  {% elif stage_progress and stage_progress.total and (not no_entry_slots or stage_progress.challenger_count is defined) %}
     {% set pct = ((stage_progress.done / stage_progress.total) * 100) | round | int %}
     <div class="mb-1 text-muted small">
       Looking up call warrants via FinHub…
@@ -79,11 +79,32 @@
       <div class="flex-shrink-0 mb-2">
         <span class="text-muted small">
           <strong class="text-body">{{ r.selected | length }}</strong> new entries
+          {% if r.challenger_selected %} · <strong>{{ r.challenger_selected | length }}</strong> qualifying challengers (advisory; may also be entries){% endif %}
           {% if r.roll_selected %} · <strong class="text-primary">{{ r.roll_selected | length }}</strong> rolls{% endif %}
           {% if r.roll_sell_underlyings %} · <span class="text-danger">{{ r.roll_sell_underlyings | length }} recommend SELL (no better replacement)</span>{% endif %}
           {% if r.skipped %} · <span class="text-warning">{{ r.skipped | length }} skipped</span>{% endif %}.
           <span class="ms-2 text-muted">Click a row to see top-3 alternatives.</span>
         </span>
+        {% if r.challenger_ranking_metric %}
+        <div class="text-muted small mt-1">
+          Challenger comparison uses Monitoring's universe-wide {{ {'tsi': 'TSI', 'tq20': 'TQ-20', 'tq60': 'TQ-60'}[r.challenger_ranking_metric] }} ranks, not Screening shortlist row numbers.
+          {% if r.challenger_benchmark_symbol %}
+          Benchmark: <code>{{ r.challenger_benchmark_symbol }}</code>, rank {{ r.challenger_benchmark_rank }} (weakest ranked KEEP/ROLL underlying).
+          {{ r.challenger_symbols | length }} eligible challenger(s) searched within the current top-N pool.
+          {% else %}
+          No ranked KEEP/ROLL benchmark available; challenger discovery is inactive.
+          {% endif %}
+          No momentum replacements or minimum metric deltas are applied.
+        </div>
+        {% endif %}
+        {% if r.challenger_unranked_incumbents %}
+        <div class="alert alert-warning small mt-2 mb-0">
+          Missing valid Monitoring ranks for retained underlyings:
+          {% for sym in r.challenger_unranked_incumbents %}<code>{{ sym or '(unmapped)' }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+          Only ranked KEEP/ROLL holdings are used as the benchmark; unranked holdings are not treated as weakest.
+          Absence from the Screening entry shortlist alone does not mean a Monitoring rank is missing.
+        </div>
+        {% endif %}
         {% if r.sell_existing_isins %}
         <div class="alert alert-danger small mt-2 mb-0">
           <strong>Recommend SELL</strong> (degraded, no replacement cleared the roll margin):
@@ -97,6 +118,8 @@
       {% set scr = execution.stages.screening.result if execution.stages and execution.stages.screening and execution.stages.screening.result else none %}
       {% set scr_sel_syms = scr.selected | map(attribute='symbol') | list if scr else [] %}
       {% set scr_ordered = scr_sel_syms %}
+      {% set entry_symbols = r.selected | map(attribute='underlying.symbol') | list %}
+      {% set display_warrants = r.selected + ((r.challenger_selected | default([])) | rejectattr('underlying.symbol', 'in', entry_symbols) | list) %}
 
       <div class="warrant-workspace d-flex flex-grow-1 gap-3 overflow-hidden" style="min-height:0">
         {# Left: main warrant table #}
@@ -234,7 +257,7 @@
             <tbody>
               {% for sym in scr_ordered %}
               {% set screening_rank = loop.index %}
-              {% for w in r.selected if w.underlying.symbol == sym %}
+              {% for w in display_warrants if w.underlying.symbol == sym %}
               {% set top3_list = r.top3[sym] if r.top3 and sym in r.top3 else [] %}
               {% set analyzed = r.analyzed_count[sym] if r.analyzed_count and sym in r.analyzed_count else 0 %}
               <tr style="cursor:pointer"
@@ -242,7 +265,7 @@
                   data-analyzed="{{ analyzed }}"
                   onclick="loadWarrantDetailPanel('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
                 <td class="text-muted small">{{ screening_rank }}</td>
-                <td><span class="badge bg-secondary">ENTRY</span></td>
+                <td>{% if sym in entry_symbols %}<span class="badge bg-secondary">ENTRY</span>{% else %}<span class="badge bg-info text-dark">CHALLENGER</span>{% endif %}</td>
                 <td>
                   <code>{{ w.underlying.symbol }}</code>
                   {% if w.underlying.name %}<span class="text-muted small ms-1">{{ w.underlying.name }}</span>{% endif %}

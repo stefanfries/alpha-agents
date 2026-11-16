@@ -91,6 +91,12 @@ class SelectedWarrant(BaseModel):
 class WarrantSelectionResult(BaseModel):
     selected: list[SelectedWarrant]
     skipped: list[str]
+    challenger_selected: list[SelectedWarrant] = Field(default_factory=list)
+    challenger_symbols: list[str] = Field(default_factory=list)
+    challenger_ranking_metric: str | None = None
+    challenger_benchmark_symbol: str | None = None
+    challenger_benchmark_rank: int | None = None
+    challenger_unranked_incumbents: list[str] = Field(default_factory=list)
     skipped_reasons: dict[str, str] = Field(default_factory=dict)            # symbol → skip reason
     skipped_names: dict[str, str] = Field(default_factory=dict)              # symbol → underlying display name
     top3: dict[str, list[SelectedWarrant]] = Field(default_factory=dict)       # symbol → up to 3 warrants by score

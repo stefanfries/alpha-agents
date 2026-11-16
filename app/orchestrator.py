@@ -41,6 +41,7 @@ from app.models.signals import (
     UniverseResult,
     WarrantSelectionResult,
 )
+from app.policies.screening_ranking import build_screening_ranks
 from app.policies.trend_detection import TrendDetectionPolicyConfig
 from app.tools.finhub import FinHubTool
 from app.tools.retry import retry_call
@@ -265,6 +266,37 @@ class Pipeline:
         }
 
         screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
+        ranking_metric = run.get("config_overrides", {}).get("screening", {}).get(
+            "ranking_metric", settings.screening.ranking_metric,
+        )
+        ranks = build_screening_ranks(screening, ranking_metric)
+        retained_symbols = {
+            review.underlying_symbol
+            for review in [*monitoring.positions_to_keep, *monitoring.positions_to_roll]
+        }
+        # Absence from the ENTRY shortlist is normal for incumbents. Monitoring ranks
+        # use the full evaluated universe; missing ranks here mean unavailable/invalid data.
+        unranked_incumbents = sorted(retained_symbols - ranks.keys())
+        if unranked_incumbents:
+            logger.warning(
+                "Challenger discovery: retained underlyings lack valid %s ranks: %s; "
+                "benchmark uses ranked holdings only",
+                ranking_metric, ", ".join(unranked_incumbents),
+            )
+        benchmark_symbol = max(
+            retained_symbols & ranks.keys(),
+            key=lambda symbol: (ranks[symbol]["rank"], symbol),
+            default=None,
+        )
+        benchmark_rank = ranks[benchmark_symbol]["rank"] if benchmark_symbol is not None else None
+        screened_symbols = {ticker.symbol for ticker in screening.selected}
+        challenger_symbols = [
+            ticker.symbol for ticker in candidates
+            if ticker.symbol in screened_symbols
+            and ticker.symbol in ranks
+            and benchmark_rank is not None
+            and ranks[ticker.symbol]["rank"] < benchmark_rank
+        ]
         underlying_by_symbol = {
             t.symbol: t for t in (screening.all_tickers or screening.selected) if t.isin
         }
@@ -290,7 +322,10 @@ class Pipeline:
             ))
 
         async def on_progress(done: int, total: int, active: list[str]) -> None:
-            await update_stage_progress(execution_id, "warrant_selection", {"done": done, "total": total, "active": active})
+            await update_stage_progress(execution_id, "warrant_selection", {
+                "done": done, "total": total, "active": active,
+                "challenger_count": len(challenger_symbols),
+            })
 
         overrides = await warrant_availability.overrides_map()
         ws_overrides = run.get("config_overrides", {}).get("warrant_selection", {})
@@ -312,8 +347,13 @@ class Pipeline:
                 on_progress=on_progress,
                 roll_candidates=roll_candidates,
                 roll_min_improvement=ws_cfg.roll_min_improvement,
+                challenger_symbols=challenger_symbols,
             ).run(SelectionResult(selected=candidates, scores={t.symbol: 1.0 for t in candidates}, rationale={}))
 
+        result.challenger_ranking_metric = ranking_metric
+        result.challenger_benchmark_symbol = benchmark_symbol
+        result.challenger_benchmark_rank = benchmark_rank
+        result.challenger_unranked_incumbents = unranked_incumbents
         return result
 
     async def _run_monitoring(self, run: dict) -> MonitoringResult:

@@ -103,6 +103,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         scoring_config: WarrantScoringConfig | None = None,
         roll_candidates: list[RollCandidate] | None = None,
         roll_min_improvement: float = 0.10,
+        challenger_symbols: list[str] | None = None,
     ) -> None:
         self._finhub = finhub
         self._prices = prices
@@ -118,6 +119,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         self._on_progress = on_progress
         self._roll_candidates = roll_candidates or []
         self._roll_min_improvement = roll_min_improvement
+        self._challenger_symbols = set(challenger_symbols or [])
         # Keep the scoring peak aligned with the active maturity search window.
         base_scoring_config = scoring_config or WarrantScoringConfig.from_settings(settings.warrant_scoring)
         self._scoring_config = self._range_adjusted_scoring_config(
@@ -135,7 +137,11 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
 
         underlying_sem = asyncio.Semaphore(5)   # max 5 underlyings in parallel
         detail_sem = asyncio.Semaphore(5)        # max 5 concurrent detail fetches total (reduced from 10 to avoid Comdirect rate limiting)
-        entry_tickers = input.selected if self._max_selected is None or self._max_selected > 0 else []
+        has_entry_capacity = self._max_selected is None or self._max_selected > 0
+        entry_tickers = [
+            ticker for ticker in input.selected
+            if has_entry_capacity or ticker.symbol in self._challenger_symbols
+        ]
         total = len(entry_tickers)
         done_count = [0]
         active: set[str] = set()
@@ -160,6 +166,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         )
 
         selected: list[SelectedWarrant] = []
+        challengers: list[SelectedWarrant] = []
         skipped: list[str] = []
         skipped_reasons: dict[str, str] = {}
         skipped_names: dict[str, str] = {}
@@ -174,6 +181,9 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
                 skipped.append(ticker.symbol)
             else:
                 best, candidates_top3, count, skip_reason = result
+                if best is not None and ticker.symbol in self._challenger_symbols:
+                    challengers.append(best)
+                    top3[ticker.symbol] = candidates_top3
                 if best is None:
                     skipped.append(ticker.symbol)
                     if skip_reason:
@@ -201,6 +211,10 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         return WarrantSelectionResult(
             selected=selected,
             skipped=skipped,
+            challenger_selected=challengers,
+            challenger_symbols=[
+                ticker.symbol for ticker in entry_tickers if ticker.symbol in self._challenger_symbols
+            ],
             skipped_reasons=skipped_reasons,
             skipped_names=skipped_names,
             top3=top3,

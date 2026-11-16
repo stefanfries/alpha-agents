@@ -22,9 +22,11 @@ from app.models.signals import (
     MonitoringResult,
     PortfolioProposal,
     RiskAssessment,
+    SelectionResult,
     WarrantSelectionResult,
 )
 from app.orchestrator import get_pipeline
+from app.policies.screening_ranking import build_screening_ranks
 from app.policies.trend_detection import (
     TrendDetectionPolicyConfig,
     bar_indicator_values,
@@ -338,27 +340,11 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
         ranking_metric = execution.get("config_overrides", {}).get("screening", {}).get(
             "ranking_metric", settings.screening.ranking_metric,
         )
-        metric_field, metric_label = {
-            "tq60": ("scores", "TQ-60"),
-            "tq20": ("tq_short", "TQ-20"),
-            "tsi": ("tsi", "TSI"),
-        }[ranking_metric]
-        metric_values = screening.get(metric_field, {})
-        ranked_symbols = sorted(
-            (symbol for symbol in screening.get("policy_results", {})
-             if metric_values.get(symbol) is not None and np.isfinite(metric_values[symbol])),
-            key=lambda symbol: (-metric_values[symbol], symbol),
+        ranks = build_screening_ranks(
+            SelectionResult.model_validate({"selected": [], "scores": {}, "rationale": {}} | screening),
+            ranking_metric,
         )
-        ranks = {}
-        rank = 0
-        previous_value = None
-        for index, symbol in enumerate(ranked_symbols, start=1):
-            value = metric_values[symbol]
-            if value != previous_value:
-                rank = index
-            ranks[symbol] = {"rank": rank, "value": value}
-            previous_value = value
-        ctx["monitoring_rank_label"] = metric_label
+        ctx["monitoring_rank_label"] = {"tq60": "TQ-60", "tq20": "TQ-20", "tsi": "TSI"}[ranking_metric]
         ctx["monitoring_ranks"] = ranks
         if ctx.get("stage_result"):
             monitoring_result = dict(ctx["stage_result"])

@@ -13,6 +13,12 @@ For each stock selected by the `SecuritySelectionAgent`, find available Call War
 ```python
 class WarrantSelectionResult(BaseModel):
     selected: list[SelectedWarrant]           # Single best warrant per underlying (for portfolio)
+    challenger_selected: list[SelectedWarrant]  # Advisory warrants; never consumed as extra buys
+    challenger_symbols: list[str]            # Eligible challengers searched, including lookup failures
+    challenger_ranking_metric: str | None    # Execution's configured tsi/tq20/tq60
+    challenger_benchmark_symbol: str | None  # Weakest ranked retained KEEP/ROLL underlying
+    challenger_benchmark_rank: int | None    # Monitoring universe-wide rank
+    challenger_unranked_incumbents: list[str]  # Explicit missing-rank diagnostics
     skipped: list[str]                        # Underlying symbols where no warrant was found
     skipped_reasons: dict[str, str]           # Symbol -> human-readable skip reason
     skipped_names: dict[str, str]             # Symbol -> underlying display name
@@ -90,7 +96,34 @@ name); only warrant sourcing and the strike chart follow the override.
 8. Sort by score descending; record the best warrant as `selected`, the top-3 as `top3[symbol]`, and the total detail-fetch count as `analyzed_count[symbol]`.
 9. **Entry cap with backfill (`max_selected`)**: candidates are processed in screening rank order and warrants fill up to `max_selected` slots (= monitoring `free_positions`). Once the slots are full, further underlyings that *do* have a viable warrant are simply not entered (no free slot). This lets a lower-ranked underlying backfill a slot that a higher-ranked one could not fill because it had no viable warrant.
 10. Underlyings with no suitable candidate are recorded in `skipped` with a human-readable reason in `skipped_reasons` (and the display name in `skipped_names`) and excluded from portfolio construction. Reasons include: `no candidates in configured maturity/strike range`, `only capped call warrants available`, `all candidates above configured spread cap`, `no candidate exceeded min score …`, `all detail fetches failed`, `missing ISIN`, `lookup failed`.
-11. When `max_selected` is zero or negative, ordinary entry candidates are not searched and are not marked as skipped; roll replacement searches still run independently. The running page reports the number of eligible entry candidates not searched instead of showing an entry-search progress count. Entry progress counts only ordinary entry lookups, and restarts clear stale progress.
+11. When `max_selected` is zero or negative, only eligible momentum challengers are searched from the entry pool; other ordinary entry candidates are not searched or marked as skipped. Roll replacement searches remain independent. Progress counts the actual entry/challenger lookups, and restarts clear stale progress.
+
+### Advisory momentum challengers
+
+The orchestrator uses the execution's Screening ranking metric (`tsi`, `tq20`, or
+`tq60`) and the exact universe-wide ranking shared with Monitoring. A challenger
+must already be in both Screening's selected top-N pool and Monitoring's eligible
+entry pool, and must rank strictly better than the weakest ranked KEEP/ROLL
+underlying. SELL holdings do not set the benchmark. Equal metric values share a
+rank and do not qualify as an improvement. No minimum metric delta is applied yet.
+
+Screening's entry shortlist row numbers are not Monitoring's universe-wide ranks.
+An incumbent absent from the entry shortlist (for example, an older intact trend)
+can still have a valid Monitoring rank. Only evaluated symbols with finite metric
+values are ranked. Truly missing incumbent ranks are logged and surfaced in the
+result/UI, never treated as the worst rank. The benchmark uses the remaining ranked
+KEEP/ROLL holdings; without any, no challenger discovery occurs.
+
+Each entry/challenger underlying is searched once. When free slots are positive,
+the existing full entry-pool search and capacity-limited backfill remain unchanged.
+Successful challenger warrants are also retained in `challenger_selected`, including
+those beyond entry capacity, with their `top3` alternatives. A warrant may be both
+an ordinary entry and an advisory challenger; the UI renders it only once.
+Unsuccessful challenger searches use the normal `skipped` diagnostics.
+
+Challenger discovery does not sell incumbents, reserve capacity, create extra buys,
+or enable momentum replacement. Portfolio/Risk/Execution continue to consume only
+ordinary selected entries and confirmed same-underlying rolls.
 
 Up to 5 underlyings are processed concurrently (`asyncio.Semaphore(5)`); detail fetches share a pool of 5 concurrent connections (`asyncio.Semaphore(5)`). The detail concurrency was reduced from 10 to 5 to avoid triggering Comdirect rate limiting on the FinHub backend when processing large candidate pools (e.g. AMD with 100+ candidates).
 

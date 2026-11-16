@@ -293,6 +293,12 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | `selected` | `list[SelectedWarrant]` | Single best-scoring warrant per underlying stock (capped to `max_selected` = free slots, with backfill) |
+| `challenger_selected` | `list[SelectedWarrant]` | Advisory best warrants for qualifying momentum challengers, independent of capacity; may overlap `selected`, but never add buys |
+| `challenger_symbols` | `list[str]` | Eligible challengers searched within the current screened top-N entry pool, including failed lookups |
+| `challenger_ranking_metric` | `str \| None` | Configured `tsi`, `tq20`, or `tq60` used for the shared Monitoring ranking |
+| `challenger_benchmark_symbol` | `str \| None` | Weakest ranked KEEP/ROLL underlying; SELL positions excluded |
+| `challenger_benchmark_rank` | `int \| None` | Benchmark's universe-wide Monitoring rank, not its Screening shortlist row |
+| `challenger_unranked_incumbents` | `list[str]` | Retained underlyings without a valid Monitoring rank; excluded from benchmarking and explicitly reported |
 | `skipped` | `list[str]` | Underlying symbols for which no warrant was selected |
 | `skipped_reasons` | `dict[str, str]` | Symbol → human-readable skip reason (e.g. `only capped call warrants available`, `all candidates above configured spread cap`) |
 | `skipped_names` | `dict[str, str]` | Symbol → underlying display name (for the skipped list) |
@@ -304,9 +310,11 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | `roll_selected` | `list[SelectedWarrant]` | Chosen replacement warrants for confirmed rolls (kept separate from `selected`; paired with the incumbent in Portfolio/Risk/Execution) |
 | `roll_incumbents` | `dict[str, RollReplacement]` | Underlying symbol → incumbent snapshot (re-scored) for the before→after UI comparison |
 
-When `max_selected` is zero or negative, ordinary entry candidates are not searched or
-added to `skipped`; roll replacements are still searched independently. Monitoring retains
-the uncapped candidate pool so positive-cap backfill remains possible.
+When `max_selected` is zero or negative, only qualifying advisory challengers are
+searched from the entry pool; other entries are not searched or added to `skipped`.
+Roll replacements are still searched independently. Monitoring retains the uncapped
+candidate pool so positive-cap backfill remains possible. New challenger fields default
+to empty lists or `None` when loading older executions.
 
 ### `PositionReview`
 

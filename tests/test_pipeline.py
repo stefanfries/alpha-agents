@@ -550,7 +550,8 @@ async def test_portfolio_constructs_paired_roll_without_closing_incumbent_early(
 
 
 @pytest.mark.asyncio
-async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch):
+@pytest.mark.parametrize("with_challenger", [False, True])
+async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch, with_challenger):
     from app.models.signals import PortfolioAccountSnapshot, PortfolioHoldingValue
     from app.orchestrator import Pipeline
 
@@ -569,6 +570,11 @@ async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch)
     warrant_result = WarrantSelectionResult(
         selected=[],
         skipped=[],
+        challenger_selected=[SelectedWarrant(
+            underlying=Ticker(symbol="CHALLENGER"),
+            warrant_isin="CHALLENGER-ISIN", warrant_wkn="CHALLENGER",
+            score=0.99, rationale="advisory only",
+        )] if with_challenger else [],
         roll_underlyings=["A"],
         roll_selected=[replacement],
         roll_incumbents={
@@ -608,6 +614,7 @@ async def test_run_portfolio_forwards_selected_roll_as_paired_trade(monkeypatch)
     })
 
     assert result.close_positions == []
+    assert result.new_positions == []
     assert len(result.roll_trades) == 1
     assert result.roll_trades[0].incumbent.ticker.isin == "OLD-ISIN"
     assert result.roll_trades[0].replacement.ticker.isin == "NEW-ISIN"
@@ -1691,6 +1698,160 @@ async def test_warrant_selection_caps_to_max_selected_with_backfill():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("ranking_metric", "expected_symbols", "benchmark", "partial_symbols"),
+    [
+        ("tsi", ["A", "B"], "ROLL", ["A"]),
+        ("tq20", ["WEAK"], "ROLL", []),
+        ("tq60", ["WEAK"], "KEEP", ["WEAK"]),
+    ],
+)
+async def test_warrant_challengers_use_monitoring_ranks_within_screened_pool(
+    monkeypatch, caplog, ranking_metric, expected_symbols, benchmark, partial_symbols,
+):
+    from app import orchestrator as orchestrator_module
+    from app.models.signals import MonitoringResult, PositionReview
+    from app.policies.screening_ranking import build_screening_ranks
+
+    metrics = {
+        "tsi": dict(A=90, B=70, TIE=60, WEAK=50, OUT=100, BLOCKED=95, KEEP=80, ROLL=60, SELL=-10),
+        "tq20": dict(A=1, B=2, TIE=3, WEAK=4, OUT=6, BLOCKED=7, KEEP=5, ROLL=3, SELL=-10),
+        "tq60": dict(A=-5, B=-4, TIE=-3, WEAK=-2, OUT=0, BLOCKED=1, KEEP=-3, ROLL=-1, SELL=-10),
+    }
+    screened = ["A", "B", "TIE", "WEAK", "BLOCKED"]
+    screening = SelectionResult(
+        selected=[Ticker(symbol=symbol) for symbol in screened],
+        all_tickers=[Ticker(symbol=symbol) for symbol in metrics["tsi"]],
+        scores=metrics["tq60"], tq_short=metrics["tq20"], tsi=metrics["tsi"],
+        policy_results={symbol: {} for symbol in metrics["tsi"]}, rationale={},
+    )
+    reviews = {
+        symbol: PositionReview(underlying_symbol=symbol, warrant_isin=symbol, warrant_wkn=symbol)
+        for symbol in ("KEEP", "ROLL", "SELL")
+    }
+    monitoring = MonitoringResult(
+        positions_to_keep=[reviews["KEEP"]], positions_to_roll=[reviews["ROLL"]],
+        positions_to_sell=[reviews["SELL"]],
+        entry_candidates=[Ticker(symbol=symbol) for symbol in ["A", "B", "TIE", "WEAK", "OUT"]],
+        free_positions=0, excluded_symbols=["KEEP", "ROLL", "SELL", "BLOCKED"],
+    )
+    captured = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def run(self, selection):
+            captured["selection"] = selection
+            return WarrantSelectionResult(selected=[], skipped=[])
+
+    class FakeFinHub:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    async def fake_overrides():
+        return {}
+
+    async def fake_wake(*args):
+        pass
+
+    pipeline = orchestrator_module.Pipeline()
+    monkeypatch.setattr(orchestrator_module, "WarrantSelectionAgent", FakeAgent)
+    monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHub)
+    monkeypatch.setattr(orchestrator_module.warrant_availability, "overrides_map", fake_overrides)
+    monkeypatch.setattr(pipeline, "_wake_finhub", fake_wake)
+    run = {
+        "execution_id": "challengers",
+        "config_overrides": {"screening": {"ranking_metric": ranking_metric}},
+        "stages": {
+            "screening": {"result": screening.model_dump(mode="json")},
+            "monitoring": {"result": monitoring.model_dump(mode="json")},
+            "research": {"result": ResearchResult(tickers=[], bars={}, fundamentals={}).model_dump(mode="json")},
+        },
+    }
+
+    result = await pipeline._run_warrant_selection(run)
+
+    assert captured["challenger_symbols"] == expected_symbols
+    assert captured["max_selected"] == 0
+    assert captured["selection"].selected == monitoring.entry_candidates
+    assert result.challenger_ranking_metric == ranking_metric
+    assert result.challenger_benchmark_symbol == benchmark
+    assert result.challenger_benchmark_rank == build_screening_ranks(screening, ranking_metric)[benchmark]["rank"]
+    assert result.challenger_unranked_incumbents == []
+
+    # Incumbents need not appear in Screening's top-N entry shortlist to be ranked.
+    run["stages"]["screening"]["result"]["policy_results"].pop("ROLL")
+    result = await pipeline._run_warrant_selection(run)
+    assert captured["challenger_symbols"] == partial_symbols
+    assert result.challenger_benchmark_symbol == "KEEP"
+    assert result.challenger_unranked_incumbents == ["ROLL"]
+    assert "benchmark uses ranked holdings only" in caplog.text
+
+    run["stages"]["screening"]["result"]["policy_results"].pop("KEEP")
+    result = await pipeline._run_warrant_selection(run)
+    assert captured["challenger_symbols"] == []
+    assert result.challenger_benchmark_symbol is None
+    assert result.challenger_unranked_incumbents == ["KEEP", "ROLL"]
+
+    run["stages"]["monitoring"]["result"]["positions_to_keep"] = []
+    run["stages"]["monitoring"]["result"]["positions_to_roll"] = []
+    result = await pipeline._run_warrant_selection(run)
+    assert captured["challenger_symbols"] == []
+    assert result.challenger_benchmark_symbol is None
+    assert result.challenger_unranked_incumbents == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("max_selected", [0, -1, 1])
+async def test_warrant_challengers_reuse_entry_lookups_without_expanding_capacity(monkeypatch, max_selected):
+    lookups = []
+    progress = []
+
+    async def pick_best(ticker, *args):
+        lookups.append(ticker.symbol)
+        if ticker.symbol == "MISSING":
+            return None, [], 0, "no suitable warrant"
+        if ticker.symbol == "ERROR":
+            raise RuntimeError("lookup unavailable")
+        best = SelectedWarrant(
+            underlying=ticker, warrant_isin=f"W_{ticker.symbol}",
+            warrant_wkn=ticker.symbol, score=0.8, rationale="test",
+        )
+        return best, [best], 1, None
+
+    async def on_progress(done, total, active):
+        progress.append((done, total))
+
+    agent = WarrantSelectionAgent(
+        finhub=None, prices={}, max_selected=max_selected,
+        challenger_symbols=["A", "B", "MISSING", "ERROR", "OUTSIDE"],
+        on_progress=on_progress,
+    )
+    monkeypatch.setattr(agent, "_pick_best", pick_best)
+    result = await agent.run(SelectionResult(
+        selected=[Ticker(symbol=symbol) for symbol in ["A", "B", "MISSING", "ERROR", "C"]],
+        scores={}, rationale={},
+    ))
+    expected_lookups = ["A", "B", "MISSING", "ERROR"] + (["C"] if max_selected > 0 else [])
+    assert lookups == expected_lookups
+    assert [w.underlying.symbol for w in result.selected] == (["A"] if max_selected > 0 else [])
+    assert [w.underlying.symbol for w in result.challenger_selected] == ["A", "B"]
+    assert result.challenger_symbols == ["A", "B", "MISSING", "ERROR"]
+    assert result.top3["B"] == [result.challenger_selected[1]]
+    assert result.skipped == ["MISSING", "ERROR"]
+    assert result.skipped_reasons["ERROR"] == "lookup failed"
+    assert result.roll_selected == []
+    assert result.sell_existing_isins == []
+    assert {total for _, total in progress} == {len(expected_lookups)}
+    stored = WarrantSelectionResult.model_validate_json(result.model_dump_json())
+    assert stored.challenger_selected == result.challenger_selected
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("max_selected", [0, -1])
 async def test_warrant_selection_skips_entries_when_no_slots_but_searches_rolls(max_selected):
     class FakeFinHub:
@@ -1818,11 +1979,63 @@ def test_warrant_selection_zero_slot_progress_message_counts_unsearched_candidat
         stage_progress={"done": 2, "total": 3, "active": ["STALE"]},
     )
 
-    assert "No free entry slots: 3 eligible candidates were not searched." in html
+    assert "No free entry slots: ordinary entries are disabled." in html
+    assert "Eligible momentum challengers are still searched for advisory comparison." in html
     assert "Roll replacement searches continue independently." in html
     assert "2 / 3 underlyings" not in html
     assert "STALE" not in html
     assert "Analyzing:" not in html
+
+
+def test_warrant_challenger_rows_are_advisory_and_deduplicated():
+    from app.config import WarrantSelectionSettings
+    from app.routes.pipeline import templates
+
+    warrants = [
+        SelectedWarrant(
+            underlying=Ticker(symbol=symbol), warrant_isin=f"W_{symbol}",
+            warrant_wkn=symbol, score=0.8, rationale="test",
+        )
+        for symbol in ("A", "B")
+    ]
+    html = templates.env.get_template("stages/warrant_selection.html").render(
+        execution={"execution_id": "test", "stages": {"screening": {"result": {
+            "selected": [{"symbol": "A"}, {"symbol": "B"}],
+        }}}},
+        qs_id="qs", stage_status="awaiting_review",
+        stage_result=WarrantSelectionResult(
+            selected=[warrants[0]], challenger_selected=warrants, skipped=[],
+            challenger_symbols=["A", "B"], challenger_ranking_metric="tq20",
+            challenger_benchmark_symbol="KEEP", challenger_benchmark_rank=8,
+            challenger_unranked_incumbents=["UNKNOWN"],
+            top3={"A": [warrants[0]], "B": [warrants[1]]},
+        ).model_dump(mode="json"),
+        warrant_selection_cfg={
+            **WarrantSelectionSettings().model_dump(), "min_months": 9, "max_months": 15,
+        },
+    )
+    assert html.count('>ENTRY</span>') == 1
+    assert html.count('>CHALLENGER</span>') == 1
+    assert html.count('data-top3=') == 2
+    assert "universe-wide TQ-20 ranks" in html
+    assert "rank 8" in html
+    assert "No momentum replacements or minimum metric deltas are applied." in html
+    assert "<code>UNKNOWN</code>" in html
+    assert "unranked holdings are not treated as weakest" in html
+
+
+def test_warrant_challenger_progress_is_visible_without_entry_slots():
+    from app.routes.pipeline import templates
+
+    html = templates.env.get_template("stages/warrant_selection.html").render(
+        execution={"execution_id": "test", "stages": {"monitoring": {"result": {
+            "free_positions": 0, "entry_candidates": [{"symbol": "A"}], "positions_to_roll": [],
+        }}}},
+        qs_id="qs", stage_status="running",
+        stage_progress={"done": 0, "total": 1, "active": ["A"], "challenger_count": 1},
+    )
+    assert "0 / 1 underlyings" in html
+    assert "Analyzing:" in html
 
 
 @pytest.mark.asyncio

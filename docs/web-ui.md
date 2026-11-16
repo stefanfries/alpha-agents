@@ -346,11 +346,24 @@ Entry-candidate columns:
 
 **Summary**: `{N} new entries · {Y} rolls · {Z} kept (replacement worse) · {K} skipped. Click a row to see top-3 alternatives.` Skipped underlyings are listed as `SYMBOL - underlying name - reason` (e.g. `ROP - Roper Technologies - all candidates above configured spread cap`).
 
-While the stage is running, ordinary-entry progress counts only candidates actually
-searched. With zero free slots, the page reports the number of eligible candidates not
-searched and suppresses stale ordinary-entry progress. If roll candidates exist, the
-message states that their replacement searches continue independently. Restarting from
-Warrant Selection clears previous progress.
+While the stage is running, progress counts actual entry/challenger lookups. With
+zero free slots, the page explains that ordinary entries are disabled but eligible
+momentum challengers are still searched for advisory comparison. Challenger progress
+remains visible; stale ordinary-entry progress is suppressed. Roll replacement
+searches continue independently. Restarting from Warrant Selection clears previous progress.
+
+The review summary shows qualifying advisory challengers and the weakest ranked
+KEEP/ROLL benchmark, using the execution's configured TSI/TQ-20/TQ-60 Monitoring
+ranking. Missing valid incumbent ranks produce a warning; missing Screening entry
+shortlist membership alone is not a missing Monitoring rank. The shortlist stays
+within the current screened top-N eligible entry pool. Neither minimum metric deltas
+nor momentum replacements are enabled.
+
+Additional suitable warrants appear as `CHALLENGER` rows in the main entry table,
+with the same top-3 detail interaction. Warrants already selected as ordinary entries
+appear only once, as `ENTRY`. The `#` column remains the Screening shortlist row
+number; it is not the Monitoring rank used for challenger eligibility. Advisory rows
+do not create extra portfolio buys.
 
 **Split-panel layout:**
 

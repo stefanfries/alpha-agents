@@ -225,10 +225,19 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 13. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`). Positions whose underlying cannot be mapped are always kept (safe default).
 14. `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found.
 
-When `free_positions` is zero, warrant selection skips these ordinary entry searches and
-does not mark the candidates as warrant failures. Roll replacement searches remain
-independent. The running page reports the number of eligible candidates not searched
-instead of showing ordinary-entry lookup progress.
+Warrant selection additionally discovers advisory momentum challengers: eligible
+names within Screening's selected top-N pool that rank strictly better than the
+weakest ranked KEEP/ROLL underlying, using Monitoring's universe-wide ranks and
+the execution's configured TSI/TQ-20/TQ-60 metric. SELL holdings are excluded from
+the benchmark. Missing valid incumbent ranks are logged and reported, not inferred
+from absence in the entry shortlist or treated as worst ranks. The remaining ranked
+holdings define the benchmark; no ranked holdings means no challenger discovery.
+
+When `free_positions` is zero, only these challengers are searched from the entry
+pool. Other entries are not marked as warrant failures. Positive-cap entry backfill
+and independent roll searches remain unchanged. Challenger results are persisted
+separately and do not enter Portfolio/Risk/Execution as additional buys. Running
+progress counts actual entry/challenger lookups.
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 
