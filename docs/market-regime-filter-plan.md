@@ -388,12 +388,11 @@ and ADX for every ticker. Breadth is just an aggregation of results already in m
 
 ### Formula
 
-For each ticker $i$ in the screened universe ($N$ stocks), compute a **trend-health score**:
+For each ticker $i$ in the screened universe ($N$ stocks), compute a **bullish breadth score**:
 
 ```text
-h_i = 0.40 × I(SuperTrend_i = Long)
-    + 0.35 × I(EMA20_i > EMA50_i)
-    + 0.25 × I(ADX_i > 25)
+h_i = 0.50 × I(SuperTrend_i = Long)
+    + 0.50 × I(EMA20_i > EMA50_i)
 ```
 
 The **BreadthScore** is the mean across all tickers:
@@ -402,11 +401,17 @@ The **BreadthScore** is the mean across all tickers:
 BreadthScore = (1/N) × Σ h_i  ∈ [0, 1]
 ```
 
+Each ticker contributes 0, 0.5, or 1 to this mean. A score of 0.50 therefore
+represents the average participation across the two directional indicators; it does
+not mean that exactly half of the stocks pass both indicators.
+
+ADX > 20 is displayed separately as a direction-neutral trend-strength statistic; it does not contribute to bullish breadth.
+
 | BreadthScore | Meaning |
 | --- | --- |
-| > 0.60 | 🟢 broad-based uptrend — most stocks trending |
-| 0.40 – 0.60 | 🟡 mixed — selective trends |
-| < 0.40 | 🔴 few stocks in trend — headwind for stock picking |
+| > 0.60 | 🟢 broad bullish participation across the universe |
+| 0.40 – 0.60 | 🟡 mixed directional participation |
+| < 0.40 | 🔴 limited bullish participation — headwind for stock picking |
 
 ### Combined regime logic
 
@@ -442,9 +447,9 @@ In `SecuritySelectionAgent.run()`, after the per-ticker loop, add:
 if market_regime and input.policy_results:
     n = len(input.policy_results)
     pct_st  = sum(1 for v in input.policy_results.values() if v.get("supertrend"))    / n
-    pct_ema = sum(1 for v in input.policy_results.values() if v.get("ema20_rising"))  / n
+    pct_ema = sum(1 for v in input.policy_results.values() if v.get("ema20_above_ema50")) / n
     pct_adx = sum(1 for v in input.policy_results.values() if v.get("adx_above"))     / n
-    breadth = 0.40 * pct_st + 0.35 * pct_ema + 0.25 * pct_adx
+    breadth = 0.50 * pct_st + 0.50 * pct_ema
     market_regime.breadth_score = round(breadth, 3)
     market_regime.breadth_components = {
         "pct_supertrend_long": round(pct_st, 3),
@@ -463,10 +468,13 @@ Update the Screening UI badge to show breadth alongside TQ values:
   TQ-60 = {{ "%.3f"|format(regime.tq60) }}
   &nbsp;|&nbsp; TQ-20 = {{ "%.3f"|format(regime.tq20) }}
   {% if regime.breadth_score is not none %}
-    &nbsp;|&nbsp; Breadth = {{ "%.0f"|format(regime.breadth_score * 100) }}%
+    &nbsp;|&nbsp; Bullish breadth = {{ "%.0f"|format(regime.breadth_score * 100) }}%
   {% endif %}
 </span>
 ```
+
+Expanded breadth details show both score components and ADX > 20 as a
+direction-neutral trend-strength statistic.
 
 ---
 

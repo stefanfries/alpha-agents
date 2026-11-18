@@ -258,8 +258,8 @@ Regime snapshot for benchmark index context in Research/Screening.
 | `tq60` | `float` | Trend quality over 60 bars |
 | `tq20` | `float` | Trend quality over 20 bars |
 | `status` | `"green" \| "yellow" \| "red"` | Regime classification |
-| `breadth_score` | `float \| None` | Optional breadth composite score |
-| `breadth_components` | `dict[str, float]` | Optional breadth metric breakdown |
+| `breadth_score` | `float \| None` | Bullish breadth from 0 to 1: the equal-weight average of the universe percentages with SuperTrend Long and EMA20 above EMA50 |
+| `breadth_components` | `dict[str, float]` | Percentages for SuperTrend Long, EMA20 above EMA50, and ADX above 20; ADX is direction-neutral and is not included in `breadth_score` |
 
 ### `SelectionResult`
 
@@ -275,7 +275,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `tsi` | `dict[str, float]` | Latest-bar True Strength Index value per ticker; historical per-bar values are calculated on demand for chart hover and are not part of this model |
 | `extension_scores` | `dict[str, float]` | `(close - EMA20) / ATR20` per ticker; retained for future composite entry-timing analysis, not a standalone policy or table signal |
 | `weekly_confirmed` | `dict[str, bool]` | Latest completed weekly close is above a rising weekly EMA20; advisory only, not a NEW/BREAK policy |
-| `policy_results` | `dict[str, dict[str, bool]]` | Latest-bar per-ticker indicator booleans used by NEW/BREAK policy groups: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above`, `tsi_above`, `tsi_below` |
+| `policy_results` | `dict[str, dict[str, bool]]` | Latest-bar per-ticker indicator booleans used by NEW/BREAK policy groups and breadth: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_above_ema50`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above`, `tsi_above`, `tsi_below` |
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago using the configured screening rank metric |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below). `BREAK` is emitted when the active BREAK group passes while the ticker is in trend; it does not require a new edge. |

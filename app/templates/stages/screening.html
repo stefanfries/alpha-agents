@@ -58,7 +58,7 @@
           TQ-60&nbsp;=&nbsp;<code>{{ "%.3f"|format(regime.tq60) }}</code>
           &nbsp;·&nbsp;TQ-20&nbsp;=&nbsp;<code>{{ "%.3f"|format(regime.tq20) }}</code>
           {% if regime.breadth_score is not none %}
-            &nbsp;·&nbsp;Breadth&nbsp;=&nbsp;<code>{{ "%.0f"|format(regime.breadth_score * 100) }}%</code>
+            &nbsp;·&nbsp;Bullish breadth&nbsp;=&nbsp;<code>{{ "%.0f"|format(regime.breadth_score * 100) }}%</code>
           {% endif %}
         </span>
         {% if regime.breadth_components %}
@@ -72,7 +72,7 @@
             <div class="d-flex gap-3 small text-muted px-1">
               <span>SuperTrend Long: <strong>{{ "%.0f"|format(regime.breadth_components.pct_supertrend_long * 100) }}%</strong></span>
               <span>EMA20 &gt; EMA50: <strong>{{ "%.0f"|format(regime.breadth_components.pct_ema20_above_ema50 * 100) }}%</strong></span>
-              <span>ADX &gt; 20: <strong>{{ "%.0f"|format(regime.breadth_components.pct_adx_above_20 * 100) }}%</strong></span>
+              <span>ADX &gt; 20 (direction-neutral): <strong>{{ "%.0f"|format(regime.breadth_components.pct_adx_above_20 * 100) }}%</strong></span>
             </div>
           </div>
         {% endif %}

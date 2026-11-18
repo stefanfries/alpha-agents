@@ -50,6 +50,40 @@ def test_tsi_rising_can_be_disabled_from_policy_mapping():
     assert policy.entry_enabled_rules()["tsi_rising"] is False
 
 
+@pytest.mark.parametrize(
+    ("ema20", "ema50", "expected"),
+    [
+        (11.0, 10.0, True),
+        (10.0, 10.0, False),
+        (9.0, 10.0, False),
+        (np.nan, 10.0, False),
+        (11.0, np.nan, False),
+    ],
+)
+def test_ema20_above_ema50_requires_valid_values_and_strictly_greater(
+    ema20, ema50, expected
+):
+    series = TrendIndicatorSeries(
+        close=np.array([100.0]),
+        ema20=np.array([ema20]),
+        ema50=np.array([ema50]),
+        adx=np.array([np.nan]),
+        atr20=np.ones(1),
+        st_bull=np.zeros(1, dtype=bool),
+        tsi=np.array([np.nan]),
+    )
+
+    values = bar_indicator_values(
+        idx=0,
+        series=series,
+        policy_cfg=TrendDetectionPolicyConfig(),
+        lookback_regression=60,
+        lookback_regression_short=20,
+    )
+
+    assert values["ema20_above_ema50"] is expected
+
+
 def test_tsi_falling_break_policy_is_opt_in():
     default_policy = TrendDetectionPolicyConfig()
     enabled_policy = TrendDetectionPolicyConfig.from_mapping(

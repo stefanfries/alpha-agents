@@ -238,9 +238,9 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             return regime
         n = len(policy_results)
         pct_st  = sum(1 for v in policy_results.values() if v.get("supertrend"))   / n
-        pct_ema = sum(1 for v in policy_results.values() if v.get("ema20_rising")) / n
+        pct_ema = sum(1 for v in policy_results.values() if v.get("ema20_above_ema50")) / n
         pct_adx = sum(1 for v in policy_results.values() if v.get("adx_above"))    / n
-        breadth = 0.40 * pct_st + 0.35 * pct_ema + 0.25 * pct_adx
+        breadth = (pct_st + pct_ema) / 2
         regime.breadth_score = round(breadth, 3)
         regime.breadth_components = {
             "pct_supertrend_long":  round(pct_st,  3),
@@ -251,7 +251,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         regime.status = self._regime_status_after_breadth(regime.status, breadth)
         if old_status == "green" and regime.status == "yellow":
             logger.info("Market regime downgraded green→yellow (narrow rally, breadth=%.2f)", breadth)
-        logger.info("Market regime breadth=%.2f (ST=%.0f%% EMA=%.0f%% ADX=%.0f%%)",
+        logger.info("Market regime breadth=%.2f (ST=%.0f%% EMA=%.0f%% ADX context=%.0f%%)",
                     breadth, pct_st * 100, pct_ema * 100, pct_adx * 100)
         return regime
 

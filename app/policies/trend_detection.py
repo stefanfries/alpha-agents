@@ -223,6 +223,11 @@ def bar_indicator_values(
         if idx >= 5 and not (np.isnan(series.ema20[idx]) or np.isnan(series.ema20[idx - 5]))
         else False
     )
+    ema20_above_ema50 = bool(
+        not np.isnan(series.ema20[idx])
+        and not np.isnan(series.ema50[idx])
+        and float(series.ema20[idx]) > float(series.ema50[idx])
+    )
     ema20_falling = (
         bool(
             float(series.ema20[idx - 2])
@@ -257,6 +262,7 @@ def bar_indicator_values(
         "supertrend": bool(series.st_bull[idx]),
         "supertrend_bearish": not bool(series.st_bull[idx]),
         "ema20_rising": ema20_rising,
+        "ema20_above_ema50": ema20_above_ema50,
         "ema20_falling": ema20_falling,
         "adx_above": adx_above,
         "adx_below": not adx_above,

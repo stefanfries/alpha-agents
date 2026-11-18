@@ -166,18 +166,20 @@ def test_screening_downgrades_green_regime_when_breadth_is_narrow():
     agent = SecuritySelectionAgent()
     regime = MarketRegime(symbol="^NDX", display_name="Nasdaq 100", tq60=0.05, tq20=0.02, status="green")
     policy_results = {
-        "A": {"supertrend": False, "ema20_rising": False, "adx_above": False},
-        "B": {"supertrend": False, "ema20_rising": False, "adx_above": False},
-        "C": {"supertrend": True, "ema20_rising": True, "adx_above": False},
-        "D": {"supertrend": False, "ema20_rising": False, "adx_above": False},
+        "A": {"supertrend": True, "ema20_above_ema50": True, "adx_above": True},
+        "B": {"supertrend": False, "ema20_above_ema50": False, "adx_above": True},
+        "C": {"supertrend": False, "ema20_above_ema50": False, "adx_above": True},
+        "D": {"supertrend": False, "ema20_above_ema50": False, "adx_above": True},
     }
 
     result = agent._enrich_regime(regime, policy_results)
 
     assert result is regime
     assert result.status == "yellow"
-    assert result.breadth_score == pytest.approx(0.188)
+    assert result.breadth_score == pytest.approx(0.25)
     assert result.breadth_components["pct_supertrend_long"] == pytest.approx(0.25)
+    assert result.breadth_components["pct_ema20_above_ema50"] == pytest.approx(0.25)
+    assert result.breadth_components["pct_adx_above_20"] == pytest.approx(1.0)
     assert result.advisory_action == "stricter timing review; no automatic early entries"
 
 

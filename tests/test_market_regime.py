@@ -132,5 +132,7 @@ def test_screening_stage_renders_breadth_and_downgraded_regime():
 
     assert "alert-warning" in html
     assert "Sideways" in html
-    assert "Breadth&nbsp;=&nbsp;<code>38%</code>" in html
+    assert "Bullish breadth&nbsp;=&nbsp;<code>38%</code>" in html
     assert "SuperTrend Long: <strong>25%</strong>" in html
+    assert "EMA20 &gt; EMA50: <strong>50%</strong>" in html
+    assert "ADX &gt; 20 (direction-neutral): <strong>25%</strong>" in html

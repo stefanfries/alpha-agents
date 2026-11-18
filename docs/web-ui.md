@@ -211,7 +211,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
     - `TQ-20 LR` = linear regression over the last 20 bars
     - `TQ-60 LR` = linear regression over the last 60 bars
   - These LR overlays are shown only for index charts, not for normal per-ticker charts.
-- Breadth details (`SuperTrend Long`, `EMA20 > EMA50`, `ADX > 20`) expand/collapse inside the same market regime alert box.
+- The Screening market-regime alert shows **Bullish breadth**, the equal-weight average of the universe percentages with SuperTrend Long and EMA20 > EMA50. Its expandable details show those two components and ADX > 20 separately; ADX is direction-neutral and is not included in the bullish breadth score.
 - All indicators computed server-side with TA-Lib
 
 **Screening policies panel** (above action bar):
