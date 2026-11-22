@@ -28,9 +28,9 @@ The orchestrator builds `MonitoringInput` from:
 
 - `SelectionResult` (stages.screening.result)
 - `underlying_names` from screening universe (`all_tickers` fallback `selected`), then enriched for held rows
-- Current depot snapshot via `_fetch_holdings()` — **excludes zero-quantity positions**
+- Current depot snapshot via `_fetch_holdings()` and `app/depot_data.py` — **excludes zero-quantity positions**
 - `warrant_underlying_map` via `_fetch_warrant_underlying_map()` and `app/warrant_underlyings.py`, using FinHub `/v1/instruments/{isin}`
-- `held_since_map` via `_fetch_held_since()`:
+- `held_since_map` via `_fetch_held_since()` and `app/depot_data.py`:
   - real depots: latest `finance.depot_snapshots.positions[].held_since_date`
   - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
 - `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()` (captures bid/ask, `prev_close`, and `strike`/`maturity_date` for display and roll re-scoring, in addition to spread/leverage/delta/days-to-maturity). `prev_close` is read from `market_data` in the same `/v1/warrants/{isin}` response as bid/ask; no separate `/quotes` request is made. Each per-ISIN detail fetch uses the shared `retry_call()` helper (`app/tools/retry.py`); a warrant is skipped (all snapshot fields `None`) only if all retry attempts fail.

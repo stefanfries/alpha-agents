@@ -188,7 +188,7 @@ async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkey
 
 @pytest.mark.asyncio
 async def test_fetch_holdings_ignores_zero_quantity_positions(monkeypatch):
-    import app.orchestrator as orchestrator_module
+    import app.depot_data as depot_data_module
     from app.orchestrator import Pipeline
 
     class FakeQuantSystemsCollection:
@@ -205,8 +205,8 @@ async def test_fetch_holdings_ignores_zero_quantity_positions(monkeypatch):
                 ]
             }
 
-    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
-    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+    monkeypatch.setattr(depot_data_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(depot_data_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
 
     pipeline = Pipeline()
     holdings = await pipeline._fetch_holdings({"quant_system_id": "qs1"})
@@ -218,7 +218,7 @@ async def test_fetch_holdings_ignores_zero_quantity_positions(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_holdings_maps_average_purchase_price_to_avg_cost(monkeypatch):
-    import app.orchestrator as orchestrator_module
+    import app.depot_data as depot_data_module
     from app.orchestrator import Pipeline
 
     class FakeQuantSystemsCollection:
@@ -239,8 +239,8 @@ async def test_fetch_holdings_maps_average_purchase_price_to_avg_cost(monkeypatc
                 ]
             }
 
-    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
-    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+    monkeypatch.setattr(depot_data_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(depot_data_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
 
     pipeline = Pipeline()
     holdings = await pipeline._fetch_holdings({"quant_system_id": "qs1"})
@@ -251,7 +251,7 @@ async def test_fetch_holdings_maps_average_purchase_price_to_avg_cost(monkeypatc
 
 @pytest.mark.asyncio
 async def test_fetch_holdings_fails_fast_on_legacy_position_fields(monkeypatch):
-    import app.orchestrator as orchestrator_module
+    import app.depot_data as depot_data_module
     from app.orchestrator import Pipeline
 
     class FakeQuantSystemsCollection:
@@ -271,8 +271,8 @@ async def test_fetch_holdings_fails_fast_on_legacy_position_fields(monkeypatch):
                 ]
             }
 
-    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
-    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+    monkeypatch.setattr(depot_data_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(depot_data_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
 
     pipeline = Pipeline()
     with pytest.raises(RuntimeError, match="Legacy position fields"):
@@ -281,7 +281,7 @@ async def test_fetch_holdings_fails_fast_on_legacy_position_fields(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_held_since_uses_snapshot_held_since_date(monkeypatch):
-    import app.orchestrator as orchestrator_module
+    import app.depot_data as depot_data_module
     from app.orchestrator import Pipeline
 
     class FakeQuantSystemsCollection:
@@ -303,8 +303,8 @@ async def test_fetch_held_since_uses_snapshot_held_since_date(monkeypatch):
                 return FakeDepotSnapshotsCollection()
             raise KeyError(name)
 
-    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
-    monkeypatch.setattr(orchestrator_module, "finance_db", lambda: FakeFinanceDB())
+    monkeypatch.setattr(depot_data_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(depot_data_module, "finance_db", lambda: FakeFinanceDB())
 
     pipeline = Pipeline()
     held_since = await pipeline._fetch_held_since({"quant_system_id": "qs1"})
@@ -314,7 +314,7 @@ async def test_fetch_held_since_uses_snapshot_held_since_date(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_held_since_uses_latest_buy_for_current_virtual_positions(monkeypatch):
-    import app.orchestrator as orchestrator_module
+    import app.depot_data as depot_data_module
     from app.orchestrator import Pipeline
 
     class FakeQuantSystemsCollection:
@@ -343,9 +343,9 @@ async def test_fetch_held_since_uses_latest_buy_for_current_virtual_positions(mo
             assert sort == [("booking_date", -1)]
             return FakeTransactionCursor()
 
-    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
-    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
-    monkeypatch.setattr(orchestrator_module, "virtual_depot_transactions_collection", lambda: FakeTransactionsCollection())
+    monkeypatch.setattr(depot_data_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(depot_data_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+    monkeypatch.setattr(depot_data_module, "virtual_depot_transactions_collection", lambda: FakeTransactionsCollection())
 
     held_since = await Pipeline()._fetch_held_since({"quant_system_id": "qs1"})
 

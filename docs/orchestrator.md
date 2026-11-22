@@ -211,7 +211,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 `_run_monitoring(run)` performs depot reconciliation between Screening and Warrant Selection:
 
 1. Calls `_portfolio_max_positions(run)` — resolves the target position limit from execution `config_overrides.portfolio.max_positions`, or falls back to global `settings.portfolio.max_positions`.
-2. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem, then uses `app/depot_positions.py` to normalize positions, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries). Invalid numeric amounts fall back to zero with a warning.
+2. Calls `_fetch_holdings(run)` — `app/depot_data.py` reads the latest depot snapshot for the linked QuantSystem, then uses `app/depot_positions.py` to normalize positions, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries). Invalid numeric amounts fall back to zero with a warning.
 3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through, not capped) when the market gate permits entries; otherwise returns no entry candidates. `free_positions = max_positions`.
 4. Builds initial underlying names from screening universe (`SelectionResult.all_tickers` fallback `selected`): `{symbol -> name}`.
 5. Calls `_fetch_warrant_underlying_map(run, holdings)` — delegates resolution and mapping persistence to `app/warrant_underlyings.py`, using FinHub `/v1/instruments/{isin}` only.
@@ -220,8 +220,9 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
   Example: `ASML.AS` is normalized to `ASML` when `ASML` exists in `screening.trend_signals`.
 7. Calls `_fetch_warrant_snapshots(warrant_isins)` — delegates fetching and parsing to `app/warrant_snapshots.py`, using `GET /v1/warrants/{isin}` and the shared `retry_call()` helper (3 attempts, exponential backoff). The snapshot reads bid, ask, and `market_data.prev_close` from this same response; `pct_change_from_prev_close` is calculated from the current bid and previous close, so no separate `/v1/quotes/{isin}` request is made. Monitoring uses the bid for current price and performance even when the ask is missing. Snapshots are omitted when detail fetching fails, returns no detail, or contains no usable metrics.
 8. Resolves held-warrant underlying ISIN via FinHub `/instruments` through `app/warrant_underlyings.py` and prefers **universe names by ISIN** for monitoring display labels. Lookup exceptions are logged and leave the affected mapping or name unresolved.
-9. Calls `_fetch_held_since(run)` — uses `app/depot_positions.py` to build `{wkn -> date}` from latest snapshot position field `held_since_date`.
+9. Calls `_fetch_held_since(run)` — `app/depot_data.py` reads the latest snapshot and uses `app/depot_positions.py` to build `{wkn -> date}` from position field `held_since_date`.
   For virtual depots only, missing snapshot dates fall back to most recent BUY from `virtual_depot_transactions`.
+  The same data-access module reads recent virtual-depot SELLs for the re-entry prevention window.
 10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.
 11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
 12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`. Confirmed replacements are paired with their incumbent SELL in Portfolio/Risk/Execution.

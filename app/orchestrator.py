@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import traceback
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
@@ -22,14 +22,12 @@ from app.db import (
     quant_systems_collection,
     update_stage_progress,
     virtual_depot_snapshots_collection,
-    virtual_depot_transactions_collection,
     virtual_depots_collection,
-    warrant_underlying_map_collection,
 )
-from app.depot_positions import (
-    add_held_since_from_transactions,
-    held_since_from_snapshot,
-    positions_from_snapshot,
+from app.depot_data import (
+    fetch_held_since,
+    fetch_holdings,
+    fetch_reentry_blocked_symbols,
 )
 from app.models.market import Position, Ticker
 from app.models.signals import (
@@ -505,34 +503,7 @@ class Pipeline:
         For virtual depots only, missing held_since_date values fall back to BUY
         transactions when available.
         """
-        qs_id = run.get("quant_system_id")
-        if not qs_id:
-            return {}
-        qs = await quant_systems_collection().find_one({"quant_system_id": qs_id})
-        if not qs or not qs.get("depot_id"):
-            return {}
-        depot_id = qs["depot_id"]
-        depot_type = qs.get("depot_type", "virtual")
-
-        if depot_type == "real":
-            snapshot = await finance_db()["depot_snapshots"].find_one(
-                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
-            )
-        else:
-            snapshot = await virtual_depot_snapshots_collection().find_one(
-                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
-            )
-
-        held_since, snapshot_wkns = held_since_from_snapshot(snapshot)
-
-        if depot_type == "virtual":
-            transactions = await virtual_depot_transactions_collection().find(
-                {"depot_id": depot_id, "transaction_type": "BUY"},
-                sort=[("booking_date", -1)],
-            ).to_list()
-            add_held_since_from_transactions(held_since, snapshot_wkns, transactions)
-
-        return held_since
+        return await fetch_held_since(run)
 
     async def _fetch_reentry_blocked_symbols(
         self,
@@ -542,38 +513,9 @@ class Pipeline:
         prevention_days: int,
     ) -> set[str]:
         """Return underlyings sold within the configured re-entry prevention window."""
-        if prevention_days <= 0 or run.get("depot_type", "virtual") == "real":
-            return set()
-        qs_id = run.get("quant_system_id")
-        if not qs_id:
-            return set()
-        qs = await quant_systems_collection().find_one({"quant_system_id": qs_id})
-        if not qs or not qs.get("depot_id") or qs.get("depot_type", "virtual") == "real":
-            return set()
-
-        cutoff = datetime.now(timezone.utc) - timedelta(days=prevention_days)
-        transactions = await virtual_depot_transactions_collection().find(
-            {
-                "depot_id": qs["depot_id"],
-                "transaction_type": "SELL",
-                "booking_date": {"$gte": cutoff},
-            },
-            sort=[("booking_date", -1)],
-        ).to_list()
-        wkns = {txn.get("wkn") for txn in transactions if txn.get("wkn")}
-        if not wkns:
-            return set()
-
-        mappings = await warrant_underlying_map_collection().find(
-            {"warrant_wkn": {"$in": sorted(wkns)}},
-            projection={"warrant_wkn": 1, "underlying_symbol": 1},
-        ).to_list()
-        return {
-            symbol
-            for mapping in mappings
-            if (symbol := mapping.get("underlying_symbol"))
-            and (not screening_symbols or symbol in screening_symbols)
-        }
+        return await fetch_reentry_blocked_symbols(
+            run, screening_symbols=screening_symbols, prevention_days=prevention_days
+        )
 
     async def _run_portfolio(self, run: dict) -> PortfolioProposal:
         warrant_result = WarrantSelectionResult.model_validate(
@@ -752,29 +694,7 @@ class Pipeline:
 
     async def _fetch_holdings(self, run: dict) -> list[Position]:
         """Return current holdings from the depot linked to the QuantSystem."""
-        qs_id = run.get("quant_system_id")
-        if not qs_id:
-            return []
-        qs = await quant_systems_collection().find_one({"quant_system_id": qs_id})
-        if not qs or not qs.get("depot_id"):
-            return []
-
-        depot_id = qs["depot_id"]
-        depot_type = qs.get("depot_type", "virtual")
-
-        if depot_type == "real":
-            snapshot = await finance_db()["depot_snapshots"].find_one(
-                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
-            )
-        else:
-            snapshot = await virtual_depot_snapshots_collection().find_one(
-                {"depot_id": depot_id}, sort=[("recorded_at", -1)]
-            )
-
-        if not snapshot:
-            return []
-
-        return positions_from_snapshot(snapshot)
+        return await fetch_holdings(run)
 
     async def _run_risk(self, run: dict) -> RiskAssessment:
         proposal = PortfolioProposal.model_validate(run["stages"]["portfolio"]["result"])
