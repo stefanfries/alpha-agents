@@ -312,6 +312,61 @@ async def test_fetch_held_since_uses_snapshot_held_since_date(monkeypatch):
     assert held_since == {"W1": date(2026, 1, 3)}
 
 
+@pytest.mark.asyncio
+async def test_fetch_held_since_uses_latest_buy_for_current_virtual_positions(monkeypatch):
+    import app.orchestrator as orchestrator_module
+    from app.orchestrator import Pipeline
+
+    class FakeQuantSystemsCollection:
+        async def find_one(self, _query: dict) -> dict:
+            return {"depot_id": "d1", "depot_type": "virtual"}
+
+    class FakeSnapshotsCollection:
+        async def find_one(self, _query: dict, sort: list[tuple[str, int]]) -> dict:
+            return {"positions": [
+                {"wkn": "W1", "held_since_date": "2026-01-03"},
+                {"wkn": "W2", "held_since_date": None},
+            ]}
+
+    class FakeTransactionCursor:
+        async def to_list(self):
+            return [
+                {"wkn": "W1", "booking_date": date(2026, 2, 1)},
+                {"wkn": "W2", "booking_date": date(2026, 2, 2)},
+                {"wkn": "W2", "booking_date": date(2026, 1, 1)},
+                {"wkn": "W3", "booking_date": date(2026, 2, 3)},
+            ]
+
+    class FakeTransactionsCollection:
+        def find(self, query, sort):
+            assert query == {"depot_id": "d1", "transaction_type": "BUY"}
+            assert sort == [("booking_date", -1)]
+            return FakeTransactionCursor()
+
+    monkeypatch.setattr(orchestrator_module, "quant_systems_collection", lambda: FakeQuantSystemsCollection())
+    monkeypatch.setattr(orchestrator_module, "virtual_depot_snapshots_collection", lambda: FakeSnapshotsCollection())
+    monkeypatch.setattr(orchestrator_module, "virtual_depot_transactions_collection", lambda: FakeTransactionsCollection())
+
+    held_since = await Pipeline()._fetch_held_since({"quant_system_id": "qs1"})
+
+    assert held_since == {"W1": date(2026, 1, 3), "W2": date(2026, 2, 2)}
+
+
+def test_positions_from_snapshot_warns_when_amounts_are_invalid(caplog):
+    from app.depot_positions import positions_from_snapshot
+
+    positions = positions_from_snapshot({"positions": [
+        {"isin": "X1", "quantity": {"value": "invalid"}},
+        {"isin": "X2", "quantity": {"value": "2"}, "average_purchase_price": {"value": "invalid"}},
+    ]})
+
+    assert len(positions) == 1
+    assert positions[0].ticker.isin == "X2"
+    assert positions[0].avg_cost == Decimal("0")
+    assert "Invalid decimal amount in depot position field quantity" in caplog.text
+    assert "Invalid decimal amount in depot position field average_purchase_price" in caplog.text
+
+
 def test_monitoring_warrant_health_check_flags_threshold_breaches():
     agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
 
