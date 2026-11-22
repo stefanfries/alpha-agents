@@ -29,10 +29,10 @@
       _wakeTick();
       setInterval(_wakeTick, 1000);
     </script>
-  {% elif stage_progress and stage_progress.total and (not no_entry_slots or stage_progress.challenger_count is defined) %}
+  {% elif stage_progress and stage_progress.total and (stage_progress.phase == 'roll' or not no_entry_slots or stage_progress.challenger_count is defined) %}
     {% set pct = ((stage_progress.done / stage_progress.total) * 100) | round | int %}
     <div class="mb-1 text-muted small">
-      Looking up call warrants via FinHub…
+      {{ 'Searching roll replacements via FinHub…' if stage_progress.phase == 'roll' else 'Looking up call warrants via FinHub…' }}
       <span class="ms-1">{{ stage_progress.done }} / {{ stage_progress.total }} underlyings</span>
     </div>
     <div class="progress mb-2" style="height:18px">
@@ -58,10 +58,10 @@
     <div class="mb-4"></div>
     {% endif %}
   {% else %}
-    {% if not no_entry_slots %}<div class="d-flex align-items-center gap-2 text-primary mb-4">
+    <div class="d-flex align-items-center gap-2 text-primary mb-4">
       <div class="spinner-border spinner-border-sm" role="status"></div>
-      <span>Looking up call warrants via FinHub…</span>
-    </div>{% endif %}
+      <span>Preparing warrant searches…</span>
+    </div>
   {% endif %}
   <script>setTimeout(() => location.reload(), 3000)</script>
 

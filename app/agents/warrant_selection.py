@@ -1,9 +1,10 @@
 import asyncio
 import logging
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from app.agents.base import Agent
 from app.config import settings
@@ -99,7 +100,7 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         atm_band_fallback: float = 0.10,
         max_selected: int | None = None,
         isin_overrides: dict[str, str] | None = None,
-        on_progress: Callable[[int, int, list[str]], Awaitable[None]] | None = None,
+        on_progress: Callable[[Literal["entry", "roll"], int, int, list[str]], Awaitable[None]] | None = None,
         scoring_config: WarrantScoringConfig | None = None,
         roll_candidates: list[RollCandidate] | None = None,
         roll_min_improvement: float = 0.10,
@@ -152,12 +153,12 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
             async with underlying_sem:
                 active.add(ticker.symbol)
                 if self._on_progress:
-                    await self._on_progress(done_count[0], total, sorted(active))
+                    await self._on_progress("entry", done_count[0], total, sorted(active))
                 result = await self._pick_best(ticker, maturity_from, maturity_to, detail_sem)
                 active.discard(ticker.symbol)
             done_count[0] += 1
             if self._on_progress:
-                await self._on_progress(done_count[0], total, sorted(active))
+                await self._on_progress("entry", done_count[0], total, sorted(active))
             return result
 
         results = await asyncio.gather(
@@ -237,9 +238,30 @@ class WarrantSelectionAgent(Agent[SelectionResult, WarrantSelectionResult]):
         if not self._roll_candidates:
             return outcome
 
+        done = 0
+        active: Counter[str] = Counter()
+        progress_lock = asyncio.Lock()
+
+        async def select_roll(rc: RollCandidate) -> tuple[SelectedWarrant | None, list[SelectedWarrant], int, str | None] | None:
+            nonlocal done
+            symbol = rc.underlying.symbol
+            async with progress_lock:
+                active[symbol] += 1
+                if self._on_progress:
+                    await self._on_progress("roll", done, len(self._roll_candidates), sorted(active))
+            try:
+                return await self._pick_best(rc.underlying, maturity_from, maturity_to, detail_sem)
+            finally:
+                async with progress_lock:
+                    active[symbol] -= 1
+                    if not active[symbol]:
+                        del active[symbol]
+                    done += 1
+                    if self._on_progress:
+                        await self._on_progress("roll", done, len(self._roll_candidates), sorted(active))
+
         results = await asyncio.gather(
-            *[self._pick_best(rc.underlying, maturity_from, maturity_to, detail_sem)
-              for rc in self._roll_candidates],
+            *[select_roll(rc) for rc in self._roll_candidates],
             return_exceptions=True,
         )
         for rc, result in zip(self._roll_candidates, results):

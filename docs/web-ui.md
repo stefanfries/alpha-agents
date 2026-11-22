@@ -212,11 +212,13 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
     - `TQ-60 LR` = linear regression over the last 60 bars
   - These LR overlays are shown only for index charts, not for normal per-ticker charts.
 - The Screening market-regime alert shows **Bullish breadth**, the equal-weight average of the universe percentages with SuperTrend Long and EMA20 > EMA50. Its expandable details show those two components and ADX > 20 separately; ADX is direction-neutral and is not included in the bullish breadth score.
+- The separate **Market gate** alert shows its open/blocked/disabled status, benchmark name, latest benchmark bar date, and any blocking reasons. The latest bar can be intraday and is not refreshed in later stages.
 - All indicators computed server-side with TA-Lib
 
 **Screening policies panel** (above action bar):
 
 - **Selection**: rank NEW-rule candidates by TSI (default), TQ-60, or TQ-20, and set a positive Top N limit (default 20). Both values are persisted to `config_overrides.screening` for the current run.
+- **Market gate**: independently enable blocking on bearish benchmark SuperTrend (on by default) and red market regime (off by default). Missing data for an enabled condition blocks entries. The settings apply when Screening is re-run; see [Market gate](agents/screening.md#market-gate).
 - Two framed rule groups shown side-by-side:
   - **NEW** (entry detection): SuperTrend bullish, EMA20 rising, ADX > `min_adx`, ADX rising, optional TSI rising (positive slope over the latest five valid bars), Price > EMA50, optional TQ-60 > threshold, optional TQ-20 > threshold, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
   - **BREAK** (exit detection): SuperTrend bearish, EMA20 falling (`EMA20[t-2] > EMA20[t-1] > EMA20[t]`), ADX < `min_adx`, ADX falling, optional TSI falling (NOT TSI rising), Price < EMA50, plus `Minimum of selected` (k-of-n threshold; empty = all selected)
@@ -228,6 +230,9 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
 ---
 
 #### 4.4 Monitoring — `/stages/monitoring`
+
+The market-gate alert repeats the status and blocking reasons. A blocked gate removes
+new entry candidates but does not change SELL, KEEP, or ROLL classifications.
 
 **Summary cards** include `Max. positions`, `Current positions`, `Sell`, `Roll`, `Keep`, `Free now`, and `Entry candidates` on the left, with `Total NAV`, `Held positions`, and `Free cash` aligned right. The three monetary cards show each amount's share of Total NAV. Held positions value is Total NAV minus available cash. Held warrant quantities are shown as whole units with dot thousands separators.
 
@@ -346,11 +351,12 @@ Entry-candidate columns:
 
 **Summary**: `{N} new entries · {Y} rolls · {Z} kept (replacement worse) · {K} skipped. Click a row to see top-3 alternatives.` Skipped underlyings are listed as `SYMBOL - underlying name - reason` (e.g. `ROP - Roper Technologies - all candidates above configured spread cap`).
 
-While the stage is running, progress counts actual entry/challenger lookups. With
-zero free slots, the page explains that ordinary entries are disabled but eligible
-momentum challengers are still searched for advisory comparison. Challenger progress
-remains visible; stale ordinary-entry progress is suppressed. Roll replacement
-searches continue independently. Restarting from Warrant Selection clears previous progress.
+While the stage is running, separate entry/challenger and roll-search progress phases
+show completed lookups, total lookups, and active underlying symbols. Failed lookups
+also count as completed. With zero free slots, eligible momentum challengers can still
+be searched for advisory comparison, while roll searches continue independently.
+A blocked market gate suppresses the entry/challenger pool, not rolls. Restarting from
+Warrant Selection clears previous progress.
 
 The review summary shows qualifying advisory challengers and the weakest ranked
 KEEP/ROLL benchmark, using the execution's configured TSI/TQ-20/TQ-60 Monitoring

@@ -1,8 +1,10 @@
 # Strategy Improvement Roadmap
 
-**Status:** Canonical planning index as of 2026-11-15. This document consolidates
+**Status:** Canonical planning index as of 2026-11-22. This document consolidates
 open improvement ideas and their ordering. Detailed documents remain the design and
-implementation records for their individual initiatives.
+implementation records for their individual initiatives. The backtest protocol and
+strategy-change gates are in
+[strategy-validation-and-implementation-plan.md](strategy-validation-and-implementation-plan.md).
 
 ## Decision Framework
 
@@ -33,16 +35,21 @@ Market regime
 
 - The shared trend-policy implementation, dual `NEW`/`BREAK` rule groups, and state
   machine are complete. See [screening-policy-refactor-plan.md](screening-policy-refactor-plan.md).
-- Market regime and breadth are computed and displayed, but remain advisory. See
-  [market-regime-filter-plan.md](market-regime-filter-plan.md).
+- Market regime and breadth are computed and displayed. A configurable market gate
+  blocks new entries on bearish benchmark SuperTrend by default; blocking on red regime
+  is optional and off by default. See [market-regime-filter-plan.md](market-regime-filter-plan.md).
 - Monitoring classifies held positions; Warrant Selection searches and scores roll
    replacements. Confirmed rolls now flow through Portfolio, Risk, and Execution as
    paired incumbent SELL/replacement BUY orders. See
   [roll-warrant-selection-plan.md](roll-warrant-selection-plan.md).
-- Warrant Selection skips ordinary entry searches when there are no free entry slots,
-   without marking unsearched candidates as failures. Independent roll searches and
+- With no free entry slots, Warrant Selection searches only qualifying advisory
+   challengers from the screened top-N eligible entry pool; other ordinary entries
+   remain unsearched, not marked as failures. Independent roll searches and
    positive-slot backfill are preserved. See
-   [warrant-selection-zero-slot-search-plan.md](warrant-selection-zero-slot-search-plan.md).
+   [warrant-selection-zero-slot-search-plan.md](warrant-selection-zero-slot-search-plan.md)
+   for the original optimization and
+   [momentum-replacement-trigger-policy.md](momentum-replacement-trigger-policy.md)
+   for the advisory challenger extension.
 - Portfolio and Risk now use a current bid-valued account snapshot, explicit EUR BUY notionals,
    slot-based BUY sizing, a 3× target-slot position cap, and a 30% default sector cap. Slippage
    defaults to 25 bps and can be overridden per Quant System; risk-increasing sizing is blocked
@@ -140,14 +147,14 @@ test/backtest. The phase is complete; the detailed results below are the final o
 
 **Source:** [trend-detection-improvement-ideas.md](trend-detection-improvement-ideas.md).
 
-### 4. Use market regime downstream, advisory first
+### 4. Validate market-gate and regime effects
 
 1. ✅ Add focused automated coverage for ResearchAgent threshold classification,
    breadth downgrade, and rendered Research/Screening regime details.
-2. ✅ Define advisory handling for Green, Yellow, and Red; regime remains advisory and
-   does not automatically block entries.
-3. Validate the regime effect before it changes Monitoring, Warrant Selection, or
-   Portfolio behavior. Any automatic entry block requires a separate approved plan.
+2. ✅ Implement the configurable entry gate; SELL and ROLL decisions remain unchanged.
+   The red-regime rule is optional and disabled by default.
+3. Backtest the existing entry-gate variants and validate further regime-driven changes
+   independently before changing exit, instrument-selection, or portfolio behavior.
 4. Treat VIX and persisted regime history as later, independent additions.
 
 **Source:** [market-regime-filter-plan.md](market-regime-filter-plan.md).
@@ -159,7 +166,12 @@ test/backtest. The phase is complete; the detailed results below are the final o
    by a focused monitoring test. Real-depot transaction history remains deferred until
    an equivalent source is available.
 2. Add historical degradation tracking and alerts if operational monitoring needs it.
-3. Consider incumbent-versus-challenger momentum replacement only with a
+3. Advisory challenger warrant discovery is implemented using the configured
+   TSI/TQ-20/TQ-60 Monitoring rank against the weakest ranked KEEP/ROLL underlying.
+   Results do not create extra buys. Next collect delta and lookup-cost diagnostics,
+   then validate any positive discovery minimums against the zero-minimum baseline;
+   see the detailed minimum metric delta plan in the momentum policy.
+4. Consider incumbent-versus-challenger momentum replacement only with a
    friction-aware backtest, persistence/cooldowns, and a feature flag. It must not
    replace the normal `BREAK` exit path.
 

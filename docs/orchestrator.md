@@ -164,7 +164,10 @@ When `_run_stage(execution_id, stage_name)` is called:
 
 ## Screening stage internals
 
-`_run_screening(run)` re-fetches OHLCV bars (not stored in the Research result) and runs `SecuritySelectionAgent`. The agent result is persisted directly without post-processing.
+`_run_screening(run)` re-fetches stock OHLCV bars, which are not stored in the Research
+result, and uses the retained Research benchmark bars to evaluate the configurable market
+gate. It persists the `SecuritySelectionAgent` result, including gate status and reasons.
+See [Screening](agents/screening.md#market-gate).
 
 ---
 
@@ -209,7 +212,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 
 1. Calls `_portfolio_max_positions(run)` — resolves the target position limit from execution `config_overrides.portfolio.max_positions`, or falls back to global `settings.portfolio.max_positions`.
 2. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries).
-3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through, not capped), with `free_positions = max_positions`.
+3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through, not capped) when the market gate permits entries; otherwise returns no entry candidates. `free_positions = max_positions`.
 4. Builds initial underlying names from screening universe (`SelectionResult.all_tickers` fallback `selected`): `{symbol -> name}`.
 5. Calls `_fetch_warrant_underlying_map(run, holdings)` — strict live resolver via FinHub `/v1/instruments/{isin}` only.
   The result maps `warrant_isin -> underlying_symbol`.
@@ -223,7 +226,7 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 11. `MonitoringAgent.run()` evaluates each held position with trend-first priority (active BREAK → immediate SELL; warrant-health checks only when trend is intact), then populates `trend_status`, `warrant_health_status`, `warrant_health_reason`, `decision_reason`, `screening_signal_present`, and `screening_signal`.
 12. Monitoring is classification-only: no replacement lookup in `_run_monitoring`; `positions_to_roll` contains roll candidates and metadata exports `roll_underlyings`. Confirmed replacements are paired with their incumbent SELL in Portfolio/Risk/Execution.
 13. Calculates `free_positions = max(0, max_positions − len(current_holdings) + len(positions_to_sell))` (`Free now`). Positions whose underlying cannot be mapped are always kept (safe default).
-14. `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found.
+14. When the market gate permits entries, `entry_candidates` = **all** screening candidates not in `excluded_symbols` (all held underlyings), in rank order — **not** capped to `free_positions`. When blocked, `entry_candidates` is empty. The cap is enforced later in warrant selection (`max_selected = free_positions`) so lower-ranked underlyings can backfill slots where no warrant is found. SELL and ROLL decisions are unaffected.
 
 Warrant selection additionally discovers advisory momentum challengers: eligible
 names within Screening's selected top-N pool that rank strictly better than the
@@ -237,7 +240,9 @@ When `free_positions` is zero, only these challengers are searched from the entr
 pool. Other entries are not marked as warrant failures. Positive-cap entry backfill
 and independent roll searches remain unchanged. Challenger results are persisted
 separately and do not enter Portfolio/Risk/Execution as additional buys. Running
-progress counts actual entry/challenger lookups.
+progress reports separate entry/challenger and roll-search phases, including completed
+failures and active underlying symbols. A blocked market gate suppresses the entry
+pool and therefore also advisory challenger searches; roll searches remain available.
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 

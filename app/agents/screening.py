@@ -6,9 +6,9 @@ import talib
 
 from app.agents.base import Agent
 from app.config import ScreeningSettings
-from app.indicators import supertrend_bands
+from app.indicators import supertrend_bands, supertrend_bullish
 from app.models.market import OHLCV
-from app.models.signals import MarketRegime, ResearchResult, SelectionResult
+from app.models.signals import MarketGate, MarketRegime, ResearchResult, SelectionResult
 from app.policies.trend_detection import (
     TrendDetectionPolicyConfig,
     bar_indicator_values,
@@ -28,6 +28,8 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         cfg = settings or ScreeningSettings()
         self._top_n = cfg.top_n
         self._ranking_metric = cfg.ranking_metric
+        self._market_gate_supertrend = cfg.market_gate_supertrend
+        self._market_gate_red_regime = cfg.market_gate_red_regime
         self._min_market_cap_eur = cfg.min_market_cap_eur
         self._lookback_regression = cfg.lookback_regression
         self._lookback_regression_short = cfg.lookback_regression_short
@@ -205,6 +207,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             self._policy_adx_falling_break,
             self._policy_price_below_ema50_break,
         )
+        regime = self._enrich_regime(input.market_regime, policy_results)
         return SelectionResult(
             selected=selected,
             all_tickers=input.tickers,
@@ -221,8 +224,47 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             last_break_age_bars=last_break_age_bars,
             latest_candle_dates=latest_candle_dates,
             previous_candle_dates=previous_candle_dates,
-            market_regime=self._enrich_regime(input.market_regime, policy_results),
+            market_regime=regime,
+            market_gate=self._market_gate(input, regime),
         )
+
+    def _market_gate(self, input: ResearchResult, regime: MarketRegime | None) -> MarketGate:
+        reasons: list[str] = []
+        bars = input.benchmark_bars
+        bullish: bool | None = None
+        if self._market_gate_supertrend:
+            if input.benchmark_symbol and len(bars) >= self._supertrend_period + 2:
+                high = np.array([float(bar.high) for bar in bars])
+                low = np.array([float(bar.low) for bar in bars])
+                close = np.array([float(bar.close) for bar in bars])
+                if np.isfinite(high).all() and np.isfinite(low).all() and np.isfinite(close).all():
+                    upper, lower = supertrend_bands(
+                        high, low, close, self._supertrend_period, self._supertrend_multiplier,
+                    )
+                    if np.isfinite(upper[-1]) and np.isfinite(lower[-1]):
+                        bullish = supertrend_bullish(
+                            high, low, close, self._supertrend_period, self._supertrend_multiplier,
+                        )
+            if bullish is None:
+                reasons.append("Benchmark SuperTrend unavailable")
+            elif not bullish:
+                reasons.append("Benchmark SuperTrend bearish")
+        if self._market_gate_red_regime:
+            if regime is None:
+                reasons.append("Market regime unavailable")
+            elif regime.status == "red":
+                reasons.append("Market regime red")
+        enabled = self._market_gate_supertrend or self._market_gate_red_regime
+        status = "blocked" if reasons else "open" if enabled else "disabled"
+        gate = MarketGate(
+            status=status,
+            reasons=reasons,
+            benchmark_symbol=input.benchmark_symbol,
+            benchmark_date=bars[-1].date if bars else None,
+            supertrend_bullish=bullish,
+        )
+        logger.info("Market gate: %s (%s)", status, "; ".join(reasons) or "no blockers")
+        return gate
 
     # ------------------------------------------------------------------ #
     # Market regime breadth enrichment                                     #

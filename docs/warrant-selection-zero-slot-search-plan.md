@@ -3,6 +3,9 @@
 **Status:** Implemented
 **Scope:** Warrant Selection entry-search behavior when Monitoring reports no free positions
 
+> Update: Progress now reports entry/challenger and roll lookups as separate phases.
+> A blocked market gate suppresses entry/challenger searches but not roll searches.
+
 ## Goal
 
 Avoid FinHub warrant searches for ordinary entry candidates when there are no free entry
@@ -79,7 +82,7 @@ Monitoring result proves insufficient.
 ### 4. Update documentation
 
 Update the Warrant Selection agent spec to describe the zero-slot short circuit and clarify
-that progress counts actual entry lookups, while roll searches are independent.
+that entry and roll lookups are independent and reported as separate progress phases.
 
 ## Acceptance Criteria
 

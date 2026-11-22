@@ -130,6 +130,10 @@ None directly.
 
 ### For each held position
 
+The market gate from Screening blocks new underlying entry candidates when closed.
+It does not change held-position SELL, KEEP, or ROLL decisions; roll replacement
+buys remain allowed. The gate status and blocking reasons are shown on the review page.
+
 - Resolve underlying symbol from `warrant_underlying_map[warrant_isin]`. If not found (no mapping available), mark as KEEP with `underlying_symbol=""` (safe default).
 - Resolve underlying display name from `underlying_names[underlying_symbol]` when available. Name precedence is enforced by orchestrator: universe name via underlying ISIN.
 - Check holding period: `holding_days = (today - held_since_map[wkn]).days`. If `held_since` is unknown, `holding_days` defaults to 9999 (never blocks an exit).

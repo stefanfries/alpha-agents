@@ -4,7 +4,7 @@ import re
 import traceback
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 
 from app import warrant_availability
 from app.accounting import sum_latest_cash_balances_eur
@@ -30,6 +30,7 @@ from app.db import (
 from app.models.market import Position, Ticker
 from app.models.signals import (
     ExecutionPlan,
+    MarketGate,
     MonitoringResult,
     PortfolioAccountSnapshot,
     PortfolioHoldingValue,
@@ -54,6 +55,20 @@ _LEGACY_POSITION_FIELDS = frozenset({"purchase_price", "buy_price_at_entry"})
 
 
 class Pipeline:
+    @staticmethod
+    def _screening_market_gate(run: dict, screening: SelectionResult) -> MarketGate:
+        if screening.market_gate is not None:
+            return screening.market_gate
+        overrides = run.get("config_overrides", {}).get("screening", {})
+        cfg = settings.screening.model_copy(update=overrides)
+        enabled = cfg.market_gate_supertrend or cfg.market_gate_red_regime
+        if enabled:
+            logger.warning("Market gate not evaluated; blocking entries until Research and Screening are rerun")
+        return MarketGate(
+            status="blocked" if enabled else "disabled",
+            reasons=["Market gate not evaluated; restart Research"] if enabled else [],
+        )
+
     @staticmethod
     def _assert_canonical_position_schema(position: dict[str, Any]) -> None:
         legacy_present = sorted(_LEGACY_POSITION_FIELDS.intersection(position.keys()))
@@ -223,13 +238,13 @@ class Pipeline:
             )
         # OHLCV bars are excluded from the stored document — 500+ tickers × 365 bars
         # exceeds MongoDB's 16 MB BSON limit. Bars are re-fetched in the screening stage.
-        # benchmark_bars are also stripped; benchmark_symbol and market_regime are kept.
+        # The small benchmark series is retained for screening's configurable market gate.
         return ResearchResult(
             tickers=result.tickers,
             bars={},
             fundamentals=result.fundamentals,
             benchmark_symbol=result.benchmark_symbol,
-            benchmark_bars=[],
+            benchmark_bars=result.benchmark_bars,
             market_regime=result.market_regime,
         )
 
@@ -242,7 +257,7 @@ class Pipeline:
             bars=bars,
             fundamentals=research.fundamentals,
             benchmark_symbol=research.benchmark_symbol,
-            benchmark_bars=[],          # benchmark bars not needed here; regime came from Research
+            benchmark_bars=research.benchmark_bars,
             market_regime=research.market_regime,
         )
         overrides = run.get("config_overrides", {}).get("screening", {})
@@ -256,7 +271,14 @@ class Pipeline:
         execution_id = run["execution_id"]
         monitoring_data = run["stages"]["monitoring"]["result"]
         monitoring = MonitoringResult.model_validate(monitoring_data)
-        candidates = monitoring.entry_candidates
+        screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
+        gate = self._screening_market_gate(run, screening)
+        blocked = gate.status == "blocked" or (
+            monitoring.market_gate is not None and monitoring.market_gate.status == "blocked"
+        )
+        candidates = [] if blocked else monitoring.entry_candidates
+        if blocked:
+            logger.warning("Market gate blocked new warrant selection")
 
         research = ResearchResult.model_validate(run["stages"]["research"]["result"])
         prices: dict[str, float] = {
@@ -265,7 +287,6 @@ class Pipeline:
             if fund.get("currentPrice")
         }
 
-        screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
         ranking_metric = run.get("config_overrides", {}).get("screening", {}).get(
             "ranking_metric", settings.screening.ranking_metric,
         )
@@ -321,9 +342,9 @@ class Pipeline:
                 maturity_date=review.maturity_date,
             ))
 
-        async def on_progress(done: int, total: int, active: list[str]) -> None:
+        async def on_progress(phase: Literal["entry", "roll"], done: int, total: int, active: list[str]) -> None:
             await update_stage_progress(execution_id, "warrant_selection", {
-                "done": done, "total": total, "active": active,
+                "phase": phase, "done": done, "total": total, "active": active,
                 "challenger_count": len(challenger_symbols),
             })
 
@@ -358,6 +379,8 @@ class Pipeline:
 
     async def _run_monitoring(self, run: dict) -> MonitoringResult:
         screening = SelectionResult.model_validate(run["stages"]["screening"]["result"])
+        screening_overrides = run.get("config_overrides", {}).get("screening", {})
+        market_gate = self._screening_market_gate(run, screening)
         name_source = screening.all_tickers or screening.selected
         universe_names_by_isin = {t.isin: t.name for t in name_source if t.isin and t.name}
         underlying_names = {t.symbol: t.name for t in name_source if t.name}
@@ -365,8 +388,7 @@ class Pipeline:
         current_holdings = await self._fetch_holdings(run)
         max_positions = self._portfolio_max_positions(run)
 
-        # No holdings → pass all screening candidates through as entry candidates.
-        # Warrant selection fills up to free_positions from this pool (backfill).
+        # Warrant selection fills free positions from the permitted candidate pool.
         if not current_holdings:
             account_snapshot = await self._fetch_portfolio_account_snapshot(
                 run,
@@ -381,9 +403,10 @@ class Pipeline:
                 positions_to_sell=[],
                 positions_to_keep=[],
                 positions_to_roll=[],
-                entry_candidates=screening.selected,
+                entry_candidates=[] if market_gate.status == "blocked" else screening.selected,
                 free_positions=free,
                 excluded_symbols=[],
+                market_gate=market_gate,
                 nav_eur=account_snapshot.nav_eur,
                 available_cash_eur=account_snapshot.available_cash_eur,
                 valuation_errors=account_snapshot.valuation_errors,
@@ -429,7 +452,6 @@ class Pipeline:
             screening_symbols=screening_symbols,
             prevention_days=mon_cfg.re_entry_prevention_days,
         )
-        screening_overrides = run.get("config_overrides", {}).get("screening", {})
         enabled_break_rules = TrendDetectionPolicyConfig.from_mapping(
             {**settings.screening.model_dump(), **screening_overrides}
         ).exit_enabled_rules()
@@ -449,6 +471,7 @@ class Pipeline:
             policy_results=screening.policy_results,
             enabled_break_rules=enabled_break_rules,
             reentry_blocked_symbols=reentry_blocked_symbols,
+            market_gate=market_gate,
             max_positions=max_positions,
         ))
 

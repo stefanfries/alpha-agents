@@ -227,6 +227,23 @@ def _fire(coro) -> None:
 
 def _stage_ctx(execution: dict, current_stage: str) -> dict:
     s_data = execution.get("stages", {}).get(current_stage, {})
+    result = s_data.get("result") or {}
+    gate = result.get("market_gate") or {}
+    symbol = gate.get("benchmark_symbol", "")
+    matching_indices = [
+        index for index, benchmark in settings.research.market_regime_symbols.items()
+        if benchmark == symbol and symbol
+    ]
+    regime = (
+        (execution.get("stages", {}).get("screening") or {}).get("result") or {}
+    ).get("market_regime") or {}
+    if len(matching_indices) == 1:
+        index = matching_indices[0]
+        benchmark_name = settings.research.market_regime_display_names.get(index, index)
+    elif regime.get("symbol") == symbol:
+        benchmark_name = regime.get("display_name") or symbol
+    else:
+        benchmark_name = symbol
     return {
         "execution": execution,
         "execution_id": execution["execution_id"],
@@ -238,6 +255,7 @@ def _stage_ctx(execution: dict, current_stage: str) -> dict:
         "stage_result": s_data.get("result"),
         "stage_error": s_data.get("error"),
         "stage_progress": s_data.get("progress"),
+        "market_gate_benchmark_name": benchmark_name,
     }
 
 
@@ -424,6 +442,8 @@ async def restart_stage(
     policies_submitted: Annotated[str | None, Form()] = None,
     ranking_metric: Annotated[str | None, Form()] = None,
     top_n: Annotated[str | None, Form()] = None,
+    market_gate_supertrend: Annotated[str | None, Form()] = None,
+    market_gate_red_regime: Annotated[str | None, Form()] = None,
     policy_supertrend: Annotated[str | None, Form()] = None,
     policy_ema20_rising: Annotated[str | None, Form()] = None,
     policy_adx_above: Annotated[str | None, Form()] = None,
@@ -560,6 +580,8 @@ async def restart_stage(
         updates["config_overrides.screening"] = {
             "top_n": safe_top_n,
             "ranking_metric": safe_ranking_metric,
+            "market_gate_supertrend": market_gate_supertrend is not None,
+            "market_gate_red_regime": market_gate_red_regime is not None,
             "policy_supertrend": policy_supertrend is not None,
             "policy_ema20_rising": policy_ema20_rising is not None,
             "policy_adx_above": policy_adx_above is not None,

@@ -1,5 +1,10 @@
 # Market Regime Filter — Implementation Plan
 
+> Update (2026-11-22): A configurable benchmark SuperTrend entry gate is now
+> enabled by default, with an optional red-regime entry gate disabled by default.
+> Monitoring suppresses new entries when blocked; exits and rolls are unchanged.
+> See [Screening](agents/screening.md#market-gate). The status below is historical.
+
 ## Implementation Status (as of 2026-11-15)
 
 Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
@@ -29,7 +34,7 @@ Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
     - ResearchAgent classification at Green/Red threshold boundaries
     - breadth downgrade behavior
     - rendered regime values/status in the Research and Screening stage templates
-    - no automatic entry blocking
+    - no automatic entry blocking at that time
 
 7. Orchestrator wiring of `universe_source` into `ResearchInput` is implemented.
 
@@ -52,7 +57,7 @@ Overall: Phase 1 and Phase 1.5 are implemented. Phase 2 remains future work.
 
 ### Notes
 
-1. Current behavior is advisory-only for approval decisions; no runtime entry blocking based on regime status is enforced.
+1. As of 2026-11-15, the regime was advisory-only; see the update above for the current entry gate.
 2. Regression tests cover ResearchAgent threshold classification and render both stage templates to verify regime status, values, and Screening breadth details. These are agent/template-level tests, not full HTTP end-to-end tests.
 
 ## Goal

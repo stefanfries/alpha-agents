@@ -1231,6 +1231,8 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
         policies_submitted="1",
         ranking_metric="tq20",
         top_n="7",
+        market_gate_supertrend="on",
+        market_gate_red_regime="on",
         policy_supertrend="on",
         policy_ema20_rising="on",
         policy_adx_above=None,
@@ -1266,6 +1268,8 @@ async def test_restart_stage_persists_screening_policy_form_values(monkeypatch):
     assert screening_cfg == {
         "top_n": 7,
         "ranking_metric": "tq20",
+        "market_gate_supertrend": True,
+        "market_gate_red_regime": True,
         "policy_supertrend": True,
         "policy_ema20_rising": True,
         "policy_adx_above": False,
@@ -1712,7 +1716,7 @@ async def test_warrant_challengers_use_monitoring_ranks_within_screened_pool(
     monkeypatch, caplog, ranking_metric, expected_symbols, benchmark, partial_symbols,
 ):
     from app import orchestrator as orchestrator_module
-    from app.models.signals import MonitoringResult, PositionReview
+    from app.models.signals import MarketGate, MonitoringResult, PositionReview
     from app.policies.screening_ranking import build_screening_ranks
 
     metrics = {
@@ -1726,6 +1730,7 @@ async def test_warrant_challengers_use_monitoring_ranks_within_screened_pool(
         all_tickers=[Ticker(symbol=symbol) for symbol in metrics["tsi"]],
         scores=metrics["tq60"], tq_short=metrics["tq20"], tsi=metrics["tsi"],
         policy_results={symbol: {} for symbol in metrics["tsi"]}, rationale={},
+        market_gate=MarketGate(status="open"),
     )
     reviews = {
         symbol: PositionReview(underlying_symbol=symbol, warrant_isin=symbol, warrant_wkn=symbol)
@@ -1760,10 +1765,16 @@ async def test_warrant_challengers_use_monitoring_ranks_within_screened_pool(
     async def fake_wake(*args):
         pass
 
+    progress_updates = []
+
+    async def fake_update_stage_progress(execution_id, stage, progress):
+        progress_updates.append((execution_id, stage, progress))
+
     pipeline = orchestrator_module.Pipeline()
     monkeypatch.setattr(orchestrator_module, "WarrantSelectionAgent", FakeAgent)
     monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHub)
     monkeypatch.setattr(orchestrator_module.warrant_availability, "overrides_map", fake_overrides)
+    monkeypatch.setattr(orchestrator_module, "update_stage_progress", fake_update_stage_progress)
     monkeypatch.setattr(pipeline, "_wake_finhub", fake_wake)
     run = {
         "execution_id": "challengers",
@@ -1784,6 +1795,22 @@ async def test_warrant_challengers_use_monitoring_ranks_within_screened_pool(
     assert result.challenger_benchmark_symbol == benchmark
     assert result.challenger_benchmark_rank == build_screening_ranks(screening, ranking_metric)[benchmark]["rank"]
     assert result.challenger_unranked_incumbents == []
+    await captured["on_progress"]("roll", 1, 2, ["ROLL"])
+    assert progress_updates[-1] == (
+        "challengers", "warrant_selection",
+        {"phase": "roll", "done": 1, "total": 2, "active": ["ROLL"],
+         "challenger_count": len(expected_symbols)},
+    )
+
+    run["stages"]["screening"]["result"]["market_gate"] = {
+        "status": "blocked", "reasons": ["Benchmark SuperTrend bearish"],
+    }
+    await pipeline._run_warrant_selection(run)
+    assert captured["selection"].selected == []
+    run["stages"]["screening"]["result"]["market_gate"] = None
+    await pipeline._run_warrant_selection(run)
+    assert captured["selection"].selected == []
+    run["stages"]["screening"]["result"]["market_gate"] = {"status": "open"}
 
     # Incumbents need not appear in Screening's top-N entry shortlist to be ranked.
     run["stages"]["screening"]["result"]["policy_results"].pop("ROLL")
@@ -1825,7 +1852,8 @@ async def test_warrant_challengers_reuse_entry_lookups_without_expanding_capacit
         )
         return best, [best], 1, None
 
-    async def on_progress(done, total, active):
+    async def on_progress(phase, done, total, active):
+        assert phase == "entry"
         progress.append((done, total))
 
     agent = WarrantSelectionAgent(
@@ -1881,8 +1909,8 @@ async def test_warrant_selection_skips_entries_when_no_slots_but_searches_rolls(
     finhub = FakeFinHub()
     progress_updates = []
 
-    async def on_progress(done, total, active):
-        progress_updates.append((done, total, active))
+    async def on_progress(phase, done, total, active):
+        progress_updates.append((phase, done, total, active))
 
     agent = WarrantSelectionAgent(
         finhub=finhub,
@@ -1909,7 +1937,38 @@ async def test_warrant_selection_skips_entries_when_no_slots_but_searches_rolls(
     assert result.skipped_reasons == {}
     assert result.roll_underlyings == ["R"]
     assert [w.warrant_wkn for w in result.roll_selected] == ["NEW123"]
-    assert progress_updates == []
+    assert progress_updates == [("roll", 0, 1, ["R"]), ("roll", 1, 1, [])]
+
+
+@pytest.mark.asyncio
+async def test_roll_progress_counts_completed_and_failed_lookups(monkeypatch):
+    import asyncio
+
+    updates = []
+
+    async def on_progress(phase, done, total, active):
+        updates.append((phase, done, total, active))
+
+    async def pick_best(ticker, *args):
+        await asyncio.sleep(0)
+        if ticker.symbol == "R2":
+            raise RuntimeError("lookup failed")
+        return None
+
+    agent = WarrantSelectionAgent(
+        finhub=None, prices={}, on_progress=on_progress,
+        roll_candidates=[
+            RollCandidate(underlying=Ticker(symbol=s), warrant_isin=s, warrant_wkn=s)
+            for s in ("R1", "R2")
+        ],
+    )
+    monkeypatch.setattr(agent, "_pick_best", pick_best)
+    await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
+
+    assert updates[0] == ("roll", 0, 2, ["R1"])
+    assert ("roll", 0, 2, ["R1", "R2"]) in updates
+    assert updates[-1] == ("roll", 2, 2, [])
+    assert [done for _, done, _, _ in updates] == [0, 0, 1, 2]
 
 
 @pytest.mark.parametrize("remaining_symbols", [["C", "A"], ["C"]])
@@ -2038,6 +2097,23 @@ def test_warrant_challenger_progress_is_visible_without_entry_slots():
     )
     assert "0 / 1 underlyings" in html
     assert "Analyzing:" in html
+
+
+def test_roll_progress_is_visible_without_entry_slots():
+    from app.routes.pipeline import templates
+
+    html = templates.env.get_template("stages/warrant_selection.html").render(
+        execution={"execution_id": "test", "stages": {"monitoring": {"result": {
+            "free_positions": 0, "positions_to_roll": [{"underlying_symbol": "R"}],
+        }}}},
+        qs_id="qs", stage_status="running",
+        stage_progress={"phase": "roll", "done": 1, "total": 3, "active": ["R"]},
+    )
+    assert "Searching roll replacements via FinHub" in html
+    assert "1 / 3 underlyings" in html
+    assert 'aria-valuenow="1"' in html
+    assert "33%" in html
+    assert "<code>R</code>" in html
 
 
 @pytest.mark.asyncio
@@ -2385,8 +2461,16 @@ def test_warrant_selection_scoring_tracks_active_maturity_range():
 
 
 @pytest.mark.asyncio
-async def test_monitoring_no_holdings_reports_full_free_slots_from_config_override(monkeypatch):
-    from app.models.signals import PortfolioAccountSnapshot
+@pytest.mark.parametrize(
+    ("gate", "expected_entries"),
+    [
+        ({"status": "open"}, 3),
+        ({"status": "blocked", "reasons": ["Benchmark SuperTrend bearish"]}, 0),
+        (None, 0),
+    ],
+)
+async def test_monitoring_no_holdings_reports_full_free_slots_from_config_override(monkeypatch, gate, expected_entries):
+    from app.models.signals import MarketGate, PortfolioAccountSnapshot
     from app.orchestrator import Pipeline
 
     pipeline = Pipeline()
@@ -2408,6 +2492,7 @@ async def test_monitoring_no_holdings_reports_full_free_slots_from_config_overri
         selected=[Ticker(symbol="A"), Ticker(symbol="B"), Ticker(symbol="C")],
         scores={"A": 1.0, "B": 0.9, "C": 0.8},
         rationale={},
+        market_gate=MarketGate.model_validate(gate) if gate else None,
     )
     run = {
         "stages": {"screening": {"result": screening.model_dump(mode="json")}},
@@ -2417,7 +2502,7 @@ async def test_monitoring_no_holdings_reports_full_free_slots_from_config_overri
     result = await pipeline._run_monitoring(run)
 
     assert result.free_positions == 20
-    assert len(result.entry_candidates) == 3
+    assert len(result.entry_candidates) == expected_entries
     assert result.positions_to_keep == []
     assert result.positions_to_sell == []
     assert result.nav_eur == Decimal("99636.35")
@@ -2426,7 +2511,51 @@ async def test_monitoring_no_holdings_reports_full_free_slots_from_config_overri
 
 
 @pytest.mark.asyncio
+async def test_market_gate_blocks_entries_but_not_sells_or_rolls():
+    from app.models.signals import MarketGate
+
+    agent = MonitoringAgent(settings=MonitoringSettings(), max_positions=5)
+    result = await agent.run(MonitoringInput(
+        candidates=[Ticker(symbol="NEW")],
+        scores={"NEW": 1.0},
+        trend_signals={"SELL": "BREAK", "ROLL": "HOLD"},
+        current_holdings=[
+            Position(ticker=Ticker(symbol="WS", isin="IS"), quantity=Decimal("1"), avg_cost=Decimal("1")),
+            Position(ticker=Ticker(symbol="WR", isin="IR"), quantity=Decimal("1"), avg_cost=Decimal("1")),
+        ],
+        warrant_underlying_map={"IS": "SELL", "IR": "ROLL"},
+        held_since_map={"WR": date.today() - timedelta(days=30)},
+        warrant_snapshots={"IR": WarrantSnapshot(warrant_isin="IR", spread_pct=3.1)},
+        market_gate=MarketGate(status="blocked", reasons=["Benchmark SuperTrend bearish"]),
+    ))
+    assert result.entry_candidates == []
+    assert [p.underlying_symbol for p in result.positions_to_sell] == ["SELL"]
+    assert [p.underlying_symbol for p in result.positions_to_roll] == ["ROLL"]
+    assert result.market_gate.status == "blocked"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sizing_method", ["equal", "score_weighted"])
+async def test_empty_entry_pool_preserves_kept_positions_in_portfolio(sizing_method):
+    from app.models.signals import PortfolioAccountSnapshot
+
+    kept = Position(ticker=Ticker(symbol="KEEP", isin="IK"), quantity=Decimal("1"), avg_cost=Decimal("1"))
+    sold = Position(ticker=Ticker(symbol="SELL", isin="IS"), quantity=Decimal("1"), avg_cost=Decimal("1"))
+    agent = PortfolioConstructionAgent(
+        capital_eur=10000,
+        current_holdings=[kept, sold],
+        kept_warrant_isins={"IK"},
+        sizing_method=sizing_method,
+        account_snapshot=PortfolioAccountSnapshot(source="virtual"),
+    )
+    result = await agent.run(SelectionResult(selected=[], scores={}, rationale={}))
+    assert result.new_positions == []
+    assert result.close_positions == [sold]
+
+
+@pytest.mark.asyncio
 async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(monkeypatch):
+    from app.models.signals import MarketGate
     from app.orchestrator import Pipeline
 
     pipeline = Pipeline()
@@ -2455,6 +2584,7 @@ async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(mo
         scores={"A": 1.0, "B": 0.9, "C": 0.8},
         rationale={},
         trend_signals={"A": "HOLD", "B": "NEW", "C": "NEW"},
+        market_gate=MarketGate(status="open"),
     )
     run = {
         "stages": {"screening": {"result": screening.model_dump(mode="json")}},
@@ -2471,6 +2601,7 @@ async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(mo
 
 @pytest.mark.asyncio
 async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkeypatch):
+    from app.models.signals import MarketGate
     from app.orchestrator import Pipeline
 
     pipeline = Pipeline()
@@ -2499,6 +2630,7 @@ async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkey
         scores={"A": 1.0, "B": 0.9},
         rationale={},
         trend_signals={"A": "BREAK", "B": "NEW"},
+        market_gate=MarketGate(status="open"),
     )
     run = {
         "stages": {"screening": {"result": screening.model_dump(mode="json")}},

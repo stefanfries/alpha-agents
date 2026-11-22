@@ -244,7 +244,7 @@ Output of `ResearchAgent`. Input of `StockSelectionAgent`.
 | `bars` | `dict[str, list[OHLCV]]` | Historical OHLCV candles keyed by symbol |
 | `fundamentals` | `dict[str, dict]` | Raw fundamentals payload per symbol (yfinance `.info`) |
 | `benchmark_symbol` | `str` | Yahoo index symbol selected from dominant universe source index (for example `^NDX`) |
-| `benchmark_bars` | `list[OHLCV]` | Benchmark index OHLCV bars used for regime computation |
+| `benchmark_bars` | `list[OHLCV]` | Retained benchmark index OHLCV bars used for regime computation and the Screening market gate |
 | `market_regime` | `MarketRegime \| None` | Partial regime context (display name, TQ-60, TQ-20, status, optional breadth fields) |
 
 ### `MarketRegime`
@@ -260,6 +260,18 @@ Regime snapshot for benchmark index context in Research/Screening.
 | `status` | `"green" \| "yellow" \| "red"` | Regime classification |
 | `breadth_score` | `float \| None` | Bullish breadth from 0 to 1: the equal-weight average of the universe percentages with SuperTrend Long and EMA20 above EMA50 |
 | `breadth_components` | `dict[str, float]` | Percentages for SuperTrend Long, EMA20 above EMA50, and ADX above 20; ADX is direction-neutral and is not included in `breadth_score` |
+
+### `MarketGate`
+
+Entry-gate decision carried from Screening to Monitoring.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `status` | `"open" \| "blocked" \| "disabled"` | Whether enabled rules allow new entries |
+| `reasons` | `list[str]` | Blocking conditions or unavailable inputs |
+| `benchmark_symbol` | `str` | Benchmark used for the gate |
+| `benchmark_date` | `date \| None` | Date of the latest benchmark bar used |
+| `supertrend_bullish` | `bool \| None` | Benchmark SuperTrend state, or unavailable/not enabled |
 
 ### `SelectionResult`
 
@@ -283,6 +295,7 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `latest_candle_dates` | `dict[str, date]` | Date of the most recent OHLCV bar per ticker |
 | `previous_candle_dates` | `dict[str, date]` | Date of bars[-2] per ticker (second-to-last closed candle) |
 | `market_regime` | `MarketRegime \| None` | Forwarded market regime context for Screening UI |
+| `market_gate` | `MarketGate \| None` | Entry gate status, reasons, benchmark symbol/date and SuperTrend state; `None` for older executions |
 
 Per-candle chart snapshots are not fields on `SelectionResult`. Screening and warrant chart endpoints calculate them on demand from their OHLCV series and include them in the chart fragment's `data-chart` payload.
 
@@ -360,9 +373,10 @@ Output of `MonitoringAgent`. Consumed by `WarrantSelectionAgent` (entry candidat
 | `positions_to_sell` | `list[PositionReview]` | Positions with a confirmed trend exit (active `BREAK`) or an aged-out BREAK (`trend_signal is None` with a known `last_break_age_bars` for the mapped symbol) |
 | `positions_to_keep` | `list[PositionReview]` | Incumbent positions with no exit trigger and/or degraded-but-not-roll-eligible positions |
 | `positions_to_roll` | `list[PositionReview]` | Degraded warrants classified as roll candidates (replacement selection occurs downstream) |
-| `entry_candidates` | `list[Ticker]` | All eligible screening candidates (rank order) for new entry this run; **not** capped to `free_positions` — warrant selection enforces the slot cap (`max_selected`) with backfill |
+| `entry_candidates` | `list[Ticker]` | Eligible screening candidates in rank order; empty when the market gate is blocked. Not capped to `free_positions` — warrant selection enforces the slot cap (`max_selected`) with backfill |
 | `free_positions` | `int` | `max_positions − len(current_holdings) + len(positions_to_sell)` (`Free now`, including confirmed sells) |
 | `excluded_symbols` | `list[str]` | Held or recently sold underlying symbols blocked from entry in this run |
+| `market_gate` | `MarketGate \| None` | Screening gate decision and reasons; `None` for older results |
 | `reentry_blocked_symbols` | `set[str]` | Recent virtual-depot SELL underlyings blocked for the configured prevention window |
 | `nav_eur` | `Decimal \| None` | Total NAV from current EUR cash plus fresh held-warrant bid values; absent if incomplete |
 | `available_cash_eur` | `Decimal \| None` | Current free EUR cash |

@@ -39,7 +39,7 @@ class ResearchSettings(BaseModel):
         "SDAX": "SDAX",
         "TecDAX": "TecDAX",
         "EuroStoxx50": "EuroStoxx50",
-        "NASDAQ100": "Nasdaq 100",
+        "NASDAQ100": "NASDAQ-100",
         "SP500": "S&P 500",
         "FTSE100": "FTSE 100",
     }
@@ -53,6 +53,8 @@ class ResearchSettings(BaseModel):
 class ScreeningSettings(BaseModel):
     top_n: int = Field(default=20, ge=1)
     ranking_metric: Literal["tq60", "tq20", "tsi"] = "tsi"
+    market_gate_supertrend: bool = True
+    market_gate_red_regime: bool = False
     min_market_cap_eur: int = 500_000_000
     min_adx: int = 20
     lookback_regression: int = 60

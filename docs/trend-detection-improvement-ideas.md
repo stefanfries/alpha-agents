@@ -11,8 +11,8 @@ Scope: Screening stage trend detection (`app/policies/trend_detection.py`,
   own trend" filter to avoid chasing extended breakouts.
 - `docs/momentum-replacement-trigger-policy.md` — incumbent-vs-challenger
   momentum swaps.
-- `docs/market-regime-filter-plan.md` — market regime is already computed but
-  currently advisory-only, not enforced at entry.
+- `docs/market-regime-filter-plan.md` — the market gate can block new entries based
+  on benchmark SuperTrend or, optionally, red regime; it does not change trend signals.
 
 ## New ideas
 

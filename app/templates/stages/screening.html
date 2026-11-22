@@ -78,6 +78,17 @@
         {% endif %}
       </div>
     {% endif %}
+    {% if r.market_gate %}
+      <div class="alert alert-{{ 'danger' if r.market_gate.status == 'blocked' else 'secondary' }} py-2 mb-2">
+        <strong>Market gate: {{ r.market_gate.status }}</strong>
+        {% if market_gate_benchmark_name | default('') %} · {{ market_gate_benchmark_name }}{% elif r.market_gate.benchmark_symbol %} · {{ r.market_gate.benchmark_symbol }}{% endif %}
+        {% if r.market_gate.benchmark_date %} · latest bar {{ r.market_gate.benchmark_date }}{% endif %}
+        {% if r.market_gate.supertrend_bullish %}
+          · SuperTrend bullish
+        {% endif %}
+        {% if r.market_gate.reasons %} · {{ r.market_gate.reasons | join('; ') }}{% endif %}
+      </div>
+    {% endif %}
     <div class="flex-shrink-0 d-flex align-items-center gap-3 mb-2">
       <p class="text-muted small mb-0">
         <strong class="text-body">{{ r.selected | length }}</strong> selected of
@@ -209,6 +220,19 @@
             <input type="hidden" name="from_stage" value="screening">
             <input type="hidden" name="policies_submitted" value="1">
             {% set pol_cfg = execution.get("config_overrides", {}).get("screening", {}) %}
+            <fieldset class="border rounded p-2">
+              <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Market gate (new entries only)</legend>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="market_gate_supertrend" id="market_gate_supertrend"
+                       {% if screening_cfg.market_gate_supertrend %}checked{% endif %}>
+                <label class="form-check-label small" for="market_gate_supertrend">Block bearish benchmark SuperTrend</label>
+              </div>
+              <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="market_gate_red_regime" id="market_gate_red_regime"
+                       {% if screening_cfg.market_gate_red_regime %}checked{% endif %}>
+                <label class="form-check-label small" for="market_gate_red_regime">Block red market regime</label>
+              </div>
+            </fieldset>
             <fieldset class="border rounded p-2">
               <legend class="float-none w-auto px-2 mb-2 fw-semibold small text-muted">Selection</legend>
               <div class="d-flex align-items-center gap-3 flex-wrap">

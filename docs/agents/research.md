@@ -38,7 +38,8 @@ class ResearchResult(AgentOutput):
 5. Symbols are used exactly as provided by `UniverseAgent` (plus slash normalization for Yahoo, e.g. `BRK/B` -> `BRK-B`) — no local suffix-strip or manual symbol override fallback is applied
 6. A benchmark index is selected from `universe_source` (dominant originating index), mapped via `settings.research.market_regime_symbols`, and fetched as OHLCV
 7. A partial market regime (`green`/`yellow`/`red`) is computed from benchmark `TQ-60` (primary) and `TQ-20` (secondary), and attached to `ResearchResult.market_regime`
-8. Regime display labels are resolved from `settings.research.market_regime_display_names` (for example `NASDAQ100` -> `Nasdaq 100`)
+8. Regime display labels are resolved from `settings.research.market_regime_display_names` (for example `NASDAQ100` -> `NASDAQ-100`)
+9. Benchmark bars are retained in the execution result for the Screening market gate; individual stock bars are omitted and re-fetched for Screening.
 
 ### Market regime rule
 

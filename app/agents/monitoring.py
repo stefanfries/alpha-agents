@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from app.agents.base import Agent
 from app.config import MonitoringSettings
 from app.models.market import Position, Ticker
-from app.models.signals import MonitoringResult, PositionReview
+from app.models.signals import MarketGate, MonitoringResult, PositionReview
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ class MonitoringInput(BaseModel):
     held_since_map: dict[str, date]            # warrant_wkn → most recent BUY date
     warrant_snapshots: dict[str, WarrantSnapshot] = Field(default_factory=dict)
     reentry_blocked_symbols: set[str] = Field(default_factory=set)
+    market_gate: MarketGate | None = None
     max_positions: int = 15
 
 
@@ -437,6 +438,9 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             t for t in input.candidates
             if t.symbol not in excluded_symbols
         ]
+        if input.market_gate is not None and input.market_gate.status == "blocked":
+            logger.warning("Market gate blocked new entries: %s", "; ".join(input.market_gate.reasons))
+            entry_candidates = []
 
         logger.info(
             "Monitoring complete: %d keep, %d roll, %d sell, %d free slots, %d entry candidates",
@@ -449,4 +453,5 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             entry_candidates=entry_candidates,
             free_positions=free_positions,
             excluded_symbols=excluded_symbols,
+            market_gate=input.market_gate,
         )

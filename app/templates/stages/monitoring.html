@@ -21,6 +21,15 @@
 {% elif stage_status == "awaiting_review" %}
   {% if stage_result %}
   {% set r = stage_result %}
+  {% if r.market_gate %}
+    <div class="alert alert-{{ 'danger' if r.market_gate.status == 'blocked' else 'secondary' }} py-2">
+      <strong>Market gate: {{ r.market_gate.status }}</strong>
+      {% if market_gate_benchmark_name | default('') %} · {{ market_gate_benchmark_name }}{% elif r.market_gate.benchmark_symbol %} · {{ r.market_gate.benchmark_symbol }}{% endif %}
+      {% if r.market_gate.benchmark_date %} · latest bar {{ r.market_gate.benchmark_date }}{% endif %}
+      {% if r.market_gate.reasons %} · {{ r.market_gate.reasons | join('; ') }}{% endif %}
+      · Exits and rolls are unaffected.
+    </div>
+  {% endif %}
   {% set unresolved = r.positions_to_keep | selectattr('underlying_symbol', 'equalto', '') | list %}
   {% set rolls = r.positions_to_roll | default([], true) | list %}
   {% set holdings_value = (r.nav_eur | float) - (r.available_cash_eur | float) if r.nav_eur is not none and r.available_cash_eur is not none else none %}

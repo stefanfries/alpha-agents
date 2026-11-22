@@ -203,7 +203,7 @@ Das passt gut zu den bestehenden Ideen in `trend-detection-improvement-ideas.md`
 
 ## Marktregime stärker nutzen
 
-Das Market-Regime-System ist bereits implementiert, aber überwiegend advisory. Für ENTRY V2 sollte es nicht die Einzeltitel-Logik ersetzen, sondern die Aggressivität steuern.
+Das Market-Regime-System ist bereits implementiert. Das Market Gate sperrt neue Einstiege standardmäßig bei bärischem Benchmark-SuperTrend; eine Sperre bei rotem Regime ist optional und standardmäßig deaktiviert. Für ENTRY V2 sollte der Marktkontext nicht die Einzeltitel-Logik ersetzen, sondern die Aggressivität steuern.
 
 Mögliche Regime-Wirkung:
 

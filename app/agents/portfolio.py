@@ -66,7 +66,10 @@ class PortfolioConstructionAgent(Agent[SelectionResult, PortfolioProposal]):
             return self._run_equal_from_account(input)
 
         if not input.selected and not self._roll_replacements:
-            close = list(self._holding_positions.values())
+            close = [
+                position for isin, position in self._holding_positions.items()
+                if isin not in self._kept_isins
+            ]
             return PortfolioProposal(
                 positions=[],
                 target_weights={},

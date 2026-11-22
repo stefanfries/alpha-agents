@@ -26,6 +26,14 @@ class MarketRegime(BaseModel):
         return "no new entries recommended; review existing positions"
 
 
+class MarketGate(BaseModel):
+    status: Literal["open", "blocked", "disabled"]
+    reasons: list[str] = Field(default_factory=list)
+    benchmark_symbol: str = ""
+    benchmark_date: date | None = None
+    supertrend_bullish: bool | None = None
+
+
 class TrendStatus(str, Enum):
     ESTABLISHED_UP   = "established_up"    # Gate 1 bullish + Gate 2 confirmed
     STARTING_UP      = "starting_up"       # Gate 1 bullish, Gate 2 not yet confirmed
@@ -68,6 +76,7 @@ class SelectionResult(BaseModel):
     latest_candle_dates: dict[str, date] = {}
     previous_candle_dates: dict[str, date] = {}
     market_regime: MarketRegime | None = None
+    market_gate: MarketGate | None = None
 
 
 class SelectedWarrant(BaseModel):
@@ -175,6 +184,7 @@ class MonitoringResult(BaseModel):
     entry_candidates: list[Ticker]   # filtered and capped to free_positions
     free_positions: int
     excluded_symbols: list[str]      # already held (kept or selling) → blocked from entry
+    market_gate: MarketGate | None = None
     nav_eur: Decimal | None = None
     available_cash_eur: Decimal | None = None
     valuation_errors: list[str] = Field(default_factory=list)

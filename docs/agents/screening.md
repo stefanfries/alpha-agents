@@ -94,6 +94,17 @@ If the NEW group passes on the latest bar, the ticker is a candidate. Candidates
 
 Historical rank changes use the same selected metric. The screening table initially sorts by that metric, while its headers allow sorting by other displayed columns.
 
+### Market gate
+
+The Screening review form has two independently configurable entry gates:
+
+- `market_gate_supertrend` (default on): block new entries when the dominant universe benchmark's SuperTrend is bearish, using the Screening SuperTrend period and multiplier.
+- `market_gate_red_regime` (default off): block new entries when the existing market regime is red.
+
+An enabled rule with unavailable benchmark history, an uncomputable SuperTrend, or an unavailable regime blocks entries and shows the reason. Both rules disabled leaves the gate disabled. The gate uses the latest benchmark bar fetched during Research; it can be an intraday bar and is not automatically refreshed or checked for staleness during later stages. Restart Research to refresh it. The displayed benchmark date makes the data vintage visible.
+
+Screening candidates, ranking, and underlying NEW/BREAK signals remain unchanged. Monitoring suppresses new underlying entries when blocked, while SELL and ROLL decisions remain unchanged. Warrant Selection also checks the gate when restarted. Older executions without an evaluated gate must restart Research and proceed through Screening before new entries are permitted, unless both gate rules are disabled. Existing later-stage proposals should also be restarted from Research to apply the gate.
+
 NEW group rules:
 
 | Policy key | Condition | Default |
