@@ -60,8 +60,8 @@ classification-only decision.
 ## Implementation status (as of 2026-09-20)
 
 All of R1–R5, UI items 1–3+5, and paired roll execution are implemented and covered by tests
-(`tests/test_pipeline.py::test_warrant_selection_rolls_when_replacement_better`,
-`::test_warrant_selection_keeps_incumbent_when_replacement_not_better`,
+(`tests/test_pipeline_warrant_selection.py::test_warrant_selection_rolls_when_replacement_better`,
+`::test_warrant_selection_recommends_sell_when_replacement_not_better`,
 `::test_warrant_selection_rolls_ignore_entry_slot_cap`). The full suite passes, ruff clean.
 
 ### Implementation steps (as executed)
@@ -128,7 +128,7 @@ The follow-up is complete; see "Roll execution implementation" below.
 - Unit: incumbent re-scoring; better / marginal / no-replacement branches; slot
   isolation from entries.
 - Pipeline: held+degraded position → ROLL row with replacement; marginal case →
-  ROLL/SELL. Reuse existing FinHub stub patterns in `tests/test_pipeline.py`.
+  ROLL/SELL. Reuse existing FinHub stub patterns in `tests/test_pipeline_warrant_selection.py`.
 - Run `uv run pytest tests/ -v` and `uv run ruff check .` — all green.
 
 ## UI visualization

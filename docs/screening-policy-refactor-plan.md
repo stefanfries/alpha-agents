@@ -68,7 +68,7 @@ Phase 2 note:
 1. Add targeted parity tests for policy evaluation, NEW transitions, and active-BREAK markers (including BREAK on the bar immediately after NEW). ✅
 2. Fixture-based old/new comparison tests: **not applicable** — the legacy code path was removed, so equivalence is covered by the transition/parity tests below rather than a side-by-side comparison.
 
-Implemented tests (`tests/test_pipeline.py`):
+Implemented tests (`tests/test_pipeline_screening.py`):
 
 - `test_screening_policy_group_defaults_match_legacy_behavior`, `test_screening_policy_group_k_of_n_and_clamp`, `test_screening_policy_group_no_selected_policy_fails` — boolean group evaluator.
 - `test_trend_signal_k2_emits_new_before_break_phase`, `test_trend_signal_k2_keeps_break_visible_for_five_bars_total` — NEW/BREAK state machine.

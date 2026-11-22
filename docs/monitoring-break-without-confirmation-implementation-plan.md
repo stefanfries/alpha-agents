@@ -223,7 +223,7 @@ Required automated tests:
   - immediate sell on BREAK
   - no "break signal, not confirmed yet" branch remains
   - degradation reason text generation
-- tests/test_pipeline.py
+- tests/test_pipeline_monitoring.py and tests/test_pipeline_routes.py
   - monitoring stage output contract unchanged or intentionally versioned
   - restart/approve flow unaffected
 

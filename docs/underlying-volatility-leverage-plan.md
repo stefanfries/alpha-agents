@@ -132,7 +132,7 @@ Use **ATR20 / current close price** ("ATR%") as the volatility proxy:
    `atr_pct` input and identical raw leverage/spread/delta/days values.
 4. Wire `screening.volatility` through `app/orchestrator.py` into
    `WarrantSelectionAgent(...)`.
-   → verify: `tests/test_pipeline.py` integration test that a high-volatility
+   → verify: `tests/test_pipeline_warrant_selection.py` integration test that a high-volatility
    underlying's selected warrant differs from a low-volatility case under a
    non-zero sensitivity setting.
 5. Update docs: `docs/agents/warrant_selection.md`, `docs/data-models.md`

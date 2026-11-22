@@ -93,7 +93,7 @@ uv add <package>
 uv run pytest tests/ -v
 
 # Run a single test
-uv run pytest tests/test_pipeline.py::test_screening_filters_low_market_cap
+uv run pytest tests/test_pipeline_screening.py::test_screening_filters_low_market_cap
 
 # Lint / format
 uv run ruff check .
