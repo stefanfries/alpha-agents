@@ -45,9 +45,9 @@ from app.models.signals import (
 from app.policies.screening_ranking import build_screening_ranks
 from app.policies.trend_detection import TrendDetectionPolicyConfig
 from app.tools.finhub import FinHubTool
-from app.tools.retry import retry_call
 from app.tools.wikipedia import WikipediaIndexTool
 from app.tools.yfinance import YFinanceTool
+from app.warrant_snapshots import fetch_warrant_snapshots
 
 logger = logging.getLogger(__name__)
 
@@ -504,113 +504,9 @@ class Pipeline:
             return {}
 
         unique_isins = list(dict.fromkeys(x for x in warrant_isins if x))
-        snapshots: dict[str, WarrantSnapshot] = {}
         today = date.today()
-
         async with FinHubTool() as finhub:
-            for isin in unique_isins:
-                try:
-                    detail = await retry_call(finhub.get_warrant_detail, isin)
-                except Exception:
-                    logger.warning("Monitoring snapshots: detail fetch failed for %s", isin)
-                    continue
-                if not detail:
-                    logger.warning("Monitoring snapshots: no detail for %s", isin)
-                    continue
-
-                md = detail.get("market_data") or {}
-                an = detail.get("analytics") or {}
-                rd = detail.get("reference_data") or {}
-
-                spread_pct = self._as_float(md.get("spread_percent"))
-                leverage = self._as_float(an.get("leverage"))
-                delta = self._as_float(an.get("delta"))
-                days_to_maturity = self._days_to_maturity(rd.get("maturity_date"), today)
-                strike = self._as_float(rd.get("strike"))
-                maturity_date = self._parse_maturity_date(rd.get("maturity_date"))
-
-                bid = self._as_float(md.get("bid"))
-                ask = self._as_float(md.get("ask"))
-                bid_ask_midprice = (bid + ask) / 2.0 if bid is not None and ask is not None else None
-                timestamp_utc = self._parse_utc_timestamp(md.get("timestamp_utc"))
-
-                if all(
-                    value is None
-                    for value in (spread_pct, leverage, delta, days_to_maturity, bid_ask_midprice)
-                ):
-                    logger.warning("Monitoring snapshots: empty metrics for %s", isin)
-                    continue
-
-                snapshots[isin] = WarrantSnapshot(
-                    warrant_isin=isin,
-                    spread_pct=spread_pct,
-                    leverage=leverage,
-                    days_to_maturity=days_to_maturity,
-                    delta=delta,
-                    bid=bid,
-                    ask=ask,
-                    currency=md.get("currency") or rd.get("currency"),
-                    timestamp_utc=timestamp_utc,
-                    issuer_action=bool(rd.get("issuer_action")),
-                    issuer_no_fee_action=bool(rd.get("issuer_no_fee_action")),
-                    bid_ask_midprice=bid_ask_midprice,
-                    prev_close=self._as_float(md.get("prev_close")),
-                    strike=strike,
-                    maturity_date=maturity_date,
-                )
-
-        return snapshots
-
-    @staticmethod
-    def _parse_utc_timestamp(value: Any) -> datetime | None:
-        if not value:
-            return None
-        try:
-            parsed = value if isinstance(value, datetime) else datetime.fromisoformat(
-                str(value).replace("Z", "+00:00")
-            )
-        except ValueError:
-            return None
-        if parsed.tzinfo is None or parsed.utcoffset() is None:
-            return None
-        return parsed.astimezone(timezone.utc)
-
-    @staticmethod
-    def _as_float(value: Any) -> float | None:
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    @staticmethod
-    def _parse_maturity_date(value: Any) -> date | None:
-        if value is None:
-            return None
-        if isinstance(value, date):
-            return value
-        if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, str):
-            raw = value.strip()
-            if raw.endswith("Z"):
-                raw = raw[:-1] + "+00:00"
-            try:
-                return datetime.fromisoformat(raw).date()
-            except ValueError:
-                try:
-                    return date.fromisoformat(raw)
-                except ValueError:
-                    return None
-        return None
-
-    @staticmethod
-    def _days_to_maturity(value: Any, today: date) -> int | None:
-        maturity_date = Pipeline._parse_maturity_date(value)
-        if maturity_date is None:
-            return None
-        return (maturity_date - today).days
+            return await fetch_warrant_snapshots(finhub, unique_isins, today)
 
     async def _fetch_warrant_underlying_map(self, run: dict, holdings: list[Position]) -> dict[str, str]:
         """Resolve {warrant_isin -> underlying_symbol} live via FinHub /instruments."""

@@ -600,18 +600,23 @@ async def test_monitoring_sells_break_during_grace_with_candle_confirmation():
 async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
     import app.orchestrator as orchestrator_module
     from app.orchestrator import Pipeline
+    from app.warrant_snapshots import _parse_utc_timestamp
 
     today = date.today()
     quote_calls = []
+    detail_calls = []
+    connections = []
 
     class FakeFinHubTool:
         async def __aenter__(self):
+            connections.append(True)
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
         async def get_warrant_detail(self, isin: str) -> dict | None:
+            detail_calls.append(isin)
             if isin == "ISIN1":
                 return {
                     "market_data": {
@@ -640,8 +645,11 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
     monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHubTool)
 
     pipeline = Pipeline()
-    snapshots = await pipeline._fetch_warrant_snapshots(["ISIN1", "ISIN2", "ISIN3"])
+    assert await pipeline._fetch_warrant_snapshots([]) == {}
+    assert connections == []
+    snapshots = await pipeline._fetch_warrant_snapshots(["ISIN1", "", "ISIN2", "ISIN1", "ISIN3"])
 
+    assert detail_calls == ["ISIN1", "ISIN2", "ISIN3"]
     assert set(snapshots.keys()) == {"ISIN1"}
     snap = snapshots["ISIN1"]
     assert snap.spread_pct == 1.8
@@ -658,4 +666,35 @@ async def test_fetch_warrant_snapshots_extracts_metrics(monkeypatch):
     assert snap.bid_ask_midprice == 2.0
     assert snap.prev_close == 1.8
     assert quote_calls == []
-    assert Pipeline._parse_utc_timestamp("2026-10-02T19:59:00") is None
+    assert _parse_utc_timestamp("2026-10-02T19:59:00") is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_warrant_snapshots_continues_after_detail_failure(monkeypatch, caplog):
+    import app.orchestrator as orchestrator_module
+    import app.warrant_snapshots as snapshot_module
+    from app.orchestrator import Pipeline
+
+    class FakeFinHubTool:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get_warrant_detail(self, isin: str) -> dict:
+            if isin == "FAILED":
+                raise RuntimeError("unavailable")
+            return {"market_data": {"spread_percent": 1.5}}
+
+    async def fake_retry_call(fn, *args):
+        return await fn(*args)
+
+    monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHubTool)
+    monkeypatch.setattr(snapshot_module, "retry_call", fake_retry_call)
+
+    snapshots = await Pipeline()._fetch_warrant_snapshots(["FAILED", "OK"])
+
+    assert set(snapshots) == {"OK"}
+    assert snapshots["OK"].spread_pct == 1.5
+    assert "Monitoring snapshots: detail fetch failed for FAILED" in caplog.text
