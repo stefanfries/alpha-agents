@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 import traceback
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -53,6 +52,10 @@ from app.tools.finhub import FinHubTool
 from app.tools.wikipedia import WikipediaIndexTool
 from app.tools.yfinance import YFinanceTool
 from app.warrant_snapshots import fetch_warrant_snapshots
+from app.warrant_underlyings import (
+    fetch_warrant_underlying_map,
+    resolve_underlying_names_from_universe,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -476,29 +479,10 @@ class Pipeline:
 
     async def _fetch_warrant_underlying_map(self, run: dict, holdings: list[Position]) -> dict[str, str]:
         """Resolve {warrant_isin -> underlying_symbol} live via FinHub /instruments."""
-        result: dict[str, str] = {}
-
-        if holdings:
-            async with FinHubTool() as finhub:
-                for pos in holdings:
-                    resolved = await self._resolve_warrant_underlying_via_instruments(finhub, pos)
-                    if not resolved:
-                        continue
-                    underlying_symbol = resolved["underlying_symbol"]
-                    warrant_isin = resolved.get("warrant_isin")
-                    if warrant_isin:
-                        result[warrant_isin] = underlying_symbol
-                    await self._persist_warrant_underlying_mapping(
-                        warrant_isin=warrant_isin,
-                        warrant_wkn=pos.ticker.symbol,
-                        underlying_symbol=underlying_symbol,
-                        underlying_isin=resolved.get("underlying_isin"),
-                        underlying_name=resolved.get("underlying_name"),
-                        source="finhub_instruments",
-                        resolved_from="isin",
-                    )
-
-        return result
+        if not holdings:
+            return {}
+        async with FinHubTool() as finhub:
+            return await fetch_warrant_underlying_map(finhub, holdings)
 
     async def _resolve_underlying_names_from_universe(
         self,
@@ -510,113 +494,10 @@ class Pipeline:
         if not holdings or not universe_names_by_isin:
             return {}
 
-        result: dict[str, str] = {}
         async with FinHubTool() as finhub:
-            for pos in holdings:
-                underlying_symbol = warrant_underlying_map.get(pos.ticker.isin) if pos.ticker.isin else None
-                if not underlying_symbol or underlying_symbol in result:
-                    continue
-
-                inst: dict | None = None
-                try:
-                    if pos.ticker.isin:
-                        inst = await finhub.get_instrument(pos.ticker.isin)
-                except Exception:
-                    inst = None
-
-                if not inst:
-                    continue
-
-                details = inst.get("details") or {}
-                underlying_link = details.get("underlying_link") or ""
-                match = re.search(r"([A-Z]{2}[A-Z0-9]{10})$", underlying_link)
-                if not match:
-                    continue
-
-                underlying_isin = match.group(1)
-                universe_name = universe_names_by_isin.get(underlying_isin)
-                if universe_name:
-                    result[underlying_symbol] = universe_name
-
-        return result
-
-    async def _persist_warrant_underlying_mapping(
-        self,
-        warrant_isin: str | None,
-        warrant_wkn: str | None,
-        underlying_symbol: str,
-        underlying_isin: str | None,
-        underlying_name: str | None,
-        source: str,
-        resolved_from: str | None,
-    ) -> None:
-        coll = warrant_underlying_map_collection()
-        now = datetime.now(timezone.utc)
-        payload = {
-            "warrant_isin": warrant_isin,
-            "warrant_wkn": warrant_wkn,
-            "underlying_symbol": underlying_symbol,
-            "underlying_isin": underlying_isin,
-            "underlying_name": underlying_name,
-            "source": source,
-            "resolved_from": resolved_from,
-            "checked_at": now,
-        }
-        if warrant_isin:
-            await coll.update_one({"_id": warrant_isin}, {"$set": payload}, upsert=True)
-
-    async def _resolve_warrant_underlying_via_instruments(
-        self,
-        finhub: FinHubTool,
-        pos: Position,
-    ) -> dict[str, str] | None:
-        """Resolve a held warrant via FinHub /instruments by ISIN.
-
-        Returns mapping payload on success, else None.
-        """
-        if not pos.ticker.isin:
-            return None
-
-        try:
-            inst = await finhub.get_instrument(pos.ticker.isin)
-        except Exception:
-            return None
-        if not inst:
-            return None
-
-        details = inst.get("details") or {}
-        underlying_link = details.get("underlying_link") or ""
-        match = re.search(r"([A-Z]{2}[A-Z0-9]{10})$", underlying_link)
-        underlying_isin = match.group(1) if match else None
-        if not underlying_isin:
-            return None
-
-        try:
-            underlying_inst = await finhub.get_instrument(underlying_isin)
-        except Exception:
-            return None
-        if not underlying_inst:
-            return None
-
-        gids = underlying_inst.get("global_identifiers") or {}
-        underlying_symbol = gids.get("symbol_yfinance")
-        if not underlying_symbol:
-            return None
-
-        underlying_name = (
-            details.get("underlying_name")
-            or underlying_inst.get("name")
-            or (underlying_inst.get("global_identifiers") or {}).get("name_openfigi")
-        )
-
-        warrant_gids = inst.get("global_identifiers") or {}
-        return {
-            "warrant_isin": inst.get("isin") or warrant_gids.get("isin") or pos.ticker.isin or "",
-            "underlying_symbol": underlying_symbol,
-            "underlying_isin": underlying_isin,
-            "underlying_name": underlying_name,
-            "resolved_from": "isin",
-        }
+            return await resolve_underlying_names_from_universe(
+                finhub, holdings, warrant_underlying_map, universe_names_by_isin
+            )
 
     async def _fetch_held_since(self, run: dict) -> dict[str, date]:
         """Return {warrant_wkn -> held_since_date} using latest snapshot per depot.

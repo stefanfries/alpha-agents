@@ -214,12 +214,12 @@ Two stage runners integrate the global `warrant_availability` collection (see AD
 2. Calls `_fetch_holdings(run)` — reads the latest depot snapshot for the linked QuantSystem, then uses `app/depot_positions.py` to normalize positions, **excluding zero-quantity or negative-quantity positions** (e.g. pending settlement or correction entries). Invalid numeric amounts fall back to zero with a warning.
 3. If no holdings, returns all `SelectionResult.selected` tickers as entry candidates (full pass-through, not capped) when the market gate permits entries; otherwise returns no entry candidates. `free_positions = max_positions`.
 4. Builds initial underlying names from screening universe (`SelectionResult.all_tickers` fallback `selected`): `{symbol -> name}`.
-5. Calls `_fetch_warrant_underlying_map(run, holdings)` — strict live resolver via FinHub `/v1/instruments/{isin}` only.
+5. Calls `_fetch_warrant_underlying_map(run, holdings)` — delegates resolution and mapping persistence to `app/warrant_underlyings.py`, using FinHub `/v1/instruments/{isin}` only.
   The result maps `warrant_isin -> underlying_symbol`.
 6. Normalizes mapped underlying symbols to screening symbols before monitoring decisions.
   Example: `ASML.AS` is normalized to `ASML` when `ASML` exists in `screening.trend_signals`.
 7. Calls `_fetch_warrant_snapshots(warrant_isins)` — delegates fetching and parsing to `app/warrant_snapshots.py`, using `GET /v1/warrants/{isin}` and the shared `retry_call()` helper (3 attempts, exponential backoff). The snapshot reads bid, ask, and `market_data.prev_close` from this same response; `pct_change_from_prev_close` is calculated from the current bid and previous close, so no separate `/v1/quotes/{isin}` request is made. Monitoring uses the bid for current price and performance even when the ask is missing. Snapshots are omitted when detail fetching fails, returns no detail, or contains no usable metrics.
-8. Resolves held-warrant underlying ISIN via FinHub `/instruments` and prefers **universe names by ISIN** for monitoring display labels.
+8. Resolves held-warrant underlying ISIN via FinHub `/instruments` through `app/warrant_underlyings.py` and prefers **universe names by ISIN** for monitoring display labels. Lookup exceptions are logged and leave the affected mapping or name unresolved.
 9. Calls `_fetch_held_since(run)` — uses `app/depot_positions.py` to build `{wkn -> date}` from latest snapshot position field `held_since_date`.
   For virtual depots only, missing snapshot dates fall back to most recent BUY from `virtual_depot_transactions`.
 10. Instantiates `MonitoringAgent` with the merged `MonitoringSettings` (global defaults overridden by `config_overrides.monitoring`) and delegates to it.

@@ -29,7 +29,7 @@ The orchestrator builds `MonitoringInput` from:
 - `SelectionResult` (stages.screening.result)
 - `underlying_names` from screening universe (`all_tickers` fallback `selected`), then enriched for held rows
 - Current depot snapshot via `_fetch_holdings()` — **excludes zero-quantity positions**
-- `warrant_underlying_map` via strict live resolver `_fetch_warrant_underlying_map()` using FinHub `/v1/instruments/{isin}`
+- `warrant_underlying_map` via `_fetch_warrant_underlying_map()` and `app/warrant_underlyings.py`, using FinHub `/v1/instruments/{isin}`
 - `held_since_map` via `_fetch_held_since()`:
   - real depots: latest `finance.depot_snapshots.positions[].held_since_date`
   - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
