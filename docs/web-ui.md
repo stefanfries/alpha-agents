@@ -190,7 +190,12 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 
 Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
 
-**Signal filter** (above the table): checkboxes to show/hide rows by trend signal — All / NEW / HOLD / BREAK / — (no signal). All are checked by default. If **All** is checked, all individual signal checkboxes are automatically checked. If any individual signal checkbox or **Selected Entry Candidates** is unchecked, **All** is automatically unchecked. **Selected Entry Candidates** is unchecked by default; when checked, it also shows screening-selected rows regardless of their signal. It does not change the selection sent to later stages.
+**Display filters** (above the table):
+
+- **All**, **NEW**, **HOLD**, **BREAK**, and **—** (no signal) are checked initially. **Selected Entry Candidates** is unchecked initially.
+- Checked signal filters show rows with the corresponding signal. Checking **Selected Entry Candidates** additionally shows every row in the screening shortlist (`SelectionResult.selected`), even if its signal filter is unchecked. Rows matching any checked filter remain visible.
+- Checking **All** shows every row and checks all signal filters; it does not change **Selected Entry Candidates**. Unchecking any signal filter or **Selected Entry Candidates** automatically unchecks **All**. Unchecking **All** leaves the individual filters unchanged, so uncheck the unwanted signal filters to see only selected candidates.
+- These filters affect only the table display, not the shortlist or later pipeline stages. Monitoring can further exclude shortlisted candidates, for example when they are already held.
 
 **Stock chart** (loaded on demand, powered by Lightweight Charts v4):
 
