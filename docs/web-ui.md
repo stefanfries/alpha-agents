@@ -212,7 +212,7 @@ Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id
     - `TQ-60 LR` = linear regression over the last 60 bars
   - These LR overlays are shown only for index charts, not for normal per-ticker charts.
 - The Screening market-regime alert shows **Bullish breadth**, the equal-weight average of the universe percentages with SuperTrend Long and EMA20 > EMA50. Its expandable details show those two components and ADX > 20 separately; ADX is direction-neutral and is not included in the bullish breadth score.
-- The separate **Market gate** alert shows its open/blocked/disabled status, benchmark name, latest benchmark bar date, and any blocking reasons. The latest bar can be intraday and is not refreshed in later stages.
+- The separate **Market gate** alert shows 🟢 open, 🔴 blocked, or ⚪ disabled on a matching green, red, or grey background, plus the benchmark name, latest benchmark bar date, and any blocking reasons. The latest bar can be intraday and is not refreshed in later stages.
 - All indicators computed server-side with TA-Lib
 
 **Screening policies panel** (above action bar):

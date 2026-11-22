@@ -214,6 +214,24 @@ def test_market_gate_benchmark_name_falls_back_to_unknown_symbol():
     assert _stage_ctx(execution, "screening")["market_gate_benchmark_name"] == "^UNKNOWN"
 
 
+@pytest.mark.parametrize(
+    ("status", "symbol", "color"),
+    [("open", "🟢", "success"), ("blocked", "🔴", "danger"), ("disabled", "⚪", "secondary")],
+)
+def test_screening_market_gate_shows_status_symbol(status, symbol, color):
+    html = templates.env.get_template("stages/screening.html").render(
+        **_stage_context("screening", {
+            "market_gate": {"status": status, "reasons": []},
+            "selected": [], "scores": {}, "history_labels": [], "rank_changes": {},
+            "policy_results": {}, "all_tickers": [], "tq_short": {}, "tsi": {},
+            "weekly_confirmed": {}, "trend_signals": {},
+        })
+    )
+    assert f'{symbol}</span>\n        <strong>Market gate: {status}</strong>' in html
+    gate = html.split(f"<strong>Market gate: {status}</strong>", 1)[0].rsplit('<div class="', 1)[1]
+    assert f"alert-{color}" in gate
+
+
 def test_research_stage_renders_market_regime_status_and_values():
     regime = MarketRegime(
         symbol="^NDX",
@@ -292,19 +310,25 @@ def test_screening_stage_renders_breadth_and_downgraded_regime():
     assert 'name="market_gate_red_regime" id="market_gate_red_regime"\n                       checked' not in html
 
 
-def test_monitoring_gate_displays_benchmark_name():
+@pytest.mark.parametrize(
+    ("status", "color"),
+    [("open", "success"), ("blocked", "danger"), ("disabled", "secondary")],
+)
+def test_monitoring_gate_displays_benchmark_name(status, color):
     result = MonitoringResult(
         positions_to_keep=[], positions_to_sell=[], entry_candidates=[],
         free_positions=0, excluded_symbols=[],
         market_gate=MarketGate(
-            status="blocked", benchmark_symbol="^NDX",
+            status=status, benchmark_symbol="^NDX",
             reasons=["Benchmark SuperTrend bearish"],
         ),
     )
     html = templates.env.get_template("stages/monitoring.html").render(
         **_stage_context("monitoring", result.model_dump(mode="json"))
     )
-    gate_html = html.split("<strong>Market gate: blocked</strong>", 1)[1].split("</div>", 1)[0]
+    gate_before, gate_after = html.split(f"<strong>Market gate: {status}</strong>", 1)
+    assert f"alert-{color}" in gate_before.rsplit('<div class="', 1)[1]
+    gate_html = gate_after.split("</div>", 1)[0]
     assert "NASDAQ-100" in gate_html
     assert "^NDX" not in gate_html
     assert "Benchmark SuperTrend bearish" in gate_html

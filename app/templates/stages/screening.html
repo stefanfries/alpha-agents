@@ -79,7 +79,8 @@
       </div>
     {% endif %}
     {% if r.market_gate %}
-      <div class="alert alert-{{ 'danger' if r.market_gate.status == 'blocked' else 'secondary' }} py-2 mb-2">
+      <div class="alert alert-{{ 'success' if r.market_gate.status == 'open' else ('danger' if r.market_gate.status == 'blocked' else 'secondary') }} py-2 mb-2">
+        <span class="fs-6" aria-hidden="true">{{ '🟢' if r.market_gate.status == 'open' else ('🔴' if r.market_gate.status == 'blocked' else '⚪') }}</span>
         <strong>Market gate: {{ r.market_gate.status }}</strong>
         {% if market_gate_benchmark_name | default('') %} · {{ market_gate_benchmark_name }}{% elif r.market_gate.benchmark_symbol %} · {{ r.market_gate.benchmark_symbol }}{% endif %}
         {% if r.market_gate.benchmark_date %} · latest bar {{ r.market_gate.benchmark_date }}{% endif %}

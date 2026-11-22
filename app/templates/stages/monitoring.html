@@ -22,7 +22,7 @@
   {% if stage_result %}
   {% set r = stage_result %}
   {% if r.market_gate %}
-    <div class="alert alert-{{ 'danger' if r.market_gate.status == 'blocked' else 'secondary' }} py-2">
+    <div class="alert alert-{{ 'success' if r.market_gate.status == 'open' else ('danger' if r.market_gate.status == 'blocked' else 'secondary') }} py-2">
       <strong>Market gate: {{ r.market_gate.status }}</strong>
       {% if market_gate_benchmark_name | default('') %} · {{ market_gate_benchmark_name }}{% elif r.market_gate.benchmark_symbol %} · {{ r.market_gate.benchmark_symbol }}{% endif %}
       {% if r.market_gate.benchmark_date %} · latest bar {{ r.market_gate.benchmark_date }}{% endif %}
