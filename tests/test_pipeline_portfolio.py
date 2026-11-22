@@ -568,7 +568,7 @@ async def test_portfolio_account_snapshot_uses_latest_real_eur_cash(
 
 
 def test_portfolio_quote_validation_rejects_stale_and_non_eur_quotes():
-    from app.orchestrator import Pipeline
+    from app.portfolio_valuation import portfolio_quote_error
 
     now = datetime(2026, 10, 3, 12, tzinfo=timezone.utc)
     stale = WarrantSnapshot(
@@ -584,12 +584,52 @@ def test_portfolio_quote_validation_rejects_stale_and_non_eur_quotes():
         timestamp_utc=now,
     )
 
-    assert Pipeline._portfolio_quote_error(stale, now) == "quote is older than 72 hours"
+    assert portfolio_quote_error(stale, now) == "quote is older than 72 hours"
     weekend_quote = WarrantSnapshot(
         warrant_isin="WEEKEND",
         bid=2.0,
         currency="EUR",
         timestamp_utc=now - timedelta(hours=72),
     )
-    assert Pipeline._portfolio_quote_error(weekend_quote, now) is None
-    assert Pipeline._portfolio_quote_error(foreign, now) == "quote currency is not EUR"
+    assert portfolio_quote_error(weekend_quote, now) is None
+    assert portfolio_quote_error(foreign, now) == "quote currency is not EUR"
+
+
+def test_portfolio_valuation_preserves_valid_values_when_one_quote_is_missing():
+    from app.portfolio_valuation import build_portfolio_account_snapshot
+
+    now = datetime(2026, 10, 3, 12, tzinfo=timezone.utc)
+    holdings = [
+        Position(ticker=Ticker(symbol="GOOD", isin="ISIN_GOOD"), quantity=Decimal("2"), avg_cost=Decimal("1")),
+        Position(ticker=Ticker(symbol="MISSING", isin="ISIN_MISSING"), quantity=Decimal("1"), avg_cost=Decimal("1")),
+    ]
+    errors = ["Cash warning", "Cash warning"]
+    snapshot = build_portfolio_account_snapshot(
+        source="virtual",
+        cash_eur=Decimal("100"),
+        holdings=holdings,
+        underlying_map={"ISIN_GOOD": "AAPL"},
+        warrant_quotes={
+            "ISIN_GOOD": WarrantSnapshot(
+                warrant_isin="ISIN_GOOD", bid=5.0, currency="EUR", timestamp_utc=now,
+            ),
+        },
+        sectors_by_underlying_isin={"US0378331005": "Technology"},
+        underlying_isins_by_symbol={"AAPL": "US0378331005"},
+        underlying_names_by_symbol={"AAPL": "Apple Inc."},
+        errors=errors,
+        now=now,
+        quote_max_age_hours=72,
+    )
+
+    assert snapshot.holdings[0].market_value_eur == Decimal("10")
+    assert snapshot.holdings[0].underlying_name == "Apple Inc."
+    assert snapshot.holdings[0].sector == "Technology"
+    assert snapshot.holdings[1].market_value_eur is None
+    assert snapshot.nav_eur is None
+    assert snapshot.valuation_errors == [
+        "Cash warning",
+        "ISIN_MISSING: missing or invalid bid quote",
+        "NAV is incomplete because one or more held-position quotes are invalid",
+    ]
+    assert errors == ["Cash warning", "Cash warning"]

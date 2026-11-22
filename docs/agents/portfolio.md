@@ -61,6 +61,9 @@ Unused or risk-rejected allocations remain cash; they are not redistributed.
 | `portfolio.quote_max_age_hours` | `72` | Maximum age of a held-warrant quote for NAV/risk validation |
 | `portfolio.sizing_method` | `equal` | Equal sizing is the account-backed v1 method |
 
+The orchestrator fetches cash and warrant quotes; `app/portfolio_valuation.py`
+validates those quotes and builds the bid-valued account snapshot and NAV.
+
 Per-order fees are computed by `app/policies/transaction_costs.py`:
 
 - Standard order: €4.90 Grundentgelt + 0.25% Orderprovision, with a €9.90 minimum and €59.90
