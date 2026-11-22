@@ -102,6 +102,10 @@
           <label class="form-check-label small" for="filter-all">All</label>
         </div>
         <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input" type="checkbox" id="filter-selected" onchange="applySignalFilter('selected')">
+          <label class="form-check-label small" for="filter-selected">Selected Entry Candidates</label>
+        </div>
+        <div class="form-check form-check-inline mb-0">
           <input class="form-check-input" type="checkbox" id="filter-new" checked onchange="applySignalFilter('new')">
           <label class="form-check-label small text-success fw-semibold" for="filter-new">NEW</label>
         </div>
@@ -165,6 +169,7 @@
               {% endfor %}
               <tr class="{% if selected %}table-success{% elif score <= 0 %}text-muted{% endif %}"
                   data-selected-rank="{% if selected %}{{ sel_rank }}{% else %}999999{% endif %}"
+                  data-selected="{{ 'true' if selected else 'false' }}"
                   data-symbol="{{ sym }}"
                   style="cursor:pointer"
                   onclick="loadScreeningChart('{{ qs_id }}', '{{ execution.execution_id }}', '{{ sym }}', this)">
@@ -527,6 +532,7 @@ function applySignalFilter(changed = null) {
   const holdEl = document.getElementById('filter-hold');
   const breakEl = document.getElementById('filter-break');
   const noneEl = document.getElementById('filter-none');
+  const selectedEl = document.getElementById('filter-selected');
 
   if (changed === 'all' && allEl.checked) {
     newEl.checked = true;
@@ -552,7 +558,8 @@ function applySignalFilter(changed = null) {
   tbody.querySelectorAll('tr').forEach(row => {
     if (showAll) { row.style.display = ''; return; }
     const sig = row.querySelector('td[data-signal]')?.dataset.signal ?? '';
-    const visible = (sig === 'NEW'   && showNew)
+    const visible = (selectedEl.checked && row.dataset.selected === 'true')
+                 || (sig === 'NEW'   && showNew)
                  || (sig === 'HOLD'  && showHold)
                  || (sig === 'BREAK' && showBreak)
                  || (sig === ''      && showNone);

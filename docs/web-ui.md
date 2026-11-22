@@ -190,7 +190,7 @@ Tickers with `missing` data are highlighted. No charts (universe is too large to
 
 Clicking a ticker row calls `GET /quant-systems/{qs_id}/executions/{execution_id}/charts/screening/{ticker}` via `fetch()` and swaps the chart panel inline.
 
-**Signal filter** (above the table): checkboxes to show/hide rows by trend signal — All / NEW / HOLD / BREAK / — (no signal). All are checked by default. If **All** is checked, all individual signal checkboxes are automatically checked. If any individual signal checkbox is unchecked, **All** is automatically unchecked.
+**Signal filter** (above the table): checkboxes to show/hide rows by trend signal — All / NEW / HOLD / BREAK / — (no signal). All are checked by default. If **All** is checked, all individual signal checkboxes are automatically checked. If any individual signal checkbox or **Selected Entry Candidates** is unchecked, **All** is automatically unchecked. **Selected Entry Candidates** is unchecked by default; when checked, it also shows screening-selected rows regardless of their signal. It does not change the selection sent to later stages.
 
 **Stock chart** (loaded on demand, powered by Lightweight Charts v4):
 
