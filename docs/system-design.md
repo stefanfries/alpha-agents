@@ -104,7 +104,7 @@ The pipeline is designed for **autonomous operation** in production (all checkpo
 | Persistence | MongoDB Atlas `alpha_agents` DB | `quant_systems`, `executions`, `virtual_depots`, `virtual_depot_snapshots`, `warrant_availability` (see ADR-010, ADR-012) |
 | Order placement | Manual (Comdirect web/app) | Comdirect requires 2FA — autonomous submission not supported |
 | Package manager | uv | Project-wide convention |
-| Testing | pytest + pytest-asyncio | Async-first test runner |
+| Testing | pytest + pytest-asyncio | Async-first test runner; external services are mocked ([test isolation](../README.md#test-isolation)) |
 | Linting | ruff | Fast, zero-config linter + formatter |
 
 ## User interface

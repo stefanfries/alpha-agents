@@ -2575,9 +2575,13 @@ async def test_monitoring_uses_portfolio_max_positions_override_with_holdings(mo
     async def fake_held_since(_run: dict) -> dict[str, date]:
         return {"WKN1": date.today() - timedelta(days=30)}
 
+    async def fake_warrant_snapshots(_isins: list[str]):
+        return {}
+
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_warrant_snapshots)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A"), Ticker(symbol="B"), Ticker(symbol="C")],
@@ -2621,9 +2625,13 @@ async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkey
     async def fake_held_since(_run: dict) -> dict[str, date]:
         return {"WKN1": date.today() - timedelta(days=30)}
 
+    async def fake_warrant_snapshots(_isins: list[str]):
+        return {}
+
     monkeypatch.setattr(pipeline, "_fetch_holdings", fake_fetch_holdings)
     monkeypatch.setattr(pipeline, "_fetch_warrant_underlying_map", fake_warrant_underlying_map)
     monkeypatch.setattr(pipeline, "_fetch_held_since", fake_held_since)
+    monkeypatch.setattr(pipeline, "_fetch_warrant_snapshots", fake_warrant_snapshots)
 
     screening = SelectionResult(
         selected=[Ticker(symbol="A"), Ticker(symbol="B")],

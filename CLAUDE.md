@@ -100,6 +100,16 @@ uv run ruff check .
 uv run ruff format .
 ```
 
+## Test isolation
+
+`tests/conftest.py` blocks Python socket connections, DNS lookups, and default
+HTTPX network transports during tests. Mock external services, including FinHub,
+Yahoo Finance, and MongoDB; use HTTPX `MockTransport` or `ASGITransport` for
+in-process tests. Blocked attempts fail at teardown even if caught by application
+code. The fixture is not an OS-level sandbox and does not necessarily cover native
+libraries, subprocesses, or code outside its lifecycle. See the README's Test
+isolation section.
+
 ## Architecture
 
 ```text

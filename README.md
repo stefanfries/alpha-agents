@@ -93,6 +93,21 @@ EXECUTION__DRY_RUN=true      # set to false only when ready to trade
 
 Capital is configured per Quant System (not globally). When a real Comdirect depot is selected, the creation/edit form auto-calculates the available capital (cash balance + current market value of all positions) from the live `finance` database.
 
+## Test isolation
+
+The autouse fixture in [tests/conftest.py](tests/conftest.py) blocks Python socket
+connections, DNS lookups, and default HTTPX network transports during tests. A
+blocked attempt fails the test at teardown even if application code catches the
+original exception.
+
+Mock external services such as FinHub, Yahoo Finance, and MongoDB. For HTTPX,
+use `MockTransport` for external APIs or `ASGITransport` for in-process app
+tests; these do not use the blocked network transports.
+
+The fixture is not an OS-level network sandbox: native libraries, subprocesses,
+and code outside the fixture lifecycle are not necessarily covered. Do not rely
+on it alone to prevent external access in those cases.
+
 ## Documentation
 
 | Document | Contents |
