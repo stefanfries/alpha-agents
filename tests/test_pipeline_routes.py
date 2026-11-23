@@ -201,6 +201,81 @@ async def test_screening_stage_context_includes_config_defaults_and_run_override
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("position_group", ["positions_to_sell", "positions_to_keep", "positions_to_roll"])
+@pytest.mark.parametrize("has_break_event", [True, False])
+async def test_monitoring_refreshes_saved_degraded_status_from_screening(
+    monkeypatch, position_group, has_break_event,
+):
+    from copy import deepcopy
+
+    from starlette.requests import Request
+
+    from app.routes import pipeline as pipeline_module
+
+    screening = {
+        "selected": [], "scores": {}, "rationale": {},
+        "trend_signals": {"A": "BREAK"},
+        "last_break_age_bars": {"A": 2},
+        "policy_results": {"A": {
+            "tsi_falling": True, "adx_below": True, "ema20_falling": False,
+        }},
+    }
+    if has_break_event:
+        screening["break_policy_results"] = {"A": {
+            "tsi_falling": True, "adx_below": True, "ema20_falling": True,
+        }}
+    saved_result = {
+        position_group: [{
+            "underlying_symbol": "A", "trend_status": "trend degraded",
+            "trend_status_detail": "trend degraded: BREAK reasons unavailable",
+            "decision_reason": "trend break",
+        }],
+    }
+    execution = {
+        "execution_id": "exec1", "quant_system_id": "qs1",
+        "stages": {
+            "screening": {"result": screening},
+            "monitoring": {"status": "awaiting_review", "result": saved_result},
+        },
+        "config_overrides": {"screening": {
+            "policy_tsi_falling_break": True,
+            "policy_adx_below_break": False,
+            "policy_ema20_falling_break": True,
+        }},
+    }
+    original = deepcopy(execution)
+
+    class FakeCollection:
+        async def find_one(self, selector, projection):
+            return execution
+
+    class FakeTemplates:
+        @staticmethod
+        def TemplateResponse(request, template_name, context):
+            assert template_name == "stages/monitoring.html"
+            return context
+
+    monkeypatch.setattr(pipeline_module, "executions_collection", lambda: FakeCollection())
+    monkeypatch.setattr(pipeline_module, "templates", FakeTemplates())
+    request = Request({"type": "http", "method": "GET", "path": "/", "headers": []})
+
+    context = await pipeline_module.stage_review(request, "qs1", "exec1", "monitoring")
+
+    position = context["stage_result"][position_group][0]
+    if has_break_event:
+        assert position["trend_status"] == "trend degraded: EMA20 falling (+1)"
+        assert position["trend_status_detail"] == "trend degraded:\n- EMA20 falling\n- TSI falling"
+    else:
+        assert position["trend_status"] == "trend degraded: TSI falling"
+        assert position["trend_status_detail"] == (
+            "trend degraded:\n- TSI falling"
+            "\nLatest screening conditions; BREAK-event details were not saved."
+        )
+    assert position["decision_reason"] == "trend break"
+    assert execution == original
+
+
+@pytest.mark.asyncio
 async def test_restart_stage_persists_warrant_maturity_range(monkeypatch):
     from app.routes import pipeline as pipeline_module
 

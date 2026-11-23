@@ -577,6 +577,69 @@ class TestTrendStatusTooltipDetails:
         assert "EMA20 falling" in review.trend_status_detail
         assert "ADX below threshold" in review.trend_status_detail
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("has_break_event", [True, False])
+    async def test_recent_break_uses_event_conditions_in_rendered_tooltip(
+        self, monitoring_environment, has_break_event,
+    ):
+        agent = MonitoringAgent(settings=MonitoringSettings())
+        result = await agent.run(MonitoringInput(
+            candidates=[],
+            scores={},
+            trend_signals={"AXON": "BREAK"},
+            last_break_age_bars={"AXON": 2},
+            policy_results={"AXON": {
+                "tsi_falling": not has_break_event, "adx_below": has_break_event,
+            }},
+            break_policy_results={"AXON": {
+                "tsi_falling": True, "adx_below": False, "price_below_ema50": True,
+            }} if has_break_event else {},
+            enabled_break_rules={
+                "tsi_falling": True, "adx_below": True, "price_below_ema50": False,
+            },
+            current_holdings=[Position(
+                ticker=Ticker(symbol="WKN", isin="ISIN"),
+                quantity=Decimal("1"), avg_cost=Decimal("0"),
+            )],
+            warrant_underlying_map={"ISIN": "AXON"},
+            held_since_map={},
+        ))
+
+        review = result.positions_to_sell[0]
+        assert review.trend_status == "trend degraded: TSI falling"
+        detail = "trend degraded:\n- TSI falling"
+        if not has_break_event:
+            detail += "\nLatest screening conditions; BREAK-event details were not saved."
+        assert review.trend_status_detail == detail
+        html = monitoring_environment.get_template("stages/monitoring.html").render(
+            execution={"execution_id": "test"}, stage_status="awaiting_review",
+            stage_result=result.model_dump(mode="json"),
+        )
+        assert f'title="{detail}"' in html
+        assert "BREAK reasons unavailable" not in html
+        assert "ADX below threshold" not in html
+        assert "Price below EMA50" not in html
+
+    @pytest.mark.asyncio
+    async def test_old_break_without_event_conditions_uses_latest_selected_conditions(self):
+        agent = MonitoringAgent(settings=MonitoringSettings())
+        result = await agent.run(MonitoringInput(
+            candidates=[], scores={}, trend_signals={"AXON": "BREAK"},
+            last_break_age_bars={"AXON": 2},
+            policy_results={"AXON": {"tsi_falling": True, "adx_below": True}},
+            enabled_break_rules={"tsi_falling": True, "adx_below": False},
+            current_holdings=[Position(
+                ticker=Ticker(symbol="WKN", isin="ISIN"),
+                quantity=Decimal("1"), avg_cost=Decimal("0"),
+            )],
+            warrant_underlying_map={"ISIN": "AXON"}, held_since_map={},
+        ))
+        assert result.positions_to_sell[0].trend_status == "trend degraded: TSI falling"
+        assert result.positions_to_sell[0].trend_status_detail == (
+            "trend degraded:\n- TSI falling"
+            "\nLatest screening conditions; BREAK-event details were not saved."
+        )
+
 
 class TestOrchestrationMetadataFields:
     """Tests for metadata fields on MonitoringResult and WarrantSelectionResult."""
@@ -1084,6 +1147,15 @@ class TestTrendStatus:
         policy = {"adx_falling": True, "adx_below": True}
         enabled = {"adx_falling": False, "adx_below": True}
         assert MonitoringAgent._break_reasons(policy, enabled) == ["ADX below threshold"]
+
+    def test_every_enabled_break_rule_has_a_reason(self):
+        from app.policies.trend_detection import TrendDetectionPolicyConfig
+
+        rules = TrendDetectionPolicyConfig().exit_enabled_rules()
+        for key in rules:
+            assert MonitoringAgent._break_reasons({key: True}, {key: True})
+            assert not MonitoringAgent._break_reasons({key: True}, {key: False})
+            assert not MonitoringAgent._break_reasons({key: False}, {key: True})
 
     def test_break_reasons_from_policy_results_wired_to_trend_status(self):
         """End-to-end: policy_results → break_reasons → trend_status string."""

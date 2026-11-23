@@ -327,6 +327,15 @@ the existing weight-column widths.
 | Trend status | User-facing trend state: `trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no signal, last BREAK X bars ago`, or `no screening signal` |
 | Warrant health | Health status derived from monitoring checks: `healthy`, `degraded` (+ detail), or `unknown` |
 
+Hovering a degraded Trend status badge lists all selected BREAK conditions that
+were met, including TSI falling. When saved BREAK-event details are available,
+the reasons refer to the BREAK candle, not the latest candle. Older results use
+matching conditions from the latest saved Screening evaluation and identify that
+source for previous-bar BREAKs. A page refresh also enriches older, bare
+`trend degraded` rows from saved Screening data without rerunning stages or
+changing decisions. If no matching conditions are available, the tooltip says
+`BREAK reasons unavailable`.
+
 Entry-candidate columns:
 
 | Column | Description |

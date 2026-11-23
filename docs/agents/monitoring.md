@@ -15,6 +15,7 @@ class MonitoringInput(BaseModel):
     trend_signals: dict[str, str | None]   # underlying_symbol → "NEW" | "HOLD" | "BREAK" | None
   last_break_age_bars: dict[str, int]    # underlying_symbol -> bars since most recent BREAK
     policy_results: dict[str, dict[str, bool]]  # underlying_symbol → indicator booleans
+    break_policy_results: dict[str, dict[str, bool]]  # underlying_symbol → BREAK-event booleans
     enabled_break_rules: dict[str, bool]   # BREAK rule key → selected in screening config
     underlying_names: dict[str, str]       # underlying_symbol -> display name
     current_holdings: list[Position]       # depot warrant positions (isin + wkn in ticker); zero-qty skipped
@@ -34,7 +35,7 @@ The orchestrator builds `MonitoringInput` from:
   - real depots: latest `finance.depot_snapshots.positions[].held_since_date`
   - virtual depots: latest `virtual_depot_snapshots.positions[].held_since_date`, with fallback to most recent BUY from `virtual_depot_transactions`
 - `warrant_snapshots` from FinHub warrant detail via `_fetch_warrant_snapshots()` (captures bid/ask, `prev_close`, and `strike`/`maturity_date` for display and roll re-scoring, in addition to spread/leverage/delta/days-to-maturity). `prev_close` is read from `market_data` in the same `/v1/warrants/{isin}` response as bid/ask; no separate `/quotes` request is made. Each per-ISIN detail fetch uses the shared `retry_call()` helper (`app/tools/retry.py`); a warrant is skipped (all snapshot fields `None`) only if all retry attempts fail.
-- `policy_results` forwarded directly from `SelectionResult.policy_results` (per-symbol indicator booleans, used for degradation reason extraction)
+- `break_policy_results` forwarded from Screening for active BREAK reasons; `policy_results` supplies latest-bar booleans for older results without BREAK-event details
 - `enabled_break_rules` from the execution's screening config (`TrendDetectionPolicyConfig.exit_enabled_rules()`), so only selected BREAK criteria are reported as degradation reasons
 - `last_break_age_bars` forwarded from `SelectionResult.last_break_age_bars` (used for aged-out BREAK explanation text)
 - `max_positions` resolved from execution `config_overrides.portfolio.max_positions`, or falls back to `settings.portfolio.max_positions`
@@ -74,7 +75,7 @@ plus expected net sale proceeds after costs.
 - Pricing context: `buy_price` (average buy price), `current_price` (snapshot bid), `pct_change_from_prev_close` (`((current_price - prev_close) / prev_close) * 100`, or `None` when `prev_close` is missing/non-positive), `performance_pct`
 - Warrant metrics: `spread_pct`, `leverage`, `delta`, `days_to_maturity`, `strike`, `maturity_date` (all optional)
 - Screening diagnostics: `screening_signal` (`"NEW"|"HOLD"|"BREAK"|None`) and `screening_signal_present` (bool)
-- Trend status: `trend_status` (UI-ready status label)
+- Trend status: `trend_status` (UI-ready status label), `trend_status_detail` (all selected, met BREAK reasons for the tooltip)
 - Health assessment: `monitoring_score` (0-1 health score), `warrant_health_status`, `warrant_health_reason`, `decision_reason`
 - Account summary: `nav_eur`, `available_cash_eur`, and per-holding valuation errors
 
@@ -153,7 +154,7 @@ buys remain allowed. The gate status and blocking reasons are shown on the revie
   - Degraded warrant + grace met (`is_degraded AND holding_days >= min_holding_days`) => **ROLL**
   - Otherwise => **KEEP**
 
-Break reasons for `trend_status` are derived from `policy_results[symbol]` indicator booleans via `_break_reasons()`, restricted to the BREAK criteria selected in the screening config (`enabled_break_rules`), using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold > TSI below threshold). Here, EMA20 falling means `EMA20[t-2] > EMA20[t-1] > EMA20[t]`.
+Break reasons for `trend_status` are derived from the indicator booleans at the BREAK event via `_break_reasons()`, restricted to the BREAK criteria selected in the screening config (`enabled_break_rules`), using a fixed priority order (Price below EMA50 > SuperTrend bearish > EMA20 falling > ADX falling > ADX below threshold > TSI falling > TSI below threshold). Older results without event details use selected, met conditions from the latest saved Screening evaluation; for a previous-bar BREAK, the tooltip identifies these as latest screening conditions rather than historical event details. Saved Monitoring rows with a bare `trend degraded` status are enriched on page load from the saved Screening result, without rerunning stages or changing decisions. If neither source provides matching conditions, the tooltip explicitly reports unavailable reasons. Here, EMA20 falling means `EMA20[t-2] > EMA20[t-1] > EMA20[t]`.
 
 **Active BREAK** fires when `trend_signal == "BREAK"` (the signal is exposed for up to 5 bars including the event bar). No cross-run confirmation is required; the position is sold in the same run the BREAK condition is observed. **Aged-out BREAK** (`trend_signal is None` with a known `last_break_age_bars`) is sold on the same basis — the underlying's trend already broke, it is simply outside screening's UI-visible BREAK window, so ROLL would otherwise extend exposure to a position whose trend support has already gone.
 

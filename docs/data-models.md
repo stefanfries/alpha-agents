@@ -287,7 +287,8 @@ Output of `SecuritySelectionAgent`. Input of `WarrantSelectionAgent`.
 | `tsi` | `dict[str, float]` | Latest-bar True Strength Index value per ticker; historical per-bar values are calculated on demand for chart hover and are not part of this model |
 | `extension_scores` | `dict[str, float]` | `(close - EMA20) / ATR20` per ticker; retained for future composite entry-timing analysis, not a standalone policy or table signal |
 | `weekly_confirmed` | `dict[str, bool]` | Latest completed weekly close is above a rising weekly EMA20; advisory only, not a NEW/BREAK policy |
-| `policy_results` | `dict[str, dict[str, bool]]` | Latest-bar per-ticker indicator booleans used by NEW/BREAK policy groups and breadth: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_above_ema50`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above`, `tsi_above`, `tsi_below` |
+| `policy_results` | `dict[str, dict[str, bool]]` | Latest-bar per-ticker indicator booleans used by NEW/BREAK policy groups and breadth: `supertrend`, `supertrend_bearish`, `ema20_rising`, `ema20_above_ema50`, `ema20_falling`, `adx_above`, `adx_below`, `adx_rising`, `adx_falling`, `price_above_ema50`, `price_below_ema50`, `tq60_above`, `tq20_above`, `tsi_above`, `tsi_rising`, `tsi_falling`, `tsi_below` |
+| `break_policy_results` | `dict[str, dict[str, bool]]` | Indicator booleans at the BREAK event for each ticker with an active BREAK signal |
 | `rank_changes` | `dict[str, list[int \| None]]` | Rank delta vs 1W, 2W, and 4W ago using the configured screening rank metric |
 | `history_labels` | `list[str]` | `["1W", "2W", "4W"]` |
 | `trend_signals` | `dict[str, str \| None]` | Per-ticker trend signal: `"NEW"` \| `"HOLD"` \| `"BREAK"` \| `None` (see below). `BREAK` is emitted when the active BREAK group passes while the ticker is in trend; it does not require a new edge. |
@@ -358,7 +359,8 @@ Represents a single depot position under review by the Monitoring Agent. Used in
 | `monitoring_score` | `float \| None` | Health score 0-1 (weighted 4-component: spread, leverage, maturity, delta) |
 | `screening_signal` | `str \| None` | Resolved screening signal for mapped underlying symbol (`NEW`/`HOLD`/`BREAK`/`None`) |
 | `screening_signal_present` | `bool \| None` | Whether mapped underlying symbol exists as a key in `SelectionResult.trend_signals` |
-| `trend_status` | `str \| None` | UI-ready trend state (`trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, `no signal, last BREAK X bars ago`, `no screening signal`) |
+| `trend_status` | `str \| None` | UI-ready trend state (`trend intact`, `trend degraded: <reason>`, `trend degraded: <reason> (+N)`, bare `trend degraded` when reasons are unavailable, `no signal, last BREAK X bars ago`, `no screening signal`) |
+| `trend_status_detail` | `str \| None` | Multiline BREAK tooltip listing all selected, met conditions, including TSI falling. Uses BREAK-event indicators when saved, otherwise latest Screening conditions with a source note for previous-bar BREAKs; explicitly reports unavailable reasons if no matching conditions are available. `None` for other trend states. |
 | `warrant_health_status` | `str \| None` | UI-ready health state (`healthy`, `degraded`, `unknown`) |
 | `warrant_health_reason` | `str \| None` | Degradation detail text when health is degraded |
 | `decision_reason` | `str \| None` | Human-readable action rationale (non-redundant with warrant-health detail in UI) |

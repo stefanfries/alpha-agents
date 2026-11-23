@@ -39,6 +39,7 @@ _BREAK_REASON_LABELS: list[tuple[str, str]] = [
     ("ema20_falling", "EMA20 falling"),
     ("adx_falling", "ADX falling"),
     ("adx_below", "ADX below threshold"),
+    ("tsi_falling", "TSI falling"),
     ("tsi_below", "TSI below threshold"),
 ]
 
@@ -49,6 +50,7 @@ class MonitoringInput(BaseModel):
     trend_signals: dict[str, str | None]       # underlying_symbol → "NEW"|"HOLD"|"BREAK"|None
     last_break_age_bars: dict[str, int] = {}   # underlying_symbol → bars since latest BREAK
     policy_results: dict[str, dict[str, bool]] = {}  # underlying_symbol → indicator booleans
+    break_policy_results: dict[str, dict[str, bool]] = {}  # underlying_symbol → BREAK-bar booleans
     enabled_break_rules: dict[str, bool] = {}  # BREAK rule key → selected in screening config
     underlying_names: dict[str, str] = {}      # underlying_symbol → display name
     current_holdings: list[Position]           # depot warrant positions (isin+wkn in ticker)
@@ -208,8 +210,29 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
         if not has_trend_signal or trend_signal != "BREAK":
             return None
         if not break_reasons:
-            return "trend degraded"
+            return "trend degraded: BREAK reasons unavailable"
         return "trend degraded:\n" + "\n".join(f"- {r}" for r in break_reasons)
+
+    @classmethod
+    def break_description(
+        cls,
+        policy_values: dict[str, bool],
+        enabled_rules: dict[str, bool],
+        *,
+        break_policy_values: dict[str, bool] | None = None,
+        last_break_age_bars: int | None = None,
+    ) -> tuple[str, str | None]:
+        values = break_policy_values if break_policy_values is not None else policy_values
+        reasons = cls._break_reasons(values, enabled_rules)
+        status = cls._trend_status(
+            has_trend_signal=True, trend_signal="BREAK", break_reasons=reasons,
+        )
+        detail = cls._trend_status_detail(
+            has_trend_signal=True, trend_signal="BREAK", break_reasons=reasons,
+        )
+        if detail and reasons and break_policy_values is None and last_break_age_bars not in (None, 0):
+            detail += "\nLatest screening conditions; BREAK-event details were not saved."
+        return status, detail
 
     @staticmethod
     def _decide_action(
@@ -323,8 +346,22 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
             # already settled to OUT — the trend has broken, just outside the
             # active-BREAK display window. Treat as an exit signal, same as BREAK.
             has_exit_signal = trend_signal == "BREAK" or (trend_signal is None and last_break_age is not None)
-            policy_values = input.policy_results.get(underlying_sym, {})
-            break_reasons = self._break_reasons(policy_values, input.enabled_break_rules)
+            trend_status = self._trend_status(
+                has_trend_signal=has_trend_signal,
+                trend_signal=trend_signal,
+                last_break_age_bars=last_break_age,
+                break_reasons=[],
+            )
+            trend_status_detail = None
+            if trend_signal == "BREAK":
+                trend_status, trend_status_detail = self.break_description(
+                    input.policy_results.get(underlying_sym, {}),
+                    input.enabled_break_rules,
+                    break_policy_values=input.break_policy_results.get(underlying_sym),
+                    last_break_age_bars=last_break_age,
+                )
+                if trend_status == "trend degraded":
+                    logger.warning("Monitoring: BREAK reasons unavailable for %s", underlying_sym)
             warrant_snapshot = input.warrant_snapshots.get(warrant_isin)
             is_degraded, degrade_detail = False, None
             if warrant_snapshot:
@@ -358,17 +395,8 @@ class MonitoringAgent(Agent[MonitoringInput, MonitoringResult]):
                 monitoring_score=monitoring_score,
                 screening_signal=trend_signal,
                 screening_signal_present=has_trend_signal,
-                trend_status=self._trend_status(
-                    has_trend_signal=has_trend_signal,
-                    trend_signal=trend_signal,
-                    last_break_age_bars=last_break_age,
-                    break_reasons=break_reasons,
-                ),
-                trend_status_detail=self._trend_status_detail(
-                    has_trend_signal=has_trend_signal,
-                    trend_signal=trend_signal,
-                    break_reasons=break_reasons,
-                ),
+                trend_status=trend_status,
+                trend_status_detail=trend_status_detail,
                 warrant_health_status=(
                     "unknown"
                     if warrant_snapshot is None

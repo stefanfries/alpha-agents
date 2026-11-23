@@ -19,6 +19,7 @@ class SelectionResult(BaseModel):
     tq_short: dict[str, float]                     # TQ-20 (short window) per ticker
     tsi: dict[str, float]                          # TSI (True Strength Index) per ticker
     policy_results: dict[str, dict[str, bool]]     # policy_name -> pass/fail per ticker
+    break_policy_results: dict[str, dict[str, bool]]  # indicators at active BREAK event
     rank_changes: dict[str, list[int | None]]      # sym -> [delta_1W, delta_2W, delta_4W]
     history_labels: list[str]                      # ["1W", "2W", "4W"]
     trend_signals: dict[str, str | None]           # sym -> "NEW" | "HOLD" | "BREAK" | None
@@ -155,6 +156,8 @@ The stored `trend_signals` value is then derived from the most recent event and 
 | `None` | The state machine is `OUT` and there is no recent `BREAK` signal to expose |
 
 This signal is purely observational. It informs entry timing at the screening stage; it does not trigger orders.
+
+For active `"BREAK"` signals, `break_policy_results[symbol]` stores indicator booleans from the actual BREAK candle. Monitoring uses these to explain the selected, met exit conditions throughout the five-bar display window, even if the latest candle no longer meets them. This is separate from `policy_results`, which always describes the latest candle; older saved results may not contain `break_policy_results`.
 
 ### Per-candle chart indicators
 

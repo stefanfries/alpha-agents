@@ -69,6 +69,7 @@ class SelectionResult(BaseModel):
     extension_scores: dict[str, float] = {}  # sym → (close - EMA20) / ATR20
     weekly_confirmed: dict[str, bool] = {}  # sym → completed-week close above rising EMA20
     policy_results: dict[str, dict[str, bool]] = {}
+    break_policy_results: dict[str, dict[str, bool]] = {}  # sym → indicators at active BREAK
     rank_changes: dict[str, list[int | None]] = {}  # sym → [delta_1w, delta_2w]
     history_labels: list[str] = []
     trend_signals: dict[str, str | None] = {}  # sym → "NEW" | "HOLD" | "BREAK" | None

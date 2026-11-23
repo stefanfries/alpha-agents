@@ -436,6 +436,7 @@ class Pipeline:
             held_since_map=held_since_map,
             warrant_snapshots=warrant_snapshots,
             policy_results=screening.policy_results,
+            break_policy_results=screening.break_policy_results,
             enabled_break_rules=enabled_break_rules,
             reentry_blocked_symbols=reentry_blocked_symbols,
             market_gate=market_gate,

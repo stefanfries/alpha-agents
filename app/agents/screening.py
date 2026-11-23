@@ -98,6 +98,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
         weekly_confirmed: dict[str, bool] = {}
         rationale: dict[str, str] = {}
         policy_results: dict[str, dict[str, bool]] = {}
+        break_policy_results: dict[str, dict[str, bool]] = {}
         trend_signals: dict[str, str | None] = {}
         last_break_age_bars: dict[str, int] = {}
         latest_candle_dates: dict[str, date] = {}
@@ -165,6 +166,10 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             trend_signals[symbol] = trend_signal
             if break_age is not None:
                 last_break_age_bars[symbol] = break_age
+            if trend_signal == "BREAK" and break_age is not None:
+                break_policy_results[symbol] = (
+                    policies if break_age == 0 else self._evaluate_policies(bars[:-break_age])
+                )
 
             policy_detail = " | ".join(
                 f"{k}={'✓' if v else '✗'}" for k, v in policies.items()
@@ -218,6 +223,7 @@ class SecuritySelectionAgent(Agent[ResearchResult, SelectionResult]):
             weekly_confirmed=weekly_confirmed,
             rationale=rationale,
             policy_results=policy_results,
+            break_policy_results=break_policy_results,
             rank_changes=rank_changes,
             history_labels=history_labels,
             trend_signals=trend_signals,

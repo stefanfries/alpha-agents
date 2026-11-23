@@ -365,6 +365,44 @@ def test_active_break_after_new_transition_emits_break_without_new_edge(monkeypa
     assert signal == "BREAK"
 
 
+@pytest.mark.asyncio
+async def test_screening_records_conditions_on_break_bar(monkeypatch):
+    from app.agents import screening as screening_module
+    from app.config import ScreeningSettings
+
+    ticker = Ticker(symbol="SYN")
+    bars = _make_synthetic_bars(ticker, [100.0 + 0.1 * i for i in range(70)])
+    agent = SecuritySelectionAgent(ScreeningSettings(
+        new_min_true=1, break_min_true=1, policy_tsi_falling_break=True,
+        policy_supertrend_break=False, policy_ema20_falling_break=False,
+        policy_adx_below_break=False, policy_price_below_ema50_break=False,
+        policy_tsi_below_break=False,
+    ))
+    monkeypatch.setattr(
+        screening_module, "build_trend_indicator_series", lambda *args, **kwargs: object()
+    )
+    monkeypatch.setattr(
+        screening_module, "bar_indicator_values",
+        lambda idx, *args, **kwargs: {
+            "ema20_rising": idx >= len(bars) - 4,
+            "tsi_falling": idx == len(bars) - 3,
+            "adx_below": idx == len(bars) - 1,
+        },
+    )
+
+    result = await agent.run(ResearchResult(
+        tickers=[ticker], bars={"SYN": bars},
+        fundamentals={"SYN": {"marketCap": 1_000_000_000}},
+    ))
+
+    assert result.trend_signals["SYN"] == "BREAK"
+    assert result.last_break_age_bars["SYN"] == 2
+    assert result.break_policy_results["SYN"]["tsi_falling"] is True
+    assert result.break_policy_results["SYN"]["adx_below"] is False
+    assert result.policy_results["SYN"]["tsi_falling"] is False
+    assert result.policy_results["SYN"]["adx_below"] is True
+
+
 def test_recent_new_downgrades_to_hold_when_current_bar_fails_selected_policy(monkeypatch):
     from app.agents import screening as screening_module
     from app.config import ScreeningSettings

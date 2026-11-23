@@ -170,11 +170,17 @@ async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkey
         scores={"A": 1.0, "B": 0.9},
         rationale={},
         trend_signals={"A": "BREAK", "B": "NEW"},
+        last_break_age_bars={"A": 2},
+        policy_results={"A": {"tsi_falling": False}},
+        break_policy_results={"A": {"tsi_falling": True}},
         market_gate=MarketGate(status="open"),
     )
     run = {
         "stages": {"screening": {"result": screening.model_dump(mode="json")}},
-        "config_overrides": {"portfolio": {"max_positions": 5}},
+        "config_overrides": {
+            "portfolio": {"max_positions": 5},
+            "screening": {"policy_tsi_falling_break": True},
+        },
     }
 
     result = await pipeline._run_monitoring(run)
@@ -182,6 +188,7 @@ async def test_monitoring_resolves_underlying_via_isin_and_sells_on_break(monkey
     assert len(result.positions_to_sell) == 1
     assert result.positions_to_sell[0].underlying_symbol == "A"
     assert result.positions_to_sell[0].sell_reason == "exit_signal"
+    assert result.positions_to_sell[0].trend_status_detail == "trend degraded:\n- TSI falling"
     assert result.free_positions == 5
     assert [t.symbol for t in result.entry_candidates] == ["B"]
 

@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import warrant_availability
+from app.agents.monitoring import MonitoringAgent
 from app.config import resolve_warrant_selection_settings, settings
 from app.db import executions_collection, quant_systems_collection
 from app.formatting import register_currency_filters
@@ -358,19 +359,35 @@ async def stage_review(request: Request, qs_id: str, execution_id: str, stage: s
         ranking_metric = execution.get("config_overrides", {}).get("screening", {}).get(
             "ranking_metric", settings.screening.ranking_metric,
         )
-        ranks = build_screening_ranks(
-            SelectionResult.model_validate({"selected": [], "scores": {}, "rationale": {}} | screening),
-            ranking_metric,
+        screening_result = SelectionResult.model_validate(
+            {"selected": [], "scores": {}, "rationale": {}} | screening
         )
+        ranks = build_screening_ranks(screening_result, ranking_metric)
         ctx["monitoring_rank_label"] = {"tq60": "TQ-60", "tq20": "TQ-20", "tsi": "TSI"}[ranking_metric]
         ctx["monitoring_ranks"] = ranks
         if ctx.get("stage_result"):
             monitoring_result = dict(ctx["stage_result"])
+            enabled_break_rules = TrendDetectionPolicyConfig.from_mapping(
+                {**settings.screening.model_dump(),
+                 **execution.get("config_overrides", {}).get("screening", {})}
+            ).exit_enabled_rules()
             for field in ("positions_to_sell", "positions_to_roll", "positions_to_keep"):
                 monitoring_result[field] = sorted(
-                    monitoring_result.get(field) or [],
+                    [dict(position) for position in monitoring_result.get(field) or []],
                     key=lambda position: ranks.get(position.get("underlying_symbol"), {}).get("rank", float("inf")),
                 )
+                for position in monitoring_result[field]:
+                    symbol = position.get("underlying_symbol")
+                    if (
+                        screening_result.trend_signals.get(symbol) == "BREAK"
+                        and position.get("trend_status") == "trend degraded"
+                    ):
+                        position["trend_status"], position["trend_status_detail"] = MonitoringAgent.break_description(
+                            screening_result.policy_results.get(symbol, {}),
+                            enabled_break_rules,
+                            break_policy_values=screening_result.break_policy_results.get(symbol),
+                            last_break_age_bars=screening_result.last_break_age_bars.get(symbol),
+                        )
             ctx["stage_result"] = monitoring_result
         mon_overrides = execution.get("config_overrides", {}).get("monitoring", {})
         wh_overrides = mon_overrides.get("warrant_health", {}) if mon_overrides else {}
