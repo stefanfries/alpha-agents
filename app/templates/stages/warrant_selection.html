@@ -77,6 +77,11 @@
     {% if stage_result %}
       {% set r = stage_result %}
       <div class="flex-shrink-0 mb-2">
+        {% if r.entry_blocked_by_market_gate | default(false) %}
+        <div class="alert alert-warning small mb-2">
+          The market gate blocks new entries. Challenger warrants are advisory only; roll searches remain independent.
+        </div>
+        {% endif %}
         <span class="text-muted small">
           <strong class="text-body">{{ r.selected | length }}</strong> new entries
           {% if r.challenger_selected %} · <strong>{{ r.challenger_selected | length }}</strong> qualifying challengers (advisory; may also be entries){% endif %}

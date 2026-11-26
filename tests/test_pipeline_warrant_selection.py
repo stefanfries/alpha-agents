@@ -350,10 +350,13 @@ async def test_warrant_challengers_use_monitoring_ranks_within_screened_pool(
         "status": "blocked", "reasons": ["Benchmark SuperTrend bearish"],
     }
     await pipeline._run_warrant_selection(run)
-    assert captured["selection"].selected == []
+    assert [t.symbol for t in captured["selection"].selected] == ["A", "B", "TIE", "WEAK"]
+    assert captured["challenger_symbols"] == expected_symbols
+    assert captured["max_selected"] == 0
     run["stages"]["screening"]["result"]["market_gate"] = None
     await pipeline._run_warrant_selection(run)
-    assert captured["selection"].selected == []
+    assert [t.symbol for t in captured["selection"].selected] == ["A", "B", "TIE", "WEAK"]
+    assert captured["max_selected"] == 0
     run["stages"]["screening"]["result"]["market_gate"] = {"status": "open"}
 
     # Incumbents need not appear in Screening's top-N entry shortlist to be ranked.
@@ -376,6 +379,83 @@ async def test_warrant_challengers_use_monitoring_ranks_within_screened_pool(
     assert captured["challenger_symbols"] == []
     assert result.challenger_benchmark_symbol is None
     assert result.challenger_unranked_incumbents == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocked_stage", ["screening", "monitoring", "unevaluated"])
+async def test_blocked_market_gate_searches_only_advisory_challengers(monkeypatch, blocked_stage):
+    from app import orchestrator as orchestrator_module
+    from app.models.signals import MarketGate, MonitoringResult, PositionReview
+
+    symbols = ["BETTER", "NO_WARRANT", "HELD", "RECENT", "WEAKER"]
+    screening = SelectionResult(
+        selected=[Ticker(symbol=symbol) for symbol in symbols],
+        scores={}, rationale={},
+        tsi={"BETTER": 90, "NO_WARRANT": 80, "HELD": 75, "RECENT": 70, "KEEP": 60, "WEAKER": 50},
+        policy_results={symbol: {} for symbol in [*symbols, "KEEP"]},
+        market_gate=MarketGate(status="blocked" if blocked_stage == "screening" else "open"),
+    )
+    if blocked_stage == "unevaluated":
+        screening.market_gate = None
+    monitoring = MonitoringResult(
+        positions_to_keep=[PositionReview(underlying_symbol="KEEP", warrant_isin="W_KEEP", warrant_wkn="KEEP")],
+        positions_to_roll=[], positions_to_sell=[],
+        entry_candidates=[Ticker(symbol="WEAKER")],
+        free_positions=3, excluded_symbols=["HELD", "RECENT"],
+        market_gate=MarketGate(status="blocked" if blocked_stage == "monitoring" else "open"),
+    )
+    lookups = []
+
+    async def fake_pick_best(self, ticker, *args):
+        lookups.append(ticker.symbol)
+        if ticker.symbol == "NO_WARRANT":
+            return None, [], 0, "no suitable warrant"
+        best = SelectedWarrant(
+            underlying=ticker, warrant_isin=f"W_{ticker.symbol}",
+            warrant_wkn=ticker.symbol, score=0.8, rationale="test",
+        )
+        return best, [best], 1, None
+
+    class FakeFinHub:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    async def fake_overrides():
+        return {}
+
+    async def fake_wake(*args):
+        pass
+
+    async def fake_progress(*args):
+        pass
+
+    pipeline = orchestrator_module.Pipeline()
+    monkeypatch.setattr(WarrantSelectionAgent, "_pick_best", fake_pick_best)
+    monkeypatch.setattr(orchestrator_module, "FinHubTool", FakeFinHub)
+    monkeypatch.setattr(orchestrator_module.warrant_availability, "overrides_map", fake_overrides)
+    monkeypatch.setattr(orchestrator_module, "update_stage_progress", fake_progress)
+    monkeypatch.setattr(pipeline, "_wake_finhub", fake_wake)
+    run = {
+        "execution_id": "blocked",
+        "config_overrides": {"screening": {"ranking_metric": "tsi", "market_gate_supertrend": True}},
+        "stages": {
+            "screening": {"result": screening.model_dump(mode="json")},
+            "monitoring": {"result": monitoring.model_dump(mode="json")},
+            "research": {"result": ResearchResult(tickers=[], bars={}, fundamentals={}).model_dump(mode="json")},
+        },
+    }
+
+    result = await pipeline._run_warrant_selection(run)
+
+    assert lookups == ["BETTER", "NO_WARRANT"]
+    assert result.challenger_symbols == lookups
+    assert [w.underlying.symbol for w in result.challenger_selected] == ["BETTER"]
+    assert result.selected == []
+    assert result.skipped_reasons == {"NO_WARRANT": "no suitable warrant"}
+    assert result.entry_blocked_by_market_gate
 
 
 @pytest.mark.asyncio
@@ -627,6 +707,23 @@ def test_warrant_challenger_rows_are_advisory_and_deduplicated():
     assert "No momentum replacements or minimum metric deltas are applied." in html
     assert "<code>UNKNOWN</code>" in html
     assert "unranked holdings are not treated as weakest" in html
+
+
+def test_warrant_selection_displays_blocked_market_gate():
+    from app.config import WarrantSelectionSettings
+    from app.routes.pipeline import templates
+
+    html = templates.env.get_template("stages/warrant_selection.html").render(
+        execution={"execution_id": "test", "stages": {}},
+        qs_id="qs", stage_status="awaiting_review",
+        stage_result=WarrantSelectionResult(
+            selected=[], skipped=[], entry_blocked_by_market_gate=True,
+        ).model_dump(mode="json"),
+        warrant_selection_cfg={
+            **WarrantSelectionSettings().model_dump(), "min_months": 9, "max_months": 15,
+        },
+    )
+    assert "The market gate blocks new entries. Challenger warrants are advisory only" in html
 
 
 def test_warrant_challenger_progress_is_visible_without_entry_slots():

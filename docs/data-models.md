@@ -313,6 +313,7 @@ Output of `WarrantSelectionAgent`. Input of `PortfolioConstructionAgent`.
 | `challenger_benchmark_symbol` | `str \| None` | Weakest ranked KEEP/ROLL underlying; SELL positions excluded |
 | `challenger_benchmark_rank` | `int \| None` | Benchmark's universe-wide Monitoring rank, not its Screening shortlist row |
 | `challenger_unranked_incumbents` | `list[str]` | Retained underlyings without a valid Monitoring rank; excluded from benchmarking and explicitly reported |
+| `entry_blocked_by_market_gate` | `bool` | The market gate blocked ordinary entries during warrant selection; challenger results remain advisory |
 | `skipped` | `list[str]` | Underlying symbols for which no warrant was selected |
 | `skipped_reasons` | `dict[str, str]` | Symbol → human-readable skip reason (e.g. `only capped call warrants available`, `all candidates above configured spread cap`) |
 | `skipped_names` | `dict[str, str]` | Symbol → underlying display name (for the skipped list) |

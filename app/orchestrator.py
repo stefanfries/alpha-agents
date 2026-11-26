@@ -243,9 +243,12 @@ class Pipeline:
         blocked = gate.status == "blocked" or (
             monitoring.market_gate is not None and monitoring.market_gate.status == "blocked"
         )
-        candidates = [] if blocked else monitoring.entry_candidates
         if blocked:
-            logger.warning("Market gate blocked new warrant selection")
+            excluded_symbols = set(monitoring.excluded_symbols)
+            candidates = [ticker for ticker in screening.selected if ticker.symbol not in excluded_symbols]
+            logger.warning("Market gate blocked new entries; searching eligible challengers for advisory comparison")
+        else:
+            candidates = monitoring.entry_candidates
 
         research = ResearchResult.model_validate(run["stages"]["research"]["result"])
         prices: dict[str, float] = {
@@ -330,7 +333,7 @@ class Pipeline:
                 min_score=ws_cfg.min_score,
                 spread_max_pct=ws_cfg.spread_max_pct,
                 atm_band_fallback=ws_cfg.atm_band_fallback,
-                max_selected=monitoring.free_positions,
+                max_selected=0 if blocked else monitoring.free_positions,
                 isin_overrides=overrides,
                 on_progress=on_progress,
                 roll_candidates=roll_candidates,
@@ -342,6 +345,7 @@ class Pipeline:
         result.challenger_benchmark_symbol = benchmark_symbol
         result.challenger_benchmark_rank = benchmark_rank
         result.challenger_unranked_incumbents = unranked_incumbents
+        result.entry_blocked_by_market_gate = blocked
         return result
 
     async def _run_monitoring(self, run: dict) -> MonitoringResult:

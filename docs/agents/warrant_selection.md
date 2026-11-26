@@ -19,6 +19,7 @@ class WarrantSelectionResult(BaseModel):
     challenger_benchmark_symbol: str | None  # Weakest ranked retained KEEP/ROLL underlying
     challenger_benchmark_rank: int | None    # Monitoring universe-wide rank
     challenger_unranked_incumbents: list[str]  # Explicit missing-rank diagnostics
+    entry_blocked_by_market_gate: bool       # New entries blocked; challengers remain advisory
     skipped: list[str]                        # Underlying symbols where no warrant was found
     skipped_reasons: dict[str, str]           # Symbol -> human-readable skip reason
     skipped_names: dict[str, str]             # Symbol -> underlying display name
@@ -102,8 +103,8 @@ name); only warrant sourcing and the strike chart follow the override.
 
 The orchestrator uses the execution's Screening ranking metric (`tsi`, `tq20`, or
 `tq60`) and the exact universe-wide ranking shared with Monitoring. A challenger
-must already be in both Screening's selected top-N pool and Monitoring's eligible
-entry pool, and must rank strictly better than the weakest ranked KEEP/ROLL
+must already be in Screening's selected top-N pool, be eligible apart from the
+market gate (not held or blocked from re-entry), and rank strictly better than the weakest ranked KEEP/ROLL
 underlying. SELL holdings do not set the benchmark. Equal metric values share a
 rank and do not qualify as an improvement. No minimum metric delta is applied yet.
 
@@ -116,6 +117,9 @@ KEEP/ROLL holdings; without any, no challenger discovery occurs.
 
 Each entry/challenger underlying is searched once. When free slots are positive,
 the existing full entry-pool search and capacity-limited backfill remain unchanged.
+When the market gate is blocked or unevaluated, eligible challengers are still
+searched for advisory comparison, but ordinary entries remain disabled regardless
+of free slots. The review page shows the block; roll searches remain independent.
 Successful challenger warrants are also retained in `challenger_selected`, including
 those beyond entry capacity, with their `top3` alternatives. A warrant may be both
 an ordinary entry and an advisory challenger; the UI renders it only once.

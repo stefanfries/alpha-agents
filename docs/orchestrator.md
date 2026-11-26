@@ -242,8 +242,10 @@ pool. Other entries are not marked as warrant failures. Positive-cap entry backf
 and independent roll searches remain unchanged. Challenger results are persisted
 separately and do not enter Portfolio/Risk/Execution as additional buys. Running
 progress reports separate entry/challenger and roll-search phases, including completed
-failures and active underlying symbols. A blocked market gate suppresses the entry
-pool and therefore also advisory challenger searches; roll searches remain available.
+failures and active underlying symbols. When the market gate blocks entries,
+challenger discovery uses Screening's selected pool minus Monitoring's held and
+re-entry exclusions, with ordinary entry capacity forced to zero. Advisory challenger
+and roll searches remain available.
 
 The `MonitoringResult` is stored as `stages.monitoring.result`. Downstream consumers:
 

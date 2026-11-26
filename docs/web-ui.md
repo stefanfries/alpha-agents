@@ -369,8 +369,9 @@ While the stage is running, separate entry/challenger and roll-search progress p
 show completed lookups, total lookups, and active underlying symbols. Failed lookups
 also count as completed. With zero free slots, eligible momentum challengers can still
 be searched for advisory comparison, while roll searches continue independently.
-A blocked market gate suppresses the entry/challenger pool, not rolls. Restarting from
-Warrant Selection clears previous progress.
+A blocked market gate suppresses ordinary entries but not advisory challenger or roll
+searches. The review page warns when entries are blocked. Restarting from Warrant
+Selection clears previous progress.
 
 The review summary shows qualifying advisory challengers and the weakest ranked
 KEEP/ROLL benchmark, using the execution's configured TSI/TQ-20/TQ-60 Monitoring

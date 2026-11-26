@@ -4,7 +4,7 @@
 **Scope:** Warrant Selection entry-search behavior when Monitoring reports no free positions
 
 > Update: Progress now reports entry/challenger and roll lookups as separate phases.
-> A blocked market gate suppresses entry/challenger searches but not roll searches.
+> A blocked market gate suppresses ordinary entries, but advisory challenger and roll searches continue.
 
 ## Goal
 
